@@ -6,3 +6,5 @@ dist/
 *.log
 .npmrc.local
 local-test/
+plan/
+.pi-subagents/
