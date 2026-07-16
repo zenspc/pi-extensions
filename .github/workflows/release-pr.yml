@@ -7,7 +7,7 @@ on:
       - main
 
 concurrency:
-  group: release-pr-${{ github.ref }}
+  group: release-pr-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -16,8 +16,8 @@ permissions:
   actions: write
 
 jobs:
-  version:
-    name: Version packages PR
+  version-and-tag:
+    name: Version packages PR and tags
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,24 +49,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  tag-after-version:
-    name: Tag released package versions
-    runs-on: ubuntu-latest
-    # After a Version PR merge, no pending changesets remain and package.json versions may need tags.
-    needs: version
-    if: github.event_name == 'push'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
       - name: Create missing package tags and dispatch publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,24 +56,21 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # GITHUB_TOKEN tag pushes do not trigger other workflows, so we create
-          # tags locally/remotely and explicitly dispatch publish per new tag.
-          mapfile -t NEW_TAGS < <(node scripts/tag-packages.mjs)
-          if [ "${#NEW_TAGS[@]}" -eq 0 ]; then
-            echo "No missing tags"
-            exit 0
-          fi
-          for TAG in "${NEW_TAGS[@]}"; do
+          # GITHUB_TOKEN tag pushes do not start other workflows; dispatch publish explicitly.
+          while IFS= read -r TAG; do
             case "$TAG" in
-              tag-packages:*) continue ;;
-              @zenspc/*@*) ;;
-              *) continue ;;
+              @zenspc/*@*)
+                ;;
+              *)
+                continue
+                ;;
             esac
             if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              echo "Tag already exists: $TAG"
               continue
             fi
             git tag -a "$TAG" -m "Release $TAG"
             git push origin "refs/tags/$TAG"
             gh workflow run publish.yml -f tag="$TAG" -f dry_run=false
             echo "Tagged and dispatched publish for $TAG"
-          done
+          done < <(node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true)

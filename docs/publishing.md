@@ -23,7 +23,8 @@ Rules that do not change without a new plan:
 ## Prerequisites
 
 - npm user/org that owns `@zenspc` with 2FA enabled
-- Repo secret `NPM_TOKEN`: npm **granular automation** token allowed to publish the `@zenspc/*` packages
+- Repo secret `NPM_TOKEN`: npm **granular automation** token (type **Automation**, not classic / publish-with-OTP) with publish rights on `@zenspc/*`
+  - Classic tokens and granular tokens that still require 2FA OTP will fail CI with `EOTP`
 - Actions allowed to create PRs, tags, and GitHub Releases on the default branch
 
 ```bash
