@@ -24,7 +24,8 @@
   },
   "files": [
     "extensions",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

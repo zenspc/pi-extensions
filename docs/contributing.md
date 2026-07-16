@@ -46,4 +46,4 @@ If the extension has a different audience, risk profile, or heavy dependencies, 
 - `package.json` must include `keywords: ["pi-package"]`.
 - Declare resources under the `pi` key.
 - List Pi runtime packages as `peerDependencies` with `"*"`.
-- Keep npm tarballs small with `"files": ["extensions", "README.md"]`.
+- Keep npm tarballs small with `"files"` limited to runtime paths (`extensions` or `src/`), `README.md`, and `LICENSE`.

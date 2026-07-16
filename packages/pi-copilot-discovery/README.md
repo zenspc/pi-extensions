@@ -49,7 +49,7 @@ intact — this is a drop-in upgrade of the provider, not a parallel one.
 
 ## Install
 
-### As a pi package (recommended once published)
+### As a pi package (recommended)
 
 ```bash
 pi install npm:@zenspc/pi-copilot-discovery

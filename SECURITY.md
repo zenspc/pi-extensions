@@ -47,6 +47,13 @@ Redact before sharing, and do not file public issues that paste unredacted dumps
 
 Bugs that allow **unintended** secret exfiltration (for example, leaking credentials into logs without the user requesting a dump) are in scope and should be reported privately.
 
+## Bad published versions
+
+If a published package version is broken or unsafe, ship a fixed version immediately.
+Unpublish is limited by npm policy after a short window.
+Deprecate the bad version with `npm deprecate @zenspc/<pkg>@<ver> "reason; use @zenspc/<pkg>@X.Y.Z"`.
+If a tarball leaked tokens or secrets, rotate credentials and report via the private channel above.
+
 ## Non-vulnerabilities
 
 The following are expected product behavior, not security bugs:
