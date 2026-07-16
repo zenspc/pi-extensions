@@ -1,0 +1,29 @@
+{
+  "name": "@zenspc/pi-safety",
+  "version": "0.1.0",
+  "description": "Confirm destructive bash and git actions before Pi runs them",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "safety"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenspc/pi-extensions.git",
+    "directory": "packages/pi-safety"
+  },
+  "files": [
+    "extensions",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  }
+}
