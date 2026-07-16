@@ -1,10 +1,10 @@
 {
   "name": "@zenspc/pi-copilot-discovery",
-  "version": "0.3.2",
+  "version": "0.1.0",
   "description": "Dynamic GitHub Copilot model discovery for pi — replaces pi-ai's static catalog with the live /models list from your Copilot tenant.",
   "type": "module",
   "license": "MIT",
-  "author": "zenspc",
+  "author": "dhairya-rathod",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
@@ -19,13 +19,9 @@
   },
   "keywords": [
     "pi-package",
-    "pi",
     "pi-extension",
-    "pi-coding-agent",
     "github-copilot",
-    "copilot",
-    "llm",
-    "ai"
+    "copilot"
   ],
   "files": [
     "src/",
