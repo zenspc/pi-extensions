@@ -7,13 +7,12 @@ on:
       - main
 
 concurrency:
-  group: release-pr-${{ github.workflow }}-${{ github.ref }}
+  group: release-pr-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   version-and-tag:
@@ -43,7 +42,7 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm run version-packages
-          title: "Version packages"
+          title: Version packages
           commit: "chore: version packages"
           createGithubReleases: false
         env:
@@ -56,21 +55,13 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # GITHUB_TOKEN tag pushes do not start other workflows; dispatch publish explicitly.
-          while IFS= read -r TAG; do
-            case "$TAG" in
-              @zenspc/*@*)
-                ;;
-              *)
-                continue
-                ;;
-            esac
-            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-              echo "Tag already exists: $TAG"
+          node scripts/tag-packages.mjs | grep -E '^@zenspc/' | while read -r TAG; do
+            if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+              echo "Tag already exists: ${TAG}"
               continue
             fi
-            git tag -a "$TAG" -m "Release $TAG"
-            git push origin "refs/tags/$TAG"
-            gh workflow run publish.yml -f tag="$TAG" -f dry_run=false
-            echo "Tagged and dispatched publish for $TAG"
-          done < <(node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true)
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "refs/tags/${TAG}"
+            gh workflow run publish.yml -f "tag=${TAG}" -f dry_run=false || true
+            echo "Tagged and dispatched publish for ${TAG}"
+          done

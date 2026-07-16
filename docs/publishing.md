@@ -182,6 +182,17 @@ After a package is on npm:
 - Root and package READMEs use `npm:@zenspc/...` as the primary install path.
 - Keep path/git install examples under local development sections.
 
+## Branch protection (recommended)
+
+On the default branch (`master`):
+
+- Require a pull request before merging (already enabled)
+- Require status check **CI** / `pnpm check` to pass before merge when checks are required
+- Restrict who can push tags if available on your plan
+- Do not put `NPM_TOKEN` on fork PRs (tag/dispatch-only publish already avoids that)
+
+Admins may still bypass PR rules for emergency release infra fixes.
+
 ## Out of scope (this automation)
 
 - npm OIDC trusted publishing (token secret is the current path)
