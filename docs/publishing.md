@@ -25,7 +25,14 @@ Rules that do not change without a new plan:
 - npm user/org that owns `@zenspc` with 2FA enabled
 - Repo secret `NPM_TOKEN`: npm **granular automation** token (type **Automation**, not classic / publish-with-OTP) with publish rights on `@zenspc/*`
   - Classic tokens and granular tokens that still require 2FA OTP will fail CI with `EOTP`
-- Actions allowed to create PRs, tags, and GitHub Releases on the default branch
+- Repo secret `RELEASE_TOKEN`: a GitHub **personal access token** used by `release-pr.yml` (and optionally publish) instead of `GITHUB_TOKEN`
+  - Required because many orgs disable "Allow GitHub Actions to create and approve pull requests", which makes `changesets/action` fail with `HttpError: GitHub Actions is not permitted to create or approve pull requests`
+  - Also used so tag push + `gh workflow run publish.yml` can start the publish workflow (events from the default `GITHUB_TOKEN` do not trigger other workflows)
+  - Classic PAT: `repo` + `workflow` scopes
+  - Fine-grained PAT (this repo): **Contents** read/write, **Pull requests** read/write, **Metadata** read, **Workflows** read/write
+  - Store under Settings → Secrets and variables → Actions → `RELEASE_TOKEN`
+  - Prefer a machine user or your own account with least privilege; rotate if leaked
+- Actions allowed to create tags and GitHub Releases on the default branch (PRs go through the PAT above)
 
 ```bash
 npm whoami

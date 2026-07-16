@@ -133,7 +133,8 @@ jobs:
       - name: Create GitHub Release
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run == false }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer RELEASE_TOKEN (same PAT as release-pr); fall back to GITHUB_TOKEN for releases only.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
           TITLE: ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.version }}
         run: |

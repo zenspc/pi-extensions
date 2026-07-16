@@ -10,19 +10,36 @@ concurrency:
   group: release-pr-${{ github.ref }}
   cancel-in-progress: true
 
+# GITHUB_TOKEN cannot open PRs when the repo restricts Actions from creating PRs.
+# Use a personal access token (repo secret RELEASE_TOKEN) with contents + pull-requests
+# (and workflows if this job dispatches publish.yml). See docs/publishing.md.
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   version-and-tag:
     name: Version packages PR and tags
     runs-on: ubuntu-latest
     steps:
+      - name: Require RELEASE_TOKEN
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "${RELEASE_TOKEN}" ]; then
+            echo "::error::Missing repository secret RELEASE_TOKEN."
+            echo "Create a PAT that can open PRs and push tags, then add it as RELEASE_TOKEN."
+            echo "See docs/publishing.md."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # PAT so subsequent git push / PR create are not limited to GITHUB_TOKEN rules
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -46,11 +63,12 @@ jobs:
           commit: "chore: version packages"
           createGithubReleases: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # changesets/action reads GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Create missing package tags and dispatch publish
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -eu
           git config user.name "github-actions[bot]"
@@ -66,6 +84,7 @@ jobs:
             fi
             git tag -a "${TAG}" -m "Release ${TAG}"
             git push origin "refs/tags/${TAG}"
+            # Tag pushes from GITHUB_TOKEN do not start other workflows; PAT + dispatch does.
             gh workflow run publish.yml -f "tag=${TAG}" -f dry_run=false || true
             echo "Tagged and dispatched publish for ${TAG}"
           done < <(node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true)
