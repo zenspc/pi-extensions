@@ -180,3 +180,20 @@ After a package is on npm:
 
 - Root and package READMEs use `npm:@zenspc/...` as the primary install path.
 - Keep path/git install examples under local development sections.
+
+## Out of scope (this automation)
+
+- npm OIDC trusted publishing (token secret is the current path)
+- Fully automated Changesets multi-package publish without tags
+- Marketing / social announcement copy
+- Branch-protection policy changes that require org admin UI (document recommended settings only)
+
+## Acceptance criteria
+
+- Version PR automation can bump packages via changesets
+- Tag `@zenspc/<pkg>@<ver>` (or workflow_dispatch) publishes that package when the version is new
+- Matching GitHub Release exists per published tag
+- Already-published versions skip npm publish without failing the release step
+- No npm token in git; `ci.yml` does not receive `NPM_TOKEN`
+- `docs/publishing.md` matches the automated path
+- `pnpm check` and `pnpm test` pass on the default branch
