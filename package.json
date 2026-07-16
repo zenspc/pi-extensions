@@ -8,8 +8,15 @@
   ],
   "scripts": {
     "check": "node scripts/check-packages.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "test:local": "node scripts/check-packages.mjs && echo \"Try: pi -e ./packages/<name>\"",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "tag-packages": "node scripts/tag-packages.mjs",
     "release": "pnpm -r publish --access public"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.5"
   },
   "pi": {
     "extensions": [

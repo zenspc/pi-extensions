@@ -29,5 +29,11 @@ jobs:
       - name: Install pnpm from packageManager
         run: corepack prepare --activate
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Package hygiene check
         run: pnpm check
+
+      - name: Unit tests
+        run: pnpm test

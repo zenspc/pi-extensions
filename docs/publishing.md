@@ -1,136 +1,41 @@
 # Publishing
 
-Repeatable path from monorepo changes to public npm packages and GitHub tags under `@zenspc`.
+Canonical path from monorepo changes to public npm packages and GitHub Releases under `@zenspc`:
+
+1. Land changes on `master` with a **changeset**
+2. **Version packages** PR bumps versions and changelogs
+3. After merge, CI creates missing tags `@zenspc/<pkg>@<version>`
+4. Tag push runs **Publish package**: `npm publish` + GitHub Release
 
 Do not store npm tokens in the git repo.
-Use `npm login` locally, or CI secrets only when publish automation is intentionally added later.
+CI uses the `NPM_TOKEN` repository secret (granular automation token).
 
-## Prerequisites (npm account and scope)
+## Prerequisites
 
-- npm user or org that owns the `@zenspc` scope
-- 2FA enabled on the npm account (prefer auth-and-writes or stronger)
-- Confirmed ability to publish **public** packages under `@zenspc`
-- Granular automation tokens only when CI publish is needed (not required for first manual publishes)
+- npm user/org that owns `@zenspc` with 2FA enabled
+- Repo secret `NPM_TOKEN`: npm **granular automation** token allowed to publish the `@zenspc/*` packages
+- Actions allowed to create PRs, tags, and GitHub Releases on the default branch
 
 ```bash
-npm login
 npm whoami
-
 # Optional availability checks (404 means not published yet):
 npm view @zenspc/pi-safety version || true
-npm view @zenspc/pi-workflow version || true
-npm view @zenspc/pi-devtools version || true
-npm view @zenspc/pi-copilot-discovery version || true
 ```
 
-## Versioning policy
+## Contributor flow (version automation)
 
-Packages use **independent** versions.
-
-- Bump only packages that changed.
-- Never republish an existing version; always bump first.
-- Pre-1.0: breaking changes are allowed; still prefer clear notes for consumers.
-
-Recommended bump rules:
-
-| Change | Bump |
-|---|---|
-| Docs, help text, safe bugfixes | patch |
-| New commands/features, non-breaking | minor |
-| Breaking behavior or config changes | major |
-
-Root `package.json` stays `"private": true` and is never published.
-
-## Tarball sanity
-
-For each package about to release:
+When you change a publishable package:
 
 ```bash
-cd packages/<name>
-npm pack --dry-run
-# or
-npm pack && tar -tf zenspc-<name>-<version>.tgz && rm zenspc-<name>-<version>.tgz
+pnpm changeset
 ```
 
-Must verify:
+Select the packages, bump type, and a short summary. Commit the file under `.changeset/`.
 
-- Only intended paths: `extensions/` or `src/`, `README.md`, `package.json`, `LICENSE`
-- Each package keeps `LICENSE` as a symlink to the repo-root license; `prepack` materializes a real file into the tarball, and `postpack` restores the symlink
-- No `.pi/`, `local-test/`, `plan/`, auth files, home paths, or `AGENTS.md` unless deliberate
-- `publishConfig.access` is `public`
-- `repository.directory` points at the correct package folder
+On push to `master`, `.github/workflows/release-pr.yml` opens or updates a **Version packages** PR (`changesets/action`).
+Merging that PR runs `pnpm run version-packages` results (already applied on the PR branch) onto `master`.
 
-## Pre-publish checklist
-
-Run from the monorepo root on a clean release commit:
-
-1. `git status` is clean on the commit you intend to tag.
-2. `pnpm check`
-3. Smoke-load each package you are releasing:
-
-```bash
-pi -e ./packages/pi-safety
-pi -e ./packages/pi-workflow
-pi -e ./packages/pi-devtools
-pi -e ./packages/pi-copilot-discovery
-```
-
-4. For copilot: `pi --offline --list-models` (or online discovery) without stderr stack traces.
-5. README install commands still match package names (`npm:@zenspc/...`).
-6. Version fields bumped intentionally for packages that changed.
-7. `npm pack --dry-run` clean for each package releasing.
-8. Changelog or GitHub Release notes drafted (minimum: bullet list of user-facing changes).
-
-## Publish procedure
-
-### One package
-
-```bash
-pnpm --filter @zenspc/pi-safety publish --access public
-# or
-cd packages/pi-safety && npm publish --access public
-```
-
-### All packages that are ready
-
-```bash
-pnpm -r publish --access public
-```
-
-Caution: `pnpm -r publish` attempts every non-private workspace package.
-Only use it when every package version is ready and not already on npm.
-Prefer per-package publish when versions are staggered.
-
-Suggested first-release order:
-
-1. `@zenspc/pi-safety` and `@zenspc/pi-devtools` (smaller surface)
-2. `@zenspc/pi-workflow`
-3. `@zenspc/pi-copilot-discovery` last (highest complexity, credential-adjacent)
-
-### After publish
-
-```bash
-pi install npm:@zenspc/pi-safety
-pi install npm:@zenspc/pi-workflow
-pi install npm:@zenspc/pi-devtools
-pi install npm:@zenspc/pi-copilot-discovery
-```
-
-One-shot session load:
-
-```bash
-pi -e npm:@zenspc/pi-copilot-discovery
-```
-
-Verify:
-
-- npm package page shows the correct README
-- `pi install` resolves
-- Extension loads without path-install assumptions
-
-## Git tags and GitHub Releases
-
-Use **per-package tags** (recommended for independent versions):
+After the version merge, the same workflow creates any missing annotated tags and **dispatches** `publish.yml` for each new tag (tag pushes made with `GITHUB_TOKEN` do not start other workflows on their own):
 
 ```text
 @zenspc/pi-safety@0.1.0
@@ -139,38 +44,125 @@ Use **per-package tags** (recommended for independent versions):
 @zenspc/pi-copilot-discovery@0.3.2
 ```
 
+Manual tag dry-run:
+
 ```bash
-git tag @zenspc/pi-copilot-discovery@0.3.2
-git push origin @zenspc/pi-copilot-discovery@0.3.2
-gh release create "@zenspc/pi-copilot-discovery@0.3.2" \
-  --title "@zenspc/pi-copilot-discovery 0.3.2" \
-  --notes-file - <<'EOF'
-### Changes
-- ...
-EOF
+pnpm tag-packages
+pnpm tag-packages -- --apply
+pnpm tag-packages -- --apply --push
 ```
 
-Do not rely only on monorepo calendar/meta tags for consumers tracking a single package.
+## Versioning policy
 
-## CI
+Packages use **independent** versions.
 
-`.github/workflows/ci.yml` runs `pnpm check` on pull requests and pushes to the default branch.
+| Change | Bump |
+|---|---|
+| Docs, help text, safe bugfixes | patch |
+| New commands/features, non-breaking | minor |
+| Breaking behavior or config changes | major |
 
-It uses read-only `contents` permissions and **does not** publish or hold npm tokens.
-Full multi-package release automation (Changesets / semantic-release) is out of scope for this baseline.
+- Bump only packages that changed (via changesets).
+- Never republish an existing version.
+- Root `package.json` stays `"private": true`.
+
+## Tag-triggered publish (CI)
+
+`.github/workflows/publish.yml` runs on:
+
+- `push` of tags matching `@zenspc/*@*`
+- `workflow_dispatch` with `tag` + optional `dry_run` (default true)
+
+For each tag it:
+
+1. Parses `@zenspc/<name>@<semver>` (`scripts/parse-release-tag.mjs`)
+2. Checks out the tagged commit
+3. Runs `pnpm check` and `npm pack --dry-run` in that package
+4. Fails if tag version ≠ `package.json` version
+5. Skips `npm publish` if that version already exists on the registry
+6. Publishes with `NODE_AUTH_TOKEN` / `NPM_TOKEN` when needed
+7. Creates a GitHub Release for the tag (idempotent if it already exists)
+
+Dry-run from Actions UI:
+
+- Workflow: **Publish package**
+- Input tag: `@zenspc/pi-safety@0.1.0`
+- `dry_run`: true
+
+## Tarball sanity
+
+```bash
+cd packages/<name>
+npm pack --dry-run
+```
+
+Must include only intended paths: `extensions/` or `src/`, `README.md`, `package.json`, `LICENSE`.
+
+Each package keeps `LICENSE` as a symlink to the repo-root license; `prepack` materializes a real file into the tarball, and `postpack` restores the symlink.
+
+No `.pi/`, `local-test/`, `plan/`, auth files, home paths, or `AGENTS.md` unless deliberate.
+
+## Manual / emergency publish
+
+Prefer CI. If you must publish locally:
+
+```bash
+npm login
+pnpm check
+pnpm --filter @zenspc/pi-safety publish --access public
+git tag -a @zenspc/pi-safety@0.1.0 -m "Release @zenspc/pi-safety 0.1.0"
+git push origin @zenspc/pi-safety@0.1.0
+```
+
+Caution: `pnpm -r publish` attempts every non-private package. Prefer per-package or tag-driven CI.
+
+## First-time bootstrap
+
+1. Confirm `@zenspc` ownership and create a granular automation token → repo secret `NPM_TOKEN`.
+2. Merge Changesets + publish workflows to `master`.
+3. For already-correct unpublished versions, create tags without a bump:
+
+```bash
+node scripts/tag-packages.mjs --apply --push
+```
+
+Suggested first-publish order: `pi-safety`, `pi-devtools`, `pi-workflow`, then `pi-copilot-discovery`.
+
+4. Confirm each tag's **Publish package** run, npm page, and:
+
+```bash
+pi install npm:@zenspc/pi-safety
+```
+
+5. Later releases use changesets + Version PR only.
+
+## Pre-publish checklist (still useful for manual cuts)
+
+1. `git status` clean on the release commit
+2. `pnpm check` and `pnpm test`
+3. Smoke-load packages you care about with `pi -e ./packages/<name>`
+4. README install commands use `npm:@zenspc/...`
+5. Changeset (or intentional version) is correct
+6. `npm pack --dry-run` clean
 
 ## Bad release / incident basics
 
-If a bad version ships:
-
-1. Publish a fixed version immediately (unpublish is limited after the npm window / policy).
+1. Publish a fixed version (new bump + tag).
 2. Deprecate the bad version:
 
 ```bash
 npm deprecate @zenspc/<pkg>@<ver> "reason; use @zenspc/<pkg>@X.Y.Z"
 ```
 
-3. If tokens or secrets leaked via a tarball, rotate them and treat it as a security incident (see [SECURITY.md](../SECURITY.md)).
+3. If tokens leaked via a tarball, rotate them and treat as a security incident (see [SECURITY.md](../SECURITY.md)).
+
+## CI layout
+
+| Workflow | Trigger | Role |
+|---|---|---|
+| `ci.yml` | PR + push to default branch | `pnpm check` only; no npm token |
+| `release-pr.yml` | push to default branch | Version PR + missing package tags |
+| `publish.yml` | package tags / dispatch | npm publish + GitHub Release |
 
 ## Install path truth in docs
 
@@ -178,4 +170,3 @@ After a package is on npm:
 
 - Root and package READMEs use `npm:@zenspc/...` as the primary install path.
 - Keep path/git install examples under local development sections.
-- Do not leave "once published" language on packages that are already public.

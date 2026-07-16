@@ -1,0 +1,159 @@
+name: Publish package
+
+on:
+  push:
+    tags:
+      - "@zenspc/*@*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. @zenspc/pi-safety@0.1.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Run checks and pack only (no npm publish / GitHub Release)"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: publish-${{ github.ref }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: npm publish + GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Resolve tag
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          PARSED=$(node scripts/parse-release-tag.mjs "$TAG")
+          echo "package_name=$(node -e 'console.log(JSON.parse(process.argv[1]).packageName)' "$PARSED")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -e 'console.log(JSON.parse(process.argv[1]).version)' "$PARSED")" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install pnpm from packageManager
+        run: corepack prepare --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package hygiene check
+        run: pnpm check
+
+      - name: Resolve package directory and verify version
+        id: pkg
+        run: |
+          set -euo pipefail
+          PKG_NAME="${{ steps.meta.outputs.package_name }}"
+          TAG_VERSION="${{ steps.meta.outputs.version }}"
+          DIR=$(node --input-type=module -e '
+            import { readdirSync, readFileSync, existsSync } from "node:fs";
+            import { join } from "node:path";
+            const packagesDir = "packages";
+            const want = process.argv[1];
+            for (const name of readdirSync(packagesDir)) {
+              const p = join(packagesDir, name, "package.json");
+              if (!existsSync(p)) continue;
+              const j = JSON.parse(readFileSync(p, "utf8"));
+              if (j.name === want) {
+                process.stdout.write(join(packagesDir, name));
+                process.exit(0);
+              }
+            }
+            console.error("package not found: " + want);
+            process.exit(1);
+          ' "$PKG_NAME")
+          PKG_VERSION=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version)' "$DIR/package.json")
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag version $TAG_VERSION does not match package.json version $PKG_VERSION in $DIR"
+            exit 1
+          fi
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Pack dry-run
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: npm pack --dry-run
+
+      - name: Check if version already on npm
+        id: npm_exists
+        run: |
+          set +e
+          npm view "${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}" version
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Version already published on npm; will skip publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: >-
+          steps.npm_exists.outputs.exists != 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run == false)
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry-run notice
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+        run: echo "Dry run: skipped npm publish and GitHub Release create."
+
+      - name: Create GitHub Release
+        if: github.event_name != 'workflow_dispatch' || inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          TITLE: ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists"
+            exit 0
+          fi
+          NOTES_FILE=$(mktemp)
+          {
+            echo "### ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.version }}"
+            echo
+            echo "Published to npm as \`${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}\`."
+            echo
+            echo "Install:"
+            echo
+            echo '```bash'
+            echo "pi install npm:${{ steps.pkg.outputs.name }}"
+            echo '```'
+            if [ -f "${{ steps.pkg.outputs.dir }}/CHANGELOG.md" ]; then
+              echo
+              echo "See package CHANGELOG.md for details."
+            fi
+          } > "$NOTES_FILE"
+          gh release create "$TAG" --title "$TITLE" --notes-file "$NOTES_FILE"
