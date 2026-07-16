@@ -38,5 +38,9 @@
     "extensions": [
       "./extensions"
     ]
+  },
+  "scripts": {
+    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../LICENSE LICENSE"
   }
 }

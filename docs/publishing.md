@@ -55,6 +55,7 @@ npm pack && tar -tf zenspc-<name>-<version>.tgz && rm zenspc-<name>-<version>.tg
 Must verify:
 
 - Only intended paths: `extensions/` or `src/`, `README.md`, `package.json`, `LICENSE`
+- Each package keeps `LICENSE` as a symlink to the repo-root license; `prepack` materializes a real file into the tarball, and `postpack` restores the symlink
 - No `.pi/`, `local-test/`, `plan/`, auth files, home paths, or `AGENTS.md` unless deliberate
 - `publishConfig.access` is `public`
 - `repository.directory` points at the correct package folder
