@@ -1,14 +1,24 @@
 # Publishing
 
+## Release model (locked)
+
+This monorepo uses **independent package versions**, **changeset-driven Version PRs**, and **per-package git tags** as the only supported release train.
+
 Canonical path from monorepo changes to public npm packages and GitHub Releases under `@zenspc`:
 
-1. Land changes on `master` with a **changeset**
-2. **Version packages** PR bumps versions and changelogs
-3. After merge, CI creates missing tags `@zenspc/<pkg>@<version>`
-4. Tag push runs **Publish package**: `npm publish` + GitHub Release
+1. Land changes on `master` with a **changeset** (`.changeset/*.md`)
+2. **Version packages** PR bumps only changed packages and writes changelogs
+3. After that merge, CI creates missing tags `@zenspc/<pkg>@<version>` and dispatches publish
+4. **Publish package** workflow runs `npm publish` + creates a matching GitHub Release
 
-Do not store npm tokens in the git repo.
-CI uses the `NPM_TOKEN` repository secret (granular automation token).
+Rules that do not change without a new plan:
+
+- Root package stays `"private": true` and is never published
+- Never republish an existing version; always bump first
+- Do not store npm tokens in the git repo
+- CI publish uses the `NPM_TOKEN` repository secret (granular automation token preferred)
+- Local `npm login` publish is emergency-only; CI is primary
+- Tag format is always `@zenspc/<name>@<semver>` (not monorepo-only `v*` tags)
 
 ## Prerequisites
 
@@ -160,8 +170,8 @@ npm deprecate @zenspc/<pkg>@<ver> "reason; use @zenspc/<pkg>@X.Y.Z"
 
 | Workflow | Trigger | Role |
 |---|---|---|
-| `ci.yml` | PR + push to default branch | `pnpm check` only; no npm token |
-| `release-pr.yml` | push to default branch | Version PR + missing package tags |
+| `ci.yml` | PR + push to default branch | `pnpm check` + `pnpm test`; no npm token |
+| `release-pr.yml` | push to default branch | Version PR + missing package tags + dispatch publish |
 | `publish.yml` | package tags / dispatch | npm publish + GitHub Release |
 
 ## Install path truth in docs

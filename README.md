@@ -66,7 +66,7 @@ Other local-only packages are intentionally not published from this monorepo.
 - [Contributing](./CONTRIBUTING.md) ([detailed guide](./docs/contributing.md))
 - [Security](./SECURITY.md)
 - [Code of Conduct](./CODE_OF_CONDUCT.md)
-- [Publishing](./docs/publishing.md)
+- [Publishing / release model](./docs/publishing.md) (changesets → Version PR → tags → npm + GitHub Release)
 
 ## License
 
