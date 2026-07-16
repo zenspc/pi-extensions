@@ -11,6 +11,8 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-devtools`](./packages/pi-devtools) | `pi install npm:@zenspc/pi-devtools` | `/context` report + richer footer |
 | [`@zenspc/pi-copilot-discovery`](./packages/pi-copilot-discovery) | `pi install npm:@zenspc/pi-copilot-discovery` | Live GitHub Copilot model discovery |
 
+Pre-1.0 APIs may change.
+
 ## Local development
 
 ```bash
@@ -53,7 +55,9 @@ It is managed by Herdr and is not part of this monorepo.
 
 ## Docs
 
-- [Contributing](./docs/contributing.md)
+- [Contributing](./CONTRIBUTING.md) ([detailed guide](./docs/contributing.md))
+- [Security](./SECURITY.md)
+- [Code of Conduct](./CODE_OF_CONDUCT.md)
 - [Publishing](./docs/publishing.md)
 
 ## License

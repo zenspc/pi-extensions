@@ -9,10 +9,18 @@
     "context"
   ],
   "license": "MIT",
+  "author": "zenspc",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
     "directory": "packages/pi-devtools"
+  },
+  "bugs": {
+    "url": "https://github.com/zenspc/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-devtools#readme",
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "extensions",

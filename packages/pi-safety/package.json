@@ -8,10 +8,18 @@
     "safety"
   ],
   "license": "MIT",
+  "author": "zenspc",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
     "directory": "packages/pi-safety"
+  },
+  "bugs": {
+    "url": "https://github.com/zenspc/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-safety#readme",
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "extensions",
