@@ -13,6 +13,15 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 
 Pre-1.0 APIs may change.
 
+## Security notes
+
+- **pi-devtools**: full prompt/memory dumps can contain secrets, tokens, or PII. Prefer `/context json` when sharing reports, and redact before pasting into issues.
+- **pi-copilot-discovery**: reuses your existing GitHub Copilot credentials and may enable model policies on your Copilot account after login.
+- **pi-safety**: best-effort confirmation for known risky patterns. It is not a sandbox or a complete deny-list.
+- **pi-workflow**: plan mode is a workflow aid, not a hard security boundary.
+
+See each package README and [SECURITY.md](./SECURITY.md) for details.
+
 ## Local development
 
 ```bash
@@ -50,8 +59,7 @@ Use `pi config` to enable or disable individual resources after install.
 
 ## Not included
 
-`herdr-agent-state` stays local.
-It is managed by Herdr and is not part of this monorepo.
+Other local-only packages are intentionally not published from this monorepo.
 
 ## Docs
 

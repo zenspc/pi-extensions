@@ -221,6 +221,29 @@ Caveats:
 - The short-tier cap guides pi compaction; it does not hard-block the Copilot API if a request still exceeds the threshold.
   If that happens, `cost.tiers` still prices the request at long-context rates.
 
+## Security and privacy
+
+### Credentials
+
+- Reuses pi's existing `github-copilot` OAuth entry under `~/.pi/agent/auth.json` (or `$PI_CODING_AGENT_DIR/auth.json`).
+- Extension load discovery reads that entry **read-only** to seed the model catalog.
+- Token refresh and credential persistence stay owned by pi auth-storage, not by this package writing `auth.json` itself.
+
+### Account mutation
+
+- After `/login github-copilot`, the extension may `POST /models/<id>/policy` with `{ "state": "enabled" }` for discovered models.
+- That is intentional so preview-tier models accept requests without manual enablement in the Copilot UI.
+
+### Data leaving the machine
+
+- Discovery and inference traffic go to GitHub Copilot proxy endpoints derived from the live token (individual or enterprise).
+- This package does not send analytics to third parties.
+
+### Trust boundary
+
+- Installing this package replaces/overrides the built-in `github-copilot` provider registration path (same provider name).
+- Install only from the trusted `@zenspc` npm scope or this GitHub org/repo.
+
 ## Compatibility
 
 - pi-coding-agent ≥ 0.78.0 (uses the async extension factory, per-model

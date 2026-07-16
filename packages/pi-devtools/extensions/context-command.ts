@@ -748,8 +748,8 @@ function helpText(): string {
 		"  Default prompt view is size metadata only.",
 		"  Expanded prompt and memory dumps may contain secrets, tokens, or PII",
 		"  from system prompts and context files. Prefer json for shareable reports.",
-		"  Large dumps are truncated for display; do not paste dumps into chats",
-		"  or tickets without reviewing them first.",
+		"  Large dumps are truncated for display; do not paste dumps into chats,",
+		"  tickets, or GitHub issues without reviewing and redacting them first.",
 	].join("\n");
 }
 

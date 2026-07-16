@@ -19,8 +19,8 @@ pi --offline --list-models 2>&1 | head
 # Same, but stderr only (extension load errors surface here).
 pi --offline --list-models 1>/dev/null 2>&1
 
-# Force-load this checkout (useful when developing without a symlink):
-pi --offline --no-extensions -e ~/src/pi-copilot-discovery --list-models
+# Force-load this monorepo package (useful when developing without a symlink):
+pi --offline --no-extensions -e ./packages/pi-copilot-discovery --list-models
 
 # Verify a single source file parses (Node 22+ loads .ts natively):
 node --input-type=module -e "import('./src/families.ts').then(m => console.log(Object.keys(m)))"
@@ -66,11 +66,9 @@ add Prettier without a `.prettierrc` that sets `useTabs: true`.
 │   ├── families.ts  pure: family/id → { api, reasoning, thinkingLevelMap, compat }
 │   ├── stream.ts    streamSimple wrapper: inject headers, dispatch
 │   └── headers.ts   local re-impl of pi-ai's Copilot dynamic headers
-├── docs/
-│   └── PLAN.md      original design / build plan (historical)
 ├── AGENTS.md        this file
 ├── README.md        user-facing docs
-└── LICENSE          MIT
+└── (repo root LICENSE + .editorconfig apply to this package)
 ```
 
 ## Architecture (in one minute)

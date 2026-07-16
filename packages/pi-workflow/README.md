@@ -83,6 +83,13 @@ Blocked examples:
 - System: `sudo`, `kill`, `reboot`
 - Editors: `vim`, `nano`, `code`
 
+## Security note
+
+Plan mode is a **workflow aid**.
+While planning, built-in write tools are disabled and bash is filtered through a read-only allowlist.
+That is not a hard security boundary against a malicious or confused model if other tools remain available, if plan mode is turned off, or if allowlist gaps exist.
+Do not treat plan mode as a sandbox.
+
 ## Source
 
 ```text

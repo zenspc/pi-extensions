@@ -46,3 +46,12 @@ Treat their output as sensitive.
 Redact before sharing, and do not file public issues that paste unredacted dumps.
 
 Bugs that allow **unintended** secret exfiltration (for example, leaking credentials into logs without the user requesting a dump) are in scope and should be reported privately.
+
+## Non-vulnerabilities
+
+The following are expected product behavior, not security bugs:
+
+- Intentional local context dumps in `@zenspc/pi-devtools` (`prompt full`, expanded prompt view, `memory <substr>`)
+- User-disabled safety guard (`~/.pi/agent/safety-guard.json` with `"enabled": false`)
+- Upstream Copilot/GitHub outages, rate limits, or policy denials
+- Missing models due to tenant entitlements or account configuration
