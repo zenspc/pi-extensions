@@ -1,6 +1,6 @@
 # @zenspc/pi-devtools
 
-Context usage report and richer session footer for Pi.
+Context usage report, working-directory switching, and richer session footer for Pi.
 
 ## Install
 
@@ -16,6 +16,37 @@ pi install ./packages/pi-devtools
 ```
 
 ## What you get
+
+### `/cd` and `/pwd`
+
+Change Pi's project working directory without quitting the process.
+
+Pi binds tools, project context (`AGENTS.md`), project settings/extensions (after trust), and the footer cwd to the **session** cwd.
+`/cd` prepares a session for the target directory and switches to it so the host rebuilds that runtime state (same idea as quit → `cd` → open Pi again).
+
+```text
+/pwd
+/cd
+/cd <path>
+/cd <path> --new
+/cd <path> --fork
+```
+
+Behavior:
+
+- **Default** - resume the most recent session for `<path>` if one exists; otherwise create a new session there.
+- **`--new`** - always create a fresh session in `<path>` (still records the previous session as `parentSession` when available).
+- **`--fork`** - copy the current session history into a new session under `<path>` (requires a persisted current session file).
+- **`/cd` with no path** - print the current cwd and usage.
+- **`/pwd`** - print cwd and the active session file path.
+
+Notes:
+
+- Paths may be absolute, relative to the current cwd, or start with `~`.
+- The target must already exist and be a directory.
+- Switching into a project with local `.pi` / `.agents` resources may prompt for project trust (same as resume).
+- This is one active cwd at a time, not a multi-root workspace.
+- There is no LLM tool for `/cd` (command only).
 
 ### `/context`
 
@@ -62,6 +93,17 @@ Richer footer status for the active session, including response timing and cache
   "packages": [
     {
       "source": "npm:@zenspc/pi-devtools",
+      "extensions": ["extensions/cd-command.ts"]
+    }
+  ]
+}
+```
+
+```json
+{
+  "packages": [
+    {
+      "source": "npm:@zenspc/pi-devtools",
       "extensions": ["extensions/context-command.ts"]
     }
   ]
@@ -84,6 +126,8 @@ Or:
 ## Source
 
 ```text
+extensions/cd-command.ts
+extensions/cd-helpers.mjs
 extensions/context-command.ts
 extensions/custom-footer.ts
 ```

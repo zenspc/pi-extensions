@@ -1,12 +1,14 @@
 {
   "name": "@zenspc/pi-devtools",
   "version": "0.1.0",
-  "description": "Context usage report and richer session footer for Pi",
+  "description": "Context usage report, cwd switching (/cd), and richer session footer for Pi",
   "keywords": [
     "pi-package",
     "pi-extension",
     "devtools",
-    "context"
+    "context",
+    "cwd",
+    "cd"
   ],
   "license": "MIT",
   "author": "dhairya-rathod",
