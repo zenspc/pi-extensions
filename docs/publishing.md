@@ -34,6 +34,7 @@ pnpm -r publish --access public
 pi -e ./packages/pi-safety
 pi -e ./packages/pi-workflow
 pi -e ./packages/pi-devtools
+pi -e ./packages/pi-copilot-discovery
 ```
 
 3. Confirm README install commands use the correct package names.

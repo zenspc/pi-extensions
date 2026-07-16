@@ -9,6 +9,7 @@ packages/
   pi-safety/
   pi-workflow/
   pi-devtools/
+  pi-copilot-discovery/
 ```
 
 ## Local development

@@ -3,9 +3,20 @@
   "private": true,
   "description": "Monorepo of Pi coding agent extensions by @zenspc",
   "packageManager": "pnpm@9.15.0",
+  "keywords": [
+    "pi-package"
+  ],
   "scripts": {
     "check": "node scripts/check-packages.mjs",
     "test:local": "node scripts/check-packages.mjs && echo \"Try: pi -e ./packages/<name>\"",
     "release": "pnpm -r publish --access public"
+  },
+  "pi": {
+    "extensions": [
+      "./packages/pi-safety/extensions",
+      "./packages/pi-workflow/extensions",
+      "./packages/pi-devtools/extensions",
+      "./packages/pi-copilot-discovery/src/index.ts"
+    ]
   }
 }
