@@ -26,12 +26,22 @@ Shows startup context (system prompt, tools, context files, skills) and, once a 
 Subcommands:
 
 - `help`
-- `prompt`
+- `prompt` - system prompt size (chars / tokens / lines)
+- `prompt full` - dump full system prompt text
 - `memory [substr]`
 - `tools`
 - `json`
 
+In the TUI, `/context prompt` starts collapsed.
+Press `e` or `space` to expand or collapse the body.
+
 Overlay content is never added to the model context.
+
+Security note: default `prompt` is size metadata only.
+`prompt full`, expanded prompt view, and `memory <substr>` dump raw local context (system prompt and memory file bodies).
+Those can contain secrets, tokens, or PII.
+Prefer `json` when sharing a report; review dumps before pasting into chats or tickets.
+Large dumps are truncated for display (print mode and UI).
 
 ### Custom footer
 
