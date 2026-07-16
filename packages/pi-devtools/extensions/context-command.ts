@@ -6,7 +6,7 @@
  * Counts are chars/4 estimates except when the active provider has reported
  * aggregate usage via ctx.getContextUsage().
  *
- * Subcommands: help | prompt | memory [substr] | tools | json
+ * Subcommands: help | prompt [full] | memory [substr] | tools | json
  * Overlay content is never added to the model context.
  */
 
@@ -56,18 +56,37 @@ type ContextReport = {
 const TOKEN_DIVISOR = 4;
 const PREVIEW_CHARS = 120;
 const DUMP_DISPLAY_CAP = 200_000;
+// Cap serialized tool-call args kept in previewable block text (full size still counted).
+const TOOL_ARGS_TEXT_CAP = 2_000;
+// Bound user-supplied memory path substrings (DoS / noisy notify strings).
+const MEMORY_SUBSTR_CAP = 200;
 const SUBCOMMANDS = ["help", "prompt", "memory", "tools", "json"] as const;
+
+function safeStringify(value: unknown): string {
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return Object.prototype.toString.call(value);
+	}
+}
+
+function asText(value: unknown): string {
+	if (value == null) return "";
+	return typeof value === "string" ? value : safeStringify(value);
+}
+
+function estimateTokensFromChars(chars: number): number {
+	return Math.max(0, Math.ceil(chars / TOKEN_DIVISOR));
+}
 
 function estimateTokens(value: unknown): number {
 	if (value == null) return 0;
-	const text = typeof value === "string" ? value : JSON.stringify(value);
-	return Math.max(0, Math.ceil(text.length / TOKEN_DIVISOR));
+	return estimateTokensFromChars(asText(value).length);
 }
 
 function textLength(value: unknown): number {
 	if (value == null) return 0;
-	const text = typeof value === "string" ? value : JSON.stringify(value);
-	return text.length;
+	return asText(value).length;
 }
 
 function fmt(n: number): string {
@@ -90,7 +109,7 @@ function compactPath(file: string): string {
 }
 
 function firstLine(value: unknown): string {
-	const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+	const text = asText(value ?? "");
 	return text.replace(/\s+/g, " ").trim();
 }
 
@@ -99,7 +118,23 @@ function shortId(id: unknown): string {
 	return id.length <= 8 ? id : id.slice(0, 8);
 }
 
-function contentBlocks(content: unknown): Array<{ kind: string; text: string }> {
+type ContentBlock = {
+	kind: string;
+	/** Previewable / display text. May be capped for large payloads. */
+	text: string;
+	/** Exact char count for token estimates when `text` is capped/redacted. */
+	tokenChars?: number;
+};
+
+function blockCharCount(block: ContentBlock): number {
+	return block.tokenChars ?? block.text.length;
+}
+
+function blocksCharCount(blocks: ContentBlock[]): number {
+	return blocks.reduce((sum, block) => sum + blockCharCount(block), 0);
+}
+
+function contentBlocks(content: unknown): ContentBlock[] {
 	if (typeof content === "string") {
 		return content ? [{ kind: "text", text: content }] : [];
 	}
@@ -108,7 +143,7 @@ function contentBlocks(content: unknown): Array<{ kind: string; text: string }> 
 		const text = firstLine(content);
 		return text ? [{ kind: "other", text }] : [];
 	}
-	const blocks: Array<{ kind: string; text: string }> = [];
+	const blocks: ContentBlock[] = [];
 	for (const block of content) {
 		if (!block || typeof block !== "object") continue;
 		if (block.type === "text" && typeof block.text === "string") {
@@ -116,18 +151,37 @@ function contentBlocks(content: unknown): Array<{ kind: string; text: string }> 
 		} else if (block.type === "thinking" && typeof block.thinking === "string") {
 			blocks.push({ kind: "thinking", text: block.thinking });
 		} else if (block.type === "toolCall") {
+			const name = typeof block.name === "string" && block.name ? block.name : "tool";
+			const argsJson = safeStringify(block.arguments ?? {});
+			const tokenChars = name.length + 1 + argsJson.length;
+			// Keep preview text bounded so multi-MB tool args never join into report strings.
+			const argsText =
+				argsJson.length > TOOL_ARGS_TEXT_CAP
+					? `${argsJson.slice(0, TOOL_ARGS_TEXT_CAP)}…[+${argsJson.length - TOOL_ARGS_TEXT_CAP} chars]`
+					: argsJson;
 			blocks.push({
 				kind: "toolCall",
-				text: `${block.name ?? "tool"} ${JSON.stringify(block.arguments ?? {})}`,
+				text: `${name} ${argsText}`,
+				tokenChars,
 			});
 		} else if (block.type === "image") {
-			const raw =
-				typeof block.data === "string"
-					? block.data
-					: typeof block.url === "string"
-						? block.url
-						: "[image]";
-			blocks.push({ kind: "image", text: raw });
+			// Never materialize multi-MB base64 into preview/join paths.
+			// Count full payload length for estimates; show a size placeholder only.
+			if (typeof block.data === "string" && block.data.length > 0) {
+				const n = block.data.length;
+				blocks.push({
+					kind: "image",
+					text: `[image data ${n} chars]`,
+					tokenChars: n,
+				});
+			} else if (typeof block.url === "string" && block.url.length > 0) {
+				const url = block.url;
+				const preview =
+					url.length > PREVIEW_CHARS ? `${url.slice(0, PREVIEW_CHARS)}…` : url;
+				blocks.push({ kind: "image", text: preview, tokenChars: url.length });
+			} else {
+				blocks.push({ kind: "image", text: "[image]" });
+			}
 		} else {
 			blocks.push({ kind: "other", text: firstLine(block) });
 		}
@@ -135,24 +189,24 @@ function contentBlocks(content: unknown): Array<{ kind: string; text: string }> 
 	return blocks;
 }
 
-function contentText(content: unknown): string {
-	return contentBlocks(content)
-		.map((b) => b.text)
-		.join("\n");
+function contentCharCount(content: unknown): number {
+	return blocksCharCount(contentBlocks(content));
 }
 
 function messageTokens(message: AnyRecord): number {
 	if (message.role === "toolResult") {
-		return estimateTokens(`${message.toolName ?? "toolResult"}\n${contentText(message.content)}`);
+		const name = typeof message.toolName === "string" ? message.toolName : "toolResult";
+		return estimateTokensFromChars(name.length + 1 + contentCharCount(message.content));
 	}
-	return estimateTokens(contentText(message.content ?? message));
+	return estimateTokensFromChars(contentCharCount(message.content ?? message));
 }
 
 function messageChars(message: AnyRecord): number {
 	if (message.role === "toolResult") {
-		return textLength(`${message.toolName ?? "toolResult"}\n${contentText(message.content)}`);
+		const name = typeof message.toolName === "string" ? message.toolName : "toolResult";
+		return name.length + 1 + contentCharCount(message.content);
 	}
-	return textLength(contentText(message.content ?? message));
+	return contentCharCount(message.content ?? message);
 }
 
 function messageRole(entry: AnyRecord): string | undefined {
@@ -183,11 +237,24 @@ function sortByTokens(items: Item[]): Item[] {
 	return [...items].sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label));
 }
 
-function blockSummary(blocks: Array<{ kind: string; text: string }>): string {
+function blockSummary(blocks: ContentBlock[]): string {
 	if (blocks.length === 0) return "empty";
 	const counts = new Map<string, number>();
 	for (const b of blocks) pushCount(counts, b.kind, 1);
 	return [...counts.entries()].map(([k, n]) => `${k}×${n}`).join(" ");
+}
+
+/** First-line preview from block text only - never joins full multi-MB payloads. */
+function contentPreview(blocks: ContentBlock[], max = PREVIEW_CHARS): string {
+	if (blocks.length === 0) return "";
+	const budget = Math.max(max * 4, max);
+	let acc = "";
+	for (const block of blocks) {
+		if (acc.length >= budget) break;
+		const piece = block.text.slice(0, budget - acc.length + 1);
+		acc = acc ? `${acc} ${piece}` : piece;
+	}
+	return acc.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
@@ -343,20 +410,19 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 		if (entry.type === "custom_message") {
 			const content = entry.content;
 			const blocks = contentBlocks(content);
-			const text = contentText(content);
-			const tokens = estimateTokens(text);
-			const chars = text.length;
+			const chars = blocksCharCount(blocks);
+			const tokens = estimateTokensFromChars(chars);
 			conversationTokens += tokens;
 			const role = `custom_message:${entry.customType ?? "custom"}`;
 			pushCount(roleTokens, role, tokens);
 			for (const block of blocks) {
-				pushCount(blockKindTokens, block.kind, estimateTokens(block.text));
+				pushCount(blockKindTokens, block.kind, estimateTokensFromChars(blockCharCount(block)));
 			}
 			entriesDetail.push({
 				label: `${role} #${entryIndex}${id ? ` ${id}` : ""}`,
 				tokens,
 				chars,
-				detail: `${blockSummary(blocks)} · ${firstLine(text).slice(0, PREVIEW_CHARS)}`,
+				detail: `${blockSummary(blocks)} · ${contentPreview(blocks)}`,
 				id: typeof entry.id === "string" ? entry.id : undefined,
 			});
 			continue;
@@ -372,10 +438,19 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 		conversationTokens += tokens;
 		pushCount(roleTokens, role, tokens);
 
-		let blocks: Array<{ kind: string; text: string }> = [];
+		let blocks: ContentBlock[] = [];
 		if (role === "toolResult") {
-			const resultText = `${message.toolName ?? "toolResult"}\n${contentText(message.content)}`;
-			blocks = [{ kind: "toolResult", text: resultText }];
+			// Preview uses capped block text; tokenChars keeps full result size.
+			const name = typeof message.toolName === "string" ? message.toolName : "toolResult";
+			const resultBlocks = contentBlocks(message.content);
+			const preview = contentPreview(resultBlocks);
+			blocks = [
+				{
+					kind: "toolResult",
+					text: preview ? `${name} ${preview}` : name,
+					tokenChars: chars,
+				},
+			];
 			pushCount(blockKindTokens, "toolResult", tokens);
 			if (message.toolName) {
 				pushCount(toolCallTokens, `${message.toolName} result`, tokens);
@@ -383,16 +458,17 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 		} else {
 			blocks = contentBlocks(message.content ?? message);
 			for (const block of blocks) {
-				const bt = estimateTokens(block.text);
-				pushCount(blockKindTokens, block.kind, bt);
+				pushCount(blockKindTokens, block.kind, estimateTokensFromChars(blockCharCount(block)));
 			}
 			if (role === "assistant" && Array.isArray(message.content)) {
 				for (const block of message.content) {
 					if (block?.type === "toolCall" && block.name) {
+						const name = String(block.name);
+						const argsChars = asText(block.arguments ?? {}).length;
 						pushCount(
 							toolCallTokens,
-							block.name,
-							estimateTokens(block.arguments ?? {}) + estimateTokens(block.name),
+							name,
+							estimateTokensFromChars(argsChars + name.length),
 						);
 					}
 				}
@@ -404,7 +480,7 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 			label: `${labelRole} #${entryIndex}${id ? ` ${id}` : ""}`,
 			tokens,
 			chars,
-			detail: `${blockSummary(blocks)} · ${firstLine(contentText(message.content ?? message)).slice(0, PREVIEW_CHARS)}`,
+			detail: `${blockSummary(blocks)} · ${contentPreview(blocks)}`,
 			id: typeof entry.id === "string" ? entry.id : undefined,
 		});
 	}
@@ -656,14 +732,24 @@ function helpText(): string {
 		"",
 		"  (none)              Full detailed context usage report",
 		"  help                This help",
-		"  prompt              Dump full system prompt text",
+		"  prompt              System prompt size (chars / tokens / lines)",
+		"  prompt full         Dump full system prompt text",
 		"  memory              List memory/context files with sizes",
 		"  memory <substr>     Dump first context file whose path contains substr",
 		"  tools               List active tools and prompt footprint",
 		"  json                Structured report JSON (no full bodies)",
 		"",
 		"Estimates use chars/4 unless the provider reported usage.",
-		"Report content is not added to the model context.",
+		"Report / dump content is not added to the model context.",
+		"",
+		"TUI: on /context prompt, press e or space to expand/collapse the body.",
+		"",
+		"Security note:",
+		"  Default prompt view is size metadata only.",
+		"  Expanded prompt and memory dumps may contain secrets, tokens, or PII",
+		"  from system prompts and context files. Prefer json for shareable reports.",
+		"  Large dumps are truncated for display; do not paste dumps into chats",
+		"  or tickets without reviewing them first.",
 	].join("\n");
 }
 
@@ -726,6 +812,32 @@ function capDump(body: string): { text: string; truncated: boolean; totalChars: 
 	};
 }
 
+type PromptStats = {
+	chars: number;
+	tokens: number;
+	lines: number;
+};
+
+function promptStats(body: string): PromptStats {
+	const chars = body.length;
+	const tokens = estimateTokens(body);
+	const lines = chars === 0 ? 0 : body.split("\n").length;
+	return { chars, tokens, lines };
+}
+
+function formatPromptStats(stats: PromptStats): string {
+	return `${stats.chars.toLocaleString()} chars · est ${fmt(stats.tokens)} tokens · ${stats.lines.toLocaleString()} lines`;
+}
+
+function formatPromptStatsPlain(title: string, body: string, expanded: boolean): string {
+	const stats = promptStats(body);
+	const header = `${title}\n${formatPromptStats(stats)}`;
+	if (!expanded) return header;
+	const capped = capDump(body);
+	const note = capped.truncated ? "\n(display truncated)" : "";
+	return `${header}${note}\n\n${capped.text}`;
+}
+
 async function showTextOverlay(title: string, body: string, ctx: any) {
 	const capped = capDump(body);
 	await ctx.ui.custom((_tui: any, theme: any, _kb: any, done: (value?: unknown) => void) => ({
@@ -754,6 +866,56 @@ async function showTextOverlay(title: string, body: string, ctx: any) {
 	}));
 }
 
+async function showPromptOverlay(title: string, body: string, ctx: any, initiallyExpanded = false) {
+	const stats = promptStats(body);
+	let expanded = initiallyExpanded;
+	await ctx.ui.custom((tui: any, theme: any, _kb: any, done: (value?: unknown) => void) => ({
+		render(width: number): string[] {
+			const box = new Box(1, 1, (s) => theme.bg("customMessageBg", s));
+			const headerLines = [
+				theme.fg("accent", theme.bold(title)),
+				theme.fg("dim", formatPromptStats(stats)),
+			];
+			let bodyText = "";
+			if (expanded) {
+				const capped = capDump(body);
+				const truncateNote = capped.truncated
+					? `\n${theme.fg("dim", "display truncated")}`
+					: "";
+				bodyText = `\n${truncateNote}\n${capped.text}`;
+			}
+			const expandHint = expanded ? "e/space collapse" : "e/space expand";
+			const footer = `\n${theme.fg("dim", `${expandHint} · Esc/Enter close · not added to model context`)}`;
+			const content = `${headerLines.join("\n")}${bodyText}${footer}`;
+			const lines = content.split("\n").map((line) =>
+				visibleWidth(line) > width ? truncateToWidth(line, width) : line,
+			);
+			box.addChild(new Text(lines.join("\n"), 0, 0));
+			return box.render(width);
+		},
+		invalidate() {},
+		handleInput(data: string) {
+			if (matchesKey(data, "enter") || matchesKey(data, "escape")) {
+				done(undefined);
+				return;
+			}
+			if (matchesKey(data, "space") || data === "e" || data === "E") {
+				expanded = !expanded;
+				tui.requestRender();
+			}
+		},
+	}));
+}
+
+async function presentPrompt(title: string, body: string, ctx: any, expanded: boolean) {
+	const text = typeof body === "string" ? body : asText(body);
+	if (ctx.mode === "print" || !ctx.hasUI) {
+		console.log(formatPromptStatsPlain(title, text, expanded));
+		return;
+	}
+	await showPromptOverlay(title, text, ctx, expanded);
+}
+
 async function showContextOverlay(report: ContextReport, ctx: any) {
 	// overlay:false replaces the main viewport so the report fills the
 	// screen, is scrollable (Ctrl+N/P), and disappears on Esc without
@@ -780,19 +942,34 @@ async function showContextOverlay(report: ContextReport, ctx: any) {
 }
 
 async function presentText(title: string, body: string, ctx: any) {
+	const text = typeof body === "string" ? body : asText(body);
 	if (ctx.mode === "print" || !ctx.hasUI) {
-		console.log(`${title}\n${body}`);
+		// Match overlay: never dump unbounded prompt/memory bodies to stdout.
+		const capped = capDump(text);
+		console.log(`${title}\n${capped.text}`);
 		return;
 	}
-	await showTextOverlay(title, body, ctx);
+	// showTextOverlay applies DUMP_DISPLAY_CAP and reports original totalChars.
+	await showTextOverlay(title, text, ctx);
 }
 
 function listMemoryFiles(ctx: any): Array<{ path: string; content: string; tokens: number; chars: number }> {
 	const options = ctx.getSystemPromptOptions?.() ?? {};
 	const contextFiles = Array.isArray(options.contextFiles) ? options.contextFiles : [];
 	return contextFiles.map((file: AnyRecord) => {
-		const path = file.path ?? file.filePath ?? "context file";
-		const content = typeof file.content === "string" ? file.content : typeof file.text === "string" ? file.text : "";
+		const path =
+			typeof file.path === "string"
+				? file.path
+				: typeof file.filePath === "string"
+					? file.filePath
+					: "context file";
+		// Only accept string bodies - never coerce objects via JSON into a dump surface.
+		const content =
+			typeof file.content === "string"
+				? file.content
+				: typeof file.text === "string"
+					? file.text
+					: "";
 		return {
 			path,
 			content,
@@ -840,7 +1017,16 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("context", {
 		description: "Show detailed context usage (prompt|memory|tools|json|help)",
 		getArgumentCompletions: (prefix: string) => {
-			const p = prefix.trim().toLowerCase();
+			const parts = prefix.trim().split(/\s+/).filter(Boolean);
+			const trailingSpace = /\s$/.test(prefix);
+			// After "prompt " (with space), offer the full dump flag.
+			if (parts[0]?.toLowerCase() === "prompt" && (parts.length >= 2 || trailingSpace)) {
+				const partial = trailingSpace || parts.length < 2 ? "" : parts[1].toLowerCase();
+				return ["full"]
+					.filter((value) => value.startsWith(partial))
+					.map((value) => ({ value, label: value }));
+			}
+			const p = (parts[0] ?? "").toLowerCase();
 			const hits = SUBCOMMANDS.filter((x) => x.startsWith(p));
 			return hits.map((value) => ({ value, label: value }));
 		},
@@ -855,14 +1041,30 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (sub === "prompt") {
+				const flag = (rest[0] ?? "").toLowerCase();
+				if (rest.length > 1 || (flag && flag !== "full")) {
+					const shown = rest.join(" ");
+					const msg = `Unknown prompt argument "${shown}".\n\nUse /context prompt or /context prompt full.`;
+					if (ctx.mode === "print" || !ctx.hasUI) {
+						console.log(msg);
+					} else {
+						ctx.ui.notify(`Unknown /context prompt argument: ${shown}`, "warning");
+						await presentText("Context help", msg, ctx);
+					}
+					return;
+				}
 				const prompt = ctx.getSystemPrompt?.() ?? "";
-				await presentText("System prompt", prompt, ctx);
+				await presentPrompt("System prompt", prompt, ctx, flag === "full");
 				return;
 			}
 
 			if (sub === "memory") {
 				const files = listMemoryFiles(ctx);
-				const substr = rest.join(" ").trim();
+				const substrRaw = rest.join(" ").trim();
+				const substr =
+					substrRaw.length > MEMORY_SUBSTR_CAP
+						? substrRaw.slice(0, MEMORY_SUBSTR_CAP)
+						: substrRaw;
 				if (!substr) {
 					const lines =
 						files.length === 0
@@ -874,14 +1076,16 @@ export default function (pi: ExtensionAPI) {
 					await presentText("Memory files", lines.join("\n"), ctx);
 					return;
 				}
+				// Path match only against already-loaded context files - no filesystem reads.
 				const match = files.find((f) => f.path.includes(substr) || compactPath(f.path).includes(substr));
 				if (!match) {
 					const available = files.map((f) => compactPath(f.path)).join("\n  ");
-					const msg = `No context file path contains "${substr}".\nAvailable:\n  ${available || "(none)"}`;
+					const shown = substr.length < substrRaw.length ? `${substr}…` : substr;
+					const msg = `No context file path contains "${shown}".\nAvailable:\n  ${available || "(none)"}`;
 					if (ctx.mode === "print" || !ctx.hasUI) {
 						console.log(msg);
 					} else {
-						ctx.ui.notify(`No memory file matching "${substr}"`, "warning");
+						ctx.ui.notify(`No memory file matching "${shown}"`, "warning");
 						await presentText("Memory files", msg, ctx);
 					}
 					return;

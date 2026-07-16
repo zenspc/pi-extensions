@@ -5,3 +5,4 @@ dist/
 .pi/
 *.log
 .npmrc.local
+local-test/
