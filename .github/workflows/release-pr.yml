@@ -52,10 +52,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          set -eu
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          node scripts/tag-packages.mjs | grep -E '^@zenspc/' | while read -r TAG; do
+          git fetch --tags origin
+          # tag-packages prints one tag per line; ignore non-tag footer lines
+          node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true
+          while IFS= read -r TAG; do
+            [ -n "${TAG}" ] || continue
             if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
               echo "Tag already exists: ${TAG}"
               continue
@@ -64,4 +68,4 @@ jobs:
             git push origin "refs/tags/${TAG}"
             gh workflow run publish.yml -f "tag=${TAG}" -f dry_run=false || true
             echo "Tagged and dispatched publish for ${TAG}"
-          done
+          done < <(node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true)
