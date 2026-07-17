@@ -68,15 +68,18 @@ Notes:
 ## Commands
 
 ```text
-/preferred-thinking
+/preferred-thinking              show available subcommands (same as help)
+/preferred-thinking help
 /preferred-thinking show
 /preferred-thinking list
 /preferred-thinking set <level>
 /preferred-thinking clear
 /preferred-thinking reload
-/preferred-thinking help
 ```
 
+- Bare `/preferred-thinking` and `help` list subcommands, levels, and the config path.
+- Tab-completes subcommands; after `set`, completes thinking levels.
+- `show` prints preferred + live level for the current model.
 - `set` saves the preference for the **current** model and applies it immediately.
 - `clear` removes the stored mapping only; the live thinking level is unchanged.
 - `reload` re-reads the JSON file from disk.
@@ -93,6 +96,9 @@ Untrusted config is treated as hostile input:
 - Levels are allowlisted.
 - Dangerous object keys (`__proto__`, `constructor`, `prototype`) are rejected.
 - Parsed maps use a null prototype; lookups use own-property checks.
+- Load uses `lstat` and accepts only a regular file (symlinks are ignored).
+- Save writes atomically (temp file + rename), mode `0o600`, and refuses to overwrite non-regular paths.
+- Failed saves leave the live thinking level unchanged and report an error.
 
 Like all Pi extensions, it runs with full local permissions of the Pi process.
 
@@ -100,5 +106,5 @@ Like all Pi extensions, it runs with full local permissions of the Pi process.
 
 ```text
 extensions/preferred-thinking.ts
-extensions/preferred-thinking-helpers.mjs
+extensions/preferred-thinking-helpers.ts
 ```

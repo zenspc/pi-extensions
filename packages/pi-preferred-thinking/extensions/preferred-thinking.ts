@@ -10,7 +10,8 @@
  * Invalid or missing values are ignored.
  *
  * Commands:
- *   /preferred-thinking              show preference for current model
+ *   /preferred-thinking              show available subcommands (help)
+ *   /preferred-thinking show         show preference for current model
  *   /preferred-thinking list         list all mappings
  *   /preferred-thinking set <level>  save + apply for current model
  *   /preferred-thinking clear        remove mapping for current model
@@ -20,7 +21,9 @@
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
+	formatPreferredThinkingHelp,
 	getConfigPath,
+	getPreferredThinkingArgumentCompletions,
 	isSafeModelKey,
 	isValidThinkingLevel,
 	loadPreferredThinkingConfig,
@@ -29,8 +32,7 @@ import {
 	savePreferredThinkingConfig,
 	shouldApplyOnModelSelect,
 	shouldApplyOnSessionStart,
-	VALID_THINKING_LEVELS,
-} from "./preferred-thinking-helpers.mjs";
+} from "./preferred-thinking-helpers.ts";
 
 type PreferredMap = Record<string, string>;
 
@@ -38,10 +40,6 @@ type ModelLike = {
 	provider?: string;
 	id?: string;
 };
-
-const USAGE =
-	"Usage: /preferred-thinking [show|list|set <level>|clear|reload|help]\n" +
-	`Levels: ${VALID_THINKING_LEVELS.join(", ")}`;
 
 function currentModelKey(model: ModelLike | undefined | null): string | undefined {
 	if (typeof model?.provider !== "string" || typeof model?.id !== "string") return undefined;
@@ -56,15 +54,18 @@ function notify(ctx: ExtensionCommandContext | ExtensionContext, message: string
 export default function preferredThinkingExtension(pi: ExtensionAPI) {
 	let prefs: PreferredMap = loadPreferredThinkingConfig();
 	const configPath = getConfigPath();
+	const usage = () => formatPreferredThinkingHelp(configPath);
 
 	function reload() {
 		prefs = loadPreferredThinkingConfig();
 		return prefs;
 	}
 
-	function persist(next: PreferredMap) {
+	/** Persist then update in-memory map. Returns false if disk write failed (memory unchanged). */
+	function persist(next: PreferredMap): boolean {
+		if (!savePreferredThinkingConfig(next)) return false;
 		prefs = next;
-		savePreferredThinkingConfig(prefs);
+		return true;
 	}
 
 	/**
@@ -96,12 +97,22 @@ export default function preferredThinkingExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand("preferred-thinking", {
 		description: "Manage per-model thinking preferences",
+		// Keep this wrapper defensive: a missing/stale helper must never crash pi.
+		getArgumentCompletions: (prefix) => {
+			if (typeof getPreferredThinkingArgumentCompletions !== "function") return null;
+			try {
+				return getPreferredThinkingArgumentCompletions(prefix);
+			} catch {
+				return null;
+			}
+		},
 		handler: async (args, ctx) => {
 			const parts = args.trim().split(/\s+/).filter(Boolean);
-			const sub = (parts[0] ?? "show").toLowerCase();
+			// Bare command shows available subcommands (help).
+			const sub = (parts[0] ?? "help").toLowerCase();
 
 			if (sub === "help") {
-				notify(ctx, `${USAGE}\nConfig: ${configPath}`, "info");
+				notify(ctx, usage(), "info");
 				return;
 			}
 
@@ -127,7 +138,7 @@ export default function preferredThinkingExtension(pi: ExtensionAPI) {
 			if (sub === "set") {
 				const level = parts[1]?.toLowerCase();
 				if (!isValidThinkingLevel(level)) {
-					notify(ctx, `Invalid level. ${USAGE}`, "warning");
+					notify(ctx, `Invalid level.\n${usage()}`, "warning");
 					return;
 				}
 				const key = currentModelKey(ctx.model);
@@ -139,7 +150,10 @@ export default function preferredThinkingExtension(pi: ExtensionAPI) {
 				const next: PreferredMap = Object.create(null);
 				for (const [k, v] of Object.entries(prefs)) next[k] = v;
 				next[key] = level;
-				persist(next);
+				if (!persist(next)) {
+					notify(ctx, `Failed to save preference for ${key} to ${configPath}. Live level not changed.`, "error");
+					return;
+				}
 				// level is allowlisted by isValidThinkingLevel above.
 				pi.setThinkingLevel(level as Parameters<typeof pi.setThinkingLevel>[0]);
 				notify(ctx, `Preferred thinking for ${key}: ${level}`, "info");
@@ -161,12 +175,15 @@ export default function preferredThinkingExtension(pi: ExtensionAPI) {
 				for (const [k, v] of Object.entries(prefs)) {
 					if (k !== key) next[k] = v;
 				}
-				persist(next);
+				if (!persist(next)) {
+					notify(ctx, `Failed to clear preference for ${key} at ${configPath}.`, "error");
+					return;
+				}
 				notify(ctx, `Cleared preferred thinking for ${key}. Live level unchanged.`, "info");
 				return;
 			}
 
-			if (sub === "show" || parts.length === 0) {
+			if (sub === "show") {
 				reload();
 				const key = currentModelKey(ctx.model);
 				if (!key) {
@@ -184,7 +201,7 @@ export default function preferredThinkingExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			notify(ctx, USAGE, "warning");
+			notify(ctx, usage(), "warning");
 		},
 	});
 }

@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	lstatSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
+	formatPreferredThinkingHelp,
 	getAgentDir,
 	getConfigPath,
+	getPreferredThinkingArgumentCompletions,
 	hasCliThinkingOverride,
 	isSafeModelKey,
 	isValidThinkingLevel,
@@ -18,10 +27,11 @@ import {
 	savePreferredThinkingConfig,
 	shouldApplyOnModelSelect,
 	shouldApplyOnSessionStart,
+	SUBCOMMANDS,
 	VALID_THINKING_LEVELS,
-} from "./preferred-thinking-helpers.mjs";
+} from "./preferred-thinking-helpers.ts";
 
-function asPlain(map) {
+function asPlain(map: Record<string, string>) {
 	return { ...map };
 }
 
@@ -101,12 +111,11 @@ describe("parsePreferredThinkingConfig", () => {
 		const parsed = parsePreferredThinkingConfig(raw);
 		assert.deepEqual(asPlain(parsed), { "a/b": "high" });
 		assert.equal(Object.getPrototypeOf(parsed), null);
-		assert.equal(Object.prototype.polluted, undefined);
+		assert.equal((Object.prototype as { polluted?: unknown }).polluted, undefined);
 	});
 
 	it("caps entry count", () => {
-		/** @type {Record<string, string>} */
-		const raw = {};
+		const raw: Record<string, string> = {};
 		for (let i = 0; i < MAX_CONFIG_ENTRIES + 50; i++) {
 			raw[`p/model-${i}`] = "low";
 		}
@@ -208,6 +217,69 @@ describe("getAgentDir / getConfigPath", () => {
 	});
 });
 
+describe("formatPreferredThinkingHelp", () => {
+	it("lists every subcommand, levels, and optional config path", () => {
+		const help = formatPreferredThinkingHelp("/tmp/preferred-thinking.json");
+		for (const cmd of SUBCOMMANDS) {
+			assert.match(help, new RegExp(`\\b${cmd.name}\\b`));
+			assert.match(help, new RegExp(cmd.description.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		}
+		assert.match(help, /Levels: off, minimal, low, medium, high, xhigh, max/);
+		assert.match(help, /Config: \/tmp\/preferred-thinking\.json/);
+	});
+
+	it("omits config line when path is not provided", () => {
+		const help = formatPreferredThinkingHelp();
+		assert.equal(help.includes("Config:"), false);
+	});
+});
+
+describe("getPreferredThinkingArgumentCompletions", () => {
+	it("completes subcommands for empty or partial first token", () => {
+		const all = getPreferredThinkingArgumentCompletions("");
+		assert.ok(all);
+		assert.deepEqual(
+			all.map((item) => item.value),
+			SUBCOMMANDS.map((cmd) => cmd.name),
+		);
+
+		const filtered = getPreferredThinkingArgumentCompletions("re");
+		assert.deepEqual(
+			filtered?.map((item) => item.value),
+			["reload"],
+		);
+	});
+
+	it("completes thinking levels after set, preserving the set subcommand in value", () => {
+		// Pi replaces the whole argument prefix with item.value, so values must be "set <level>".
+		const levels = getPreferredThinkingArgumentCompletions("set ");
+		assert.deepEqual(
+			levels?.map((item) => item.value),
+			VALID_THINKING_LEVELS.map((level) => `set ${level}`),
+		);
+		assert.deepEqual(
+			levels?.map((item) => item.label),
+			[...VALID_THINKING_LEVELS],
+		);
+
+		const filtered = getPreferredThinkingArgumentCompletions("set hi");
+		assert.deepEqual(
+			filtered?.map((item) => item.value),
+			["set high"],
+		);
+		assert.deepEqual(
+			filtered?.map((item) => item.label),
+			["high"],
+		);
+	});
+
+	it("returns null for unknown subcommands or exhausted tokens", () => {
+		assert.equal(getPreferredThinkingArgumentCompletions("nope"), null);
+		assert.equal(getPreferredThinkingArgumentCompletions("set high "), null);
+		assert.equal(getPreferredThinkingArgumentCompletions("list "), null);
+	});
+});
+
 describe("load/savePreferredThinkingConfig", () => {
 	it("round-trips valid config and ignores missing files", () => {
 		const dir = mkdtempSync(join(tmpdir(), "preferred-thinking-"));
@@ -215,7 +287,7 @@ describe("load/savePreferredThinkingConfig", () => {
 		try {
 			assert.deepEqual(asPlain(loadPreferredThinkingConfig(path)), {});
 
-			savePreferredThinkingConfig({ "a/b": "high", bad: "nope" }, path);
+			assert.equal(savePreferredThinkingConfig({ "a/b": "high", bad: "nope" }, path), true);
 			const written = JSON.parse(readFileSync(path, "utf8"));
 			assert.deepEqual(written, { "a/b": "high" });
 			assert.deepEqual(asPlain(loadPreferredThinkingConfig(path)), { "a/b": "high" });
@@ -233,6 +305,43 @@ describe("load/savePreferredThinkingConfig", () => {
 		try {
 			writeFileSync(path, `${"x".repeat(MAX_CONFIG_BYTES + 1)}`, "utf8");
 			assert.deepEqual(asPlain(loadPreferredThinkingConfig(path)), {});
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses to load or overwrite symlink paths", () => {
+		const dir = mkdtempSync(join(tmpdir(), "preferred-thinking-link-"));
+		const target = join(dir, "target.json");
+		const link = join(dir, "preferred-thinking.json");
+		try {
+			writeFileSync(target, JSON.stringify({ "a/b": "high" }), "utf8");
+			symlinkSync(target, link);
+			assert.equal(lstatSync(link).isSymbolicLink(), true);
+
+			// Load must not follow the symlink.
+			assert.deepEqual(asPlain(loadPreferredThinkingConfig(link)), {});
+
+			// Save must refuse to clobber a non-regular destination.
+			assert.equal(savePreferredThinkingConfig({ "c/d": "low" }, link), false);
+			assert.equal(lstatSync(link).isSymbolicLink(), true);
+			assert.deepEqual(JSON.parse(readFileSync(target, "utf8")), { "a/b": "high" });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("writes a regular file with owner-only mode when supported", () => {
+		const dir = mkdtempSync(join(tmpdir(), "preferred-thinking-mode-"));
+		const path = join(dir, "preferred-thinking.json");
+		try {
+			assert.equal(savePreferredThinkingConfig({ "a/b": "medium" }, path), true);
+			const mode = lstatSync(path).mode & 0o777;
+			// On POSIX, expect 0o600. Windows may report a different mask — only assert bits we care about when restrictive.
+			if (process.platform !== "win32") {
+				assert.equal(mode, 0o600);
+			}
+			assert.equal(lstatSync(path).isFile(), true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
