@@ -8,8 +8,12 @@ Canonical path from monorepo changes to public npm packages and GitHub Releases 
 
 1. Land changes on `master` with a **changeset** (`.changeset/*.md`)
 2. **Version packages** PR bumps only changed packages and writes changelogs
-3. After that merge, CI creates missing tags `@zenspc/<pkg>@<version>` and dispatches publish
-4. **Publish package** workflow runs `npm publish` + creates a matching GitHub Release
+3. After that Version PR merges, CI creates missing tags `@zenspc/<pkg>@<version>` on `master`
+4. Tag push (via `RELEASE_TOKEN` PAT) starts **Publish package** once per tag
+5. **Publish package** runs `npm publish` + creates a matching GitHub Release
+
+Important: tagging does **not** run when a Version PR is only opened/updated.
+Publish waits until the Version PR lands on the default branch.
 
 Rules that do not change without a new plan:
 
@@ -27,7 +31,7 @@ Rules that do not change without a new plan:
   - Classic tokens and granular tokens that still require 2FA OTP will fail CI with `EOTP`
 - Repo secret `RELEASE_TOKEN`: a GitHub **personal access token** used by `release-pr.yml` (and optionally publish) instead of `GITHUB_TOKEN`
   - Required because many orgs disable "Allow GitHub Actions to create and approve pull requests", which makes `changesets/action` fail with `HttpError: GitHub Actions is not permitted to create or approve pull requests`
-  - Also used so tag push + `gh workflow run publish.yml` can start the publish workflow (events from the default `GITHUB_TOKEN` do not trigger other workflows)
+  - Also used so tag pushes start `publish.yml` (events from the default `GITHUB_TOKEN` do not trigger other workflows)
   - Classic PAT: `repo` + `workflow` scopes
   - Fine-grained PAT (this repo): **Contents** read/write, **Pull requests** read/write, **Metadata** read, **Workflows** read/write
   - Store under Settings → Secrets and variables → Actions → `RELEASE_TOKEN`
@@ -50,10 +54,13 @@ pnpm changeset
 
 Select the packages, bump type, and a short summary. Commit the file under `.changeset/`.
 
-On push to `master`, `.github/workflows/release-pr.yml` opens or updates a **Version packages** PR (`changesets/action`).
-Merging that PR runs `pnpm run version-packages` results (already applied on the PR branch) onto `master`.
+On push to `master`, `.github/workflows/release-pr.yml` does one of two things:
 
-After the version merge, the same workflow creates any missing annotated tags and **dispatches** `publish.yml` for each new tag (tag pushes made with `GITHUB_TOKEN` do not start other workflows on their own):
+1. **Pending changesets** (`hasChangesets=true`): open or update the **Version packages** PR only.
+   No tags, no publish.
+2. **No pending changesets** (`hasChangesets=false`, typically right after a Version PR merge):
+   create any missing annotated tags on the default-branch tip.
+   Each tag push (via `RELEASE_TOKEN`) starts `publish.yml` once.
 
 ```text
 @zenspc/pi-safety@0.1.0
@@ -61,6 +68,9 @@ After the version merge, the same workflow creates any missing annotated tags an
 @zenspc/pi-devtools@0.1.0
 @zenspc/pi-copilot-discovery@0.3.2
 ```
+
+Do not also `gh workflow run publish.yml` after the tag push.
+That double-fires publish and races on npm.
 
 Manual tag dry-run:
 
@@ -98,7 +108,7 @@ For each tag it:
 3. Runs `pnpm check` and `npm pack --dry-run` in that package
 4. Fails if tag version ≠ `package.json` version
 5. Skips `npm publish` if that version already exists on the registry
-6. Publishes with `NODE_AUTH_TOKEN` / `NPM_TOKEN` when needed
+6. Publishes with `NODE_AUTH_TOKEN` / `NPM_TOKEN` when needed (also treats "already published" races as success)
 7. Creates a GitHub Release for the tag (idempotent if it already exists)
 
 Dry-run from Actions UI:
@@ -179,8 +189,8 @@ npm deprecate @zenspc/<pkg>@<ver> "reason; use @zenspc/<pkg>@X.Y.Z"
 | Workflow | Trigger | Role |
 |---|---|---|
 | `ci.yml` | PR + push to default branch | `pnpm check` + `pnpm test`; no npm token |
-| `release-pr.yml` | push to default branch | Version PR + missing package tags + dispatch publish |
-| `publish.yml` | package tags / dispatch | npm publish + GitHub Release |
+| `release-pr.yml` | push to default branch | Version PR when changesets exist; otherwise missing package tags |
+| `publish.yml` | package tags / manual dispatch | npm publish + GitHub Release (one run per tag) |
 
 ## Install path truth in docs
 

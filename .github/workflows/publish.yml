@@ -17,7 +17,8 @@ on:
         type: boolean
 
 concurrency:
-  group: publish-${{ github.ref }}-${{ inputs.tag || github.ref_name }}
+  # One publish attempt per package tag (tag push and dispatch share this key).
+  group: publish-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -122,9 +123,23 @@ jobs:
       - name: Publish to npm
         if: ${{ steps.npm_exists.outputs.exists != 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
         working-directory: ${{ steps.pkg.outputs.dir }}
-        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set +e
+          out=$(npm publish --access public 2>&1)
+          code=$?
+          set -e
+          printf '%s\n' "$out"
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          # Idempotent: concurrent/retry publish of the same version is success.
+          if printf '%s' "$out" | grep -Eqi 'cannot publish over the previously published versions|previously published version'; then
+            echo "Version already on npm (race or retry); treating as success."
+            exit 0
+          fi
+          exit "$code"
 
       - name: Dry-run notice
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
