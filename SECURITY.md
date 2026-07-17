@@ -20,7 +20,7 @@ Please report security issues **privately**. Do not open a public GitHub issue f
 Preferred:
 
 1. Use [GitHub Private Vulnerability Reporting](https://github.com/zenspc/pi-extensions/security/advisories/new) when it is enabled for this repository.
-2. Otherwise contact the maintainers privately via GitHub: [@dhairya-rathod](https://github.com/dhairya-rathod).
+2. Otherwise contact the maintainers privately via GitHub: [@dhairyaar](https://github.com/dhairyaar).
 
 Include:
 
