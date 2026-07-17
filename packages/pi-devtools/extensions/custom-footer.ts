@@ -1,6 +1,10 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  resolveFooterThinkingLevel,
+  thinkingLevelColorToken,
+} from "./custom-footer-helpers.mjs";
 
 // Heuristic only: providers can invalidate prompt cache for non-time reasons
 // (model switch, tool-set/system-prompt changes, compaction, etc.).
@@ -38,13 +42,6 @@ function parseEntryTimestamp(timestamp: unknown): number | null {
 
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
-    // Track thinking level from events
-    let thinkingLevel = "high";
-
-    pi.on("thinking_level_select", async (event) => {
-      thinkingLevel = event.level;
-    });
-
     // Track tokens/sec for the most recent assistant response
     let lastSpeed: number | null = null;
     let assistantStartTime: number | null = null;
@@ -55,6 +52,12 @@ export default function (pi: ExtensionAPI) {
     let requestRender: (() => void) | null = null;
     // After one render at/after TTL, stop ticking until the next response.
     let idleFrozen = false;
+
+    // thinking_level_select only fires on actual changes, not session start.
+    // Always read live level via pi.getThinkingLevel() in render; this just repaints.
+    pi.on("thinking_level_select", async () => {
+      requestRender?.();
+    });
 
     // Seed from existing session history when resuming
     const branch = ctx.sessionManager.getBranch();
@@ -197,16 +200,9 @@ export default function (pi: ExtensionAPI) {
             idleStr = theme.fg(color, formatElapsed(idleMs));
           }
 
-          // Thinking level dot colors — using valid tokens
-          const levelColors: Record<string, string> = {
-            off: "thinkingOff",
-            minimal: "thinkingMinimal",
-            low: "thinkingLow",
-            medium: "thinkingMedium",
-            high: "thinkingHigh",
-            "extra-high": "thinkingXhigh",
-          };
-          const levelColor = levelColors[thinkingLevel] || "accent";
+          // Live session thinking level (never hard-code a default — no startup event).
+          const thinkingLevel = resolveFooterThinkingLevel(() => pi.getThinkingLevel());
+          const levelColor = thinkingLevelColorToken(thinkingLevel);
           const levelDot = theme.fg(levelColor, "●");
           const modelStr = theme.fg("accent", ctx.model?.id || "no-model");
           const levelStr = theme.fg("muted", thinkingLevel);
