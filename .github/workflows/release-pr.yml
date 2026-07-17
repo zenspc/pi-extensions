@@ -11,12 +11,11 @@ concurrency:
   cancel-in-progress: true
 
 # GITHUB_TOKEN cannot open PRs when the repo restricts Actions from creating PRs.
-# Use a personal access token (repo secret RELEASE_TOKEN) with contents + pull-requests
-# (and workflows if this job dispatches publish.yml). See docs/publishing.md.
+# Use a personal access token (repo secret RELEASE_TOKEN) with contents + pull-requests.
+# Tag pushes with that PAT start publish.yml (GITHUB_TOKEN tag pushes do not). See docs/publishing.md.
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   version-and-tag:
@@ -56,6 +55,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Create or update Version packages PR
+        id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version-packages
@@ -66,25 +66,45 @@ jobs:
           # changesets/action reads GITHUB_TOKEN
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
-      - name: Create missing package tags and dispatch publish
+      # Tag only after versions have landed on the default branch.
+      # When hasChangesets=true, changesets/action just opened/updated a Version PR and left
+      # the worktree on changeset-release/<branch> with bumps applied - tagging then would
+      # publish unmerged version commits and skip the intentional Version PR gate.
+      - name: Create missing package tags
+        if: steps.changesets.outputs.hasChangesets == 'false'
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.ref_name }}
         run: |
-          set -eu
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch --tags origin
+
+          # changesets/action may leave us on changeset-release/*; always tag the push commit.
+          git fetch origin "$DEFAULT_BRANCH" --tags
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+
           # tag-packages prints one tag per line; ignore non-tag footer lines
-          node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true
-          while IFS= read -r TAG; do
+          mapfile -t TAGS < <(node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true)
+          if [ "${#TAGS[@]}" -eq 0 ]; then
+            echo "No missing package tags"
+            exit 0
+          fi
+
+          for TAG in "${TAGS[@]}"; do
             [ -n "${TAG}" ] || continue
             if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
               echo "Tag already exists: ${TAG}"
               continue
             fi
             git tag -a "${TAG}" -m "Release ${TAG}"
+            # RELEASE_TOKEN is a PAT, so the tag push triggers publish.yml once.
+            # Do not also gh workflow run - that double-fires publish and races on npm.
             git push origin "refs/tags/${TAG}"
-            # Tag pushes from GITHUB_TOKEN do not start other workflows; PAT + dispatch does.
-            gh workflow run publish.yml -f "tag=${TAG}" -f dry_run=false || true
-            echo "Tagged and dispatched publish for ${TAG}"
-          done < <(node scripts/tag-packages.mjs | grep -E '^@zenspc/' || true)
+            echo "Tagged ${TAG} (publish.yml will run from the tag push)"
+          done
+
+      - name: Skip tagging while Version PR is open
+        if: steps.changesets.outputs.hasChangesets == 'true'
+        run: |
+          echo "Pending changesets: Version packages PR opened/updated."
+          echo "Tags and publish run only after that PR merges onto ${{ github.ref_name }}."
