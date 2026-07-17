@@ -9,6 +9,7 @@ packages/
   pi-safety/
   pi-workflow/
   pi-devtools/
+  pi-preferred-thinking/
   pi-copilot-discovery/
 ```
 
@@ -23,6 +24,7 @@ pnpm check
 pi -e ./packages/pi-safety
 pi -e ./packages/pi-workflow
 pi -e ./packages/pi-devtools
+pi -e ./packages/pi-preferred-thinking
 
 # install from path into user settings
 pi install ./packages/pi-safety

@@ -23,6 +23,7 @@
       "./packages/pi-safety/extensions",
       "./packages/pi-workflow/extensions",
       "./packages/pi-devtools/extensions",
+      "./packages/pi-preferred-thinking/extensions",
       "./packages/pi-copilot-discovery/src/index.ts"
     ]
   }
