@@ -1,6 +1,6 @@
 {
   "name": "@zenspc/pi-preferred-thinking",
-  "version": "0.3.0",
+  "version": "0.2.1",
   "description": "Model-specific thinking level preferences for Pi",
   "keywords": [
     "pi-package",
