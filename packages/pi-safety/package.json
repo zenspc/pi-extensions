@@ -1,6 +1,6 @@
 {
   "name": "@zenspc/pi-safety",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Confirm destructive bash and git actions before Pi runs them",
   "keywords": [
     "pi-package",
