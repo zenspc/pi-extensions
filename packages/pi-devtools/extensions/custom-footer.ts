@@ -191,12 +191,12 @@ export default function (pi: ExtensionAPI) {
           const contextUsage = ctx.getContextUsage();
           const ctxLimit = contextUsage?.limit ?? ctx.model?.contextWindow ?? 0;
           const ctxTokens = contextUsage?.tokens ?? 0;
-          let contextPct = "";
+          let contextStr = "";
           if (ctxLimit > 0) {
             const pct = (ctxTokens / ctxLimit) * 100;
             const color = pct > 80 ? "error" : pct > 50 ? "warning" : "success";
-            contextPct =
-              theme.fg(color, `${pct.toFixed(1)}%`) + theme.fg("dim", "/" + fmt(ctxLimit));
+            contextStr =
+              theme.fg(color, fmt(ctxTokens)) + theme.fg("dim", "/" + fmt(ctxLimit));
           }
 
           const gitBranch = footerData.getGitBranch();
@@ -238,7 +238,7 @@ export default function (pi: ExtensionAPI) {
             arrowDown,
             reasoningStr,
             costStr,
-            contextPct,
+            contextStr,
             speedStr,
             idleStr,
           ].filter(Boolean);
