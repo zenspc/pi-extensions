@@ -23,6 +23,7 @@
   },
   "files": [
     "extensions",
+    "!extensions/**/*.test.ts",
     "README.md",
     "LICENSE"
   ],
@@ -32,9 +33,10 @@
   },
   "pi": {
     "extensions": [
-      "./extensions"
+      "./extensions/safety-guard.ts"
     ]
   },
+  "type": "module",
   "scripts": {
     "prepack": "cp --remove-destination ../../LICENSE LICENSE",
     "postpack": "ln -sfn ../../LICENSE LICENSE"

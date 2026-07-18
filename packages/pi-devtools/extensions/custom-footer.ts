@@ -2,7 +2,10 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
+  addAssistantUsage,
+  emptyFooterUsageTotals,
   resolveFooterThinkingLevel,
+  sumAssistantUsageFromBranch,
   thinkingLevelColorToken,
 } from "./custom-footer-helpers.mjs";
 
@@ -52,6 +55,32 @@ export default function (pi: ExtensionAPI) {
     let requestRender: (() => void) | null = null;
     // After one render at/after TTL, stop ticking until the next response.
     let idleFrozen = false;
+    let usageTotals = emptyFooterUsageTotals();
+    let idleTick: ReturnType<typeof setInterval> | null = null;
+
+    const stopIdleTick = () => {
+      if (idleTick !== null) {
+        clearInterval(idleTick);
+        idleTick = null;
+      }
+    };
+
+    const startIdleTick = () => {
+      if (idleTick !== null) return;
+      idleTick = setInterval(() => {
+        if (lastResponseAt === null || agentActive || assistantStartTime !== null) {
+          return;
+        }
+        // Render once at TTL, then freeze and stop the interval.
+        if (Date.now() - lastResponseAt >= getCacheTtlMs()) {
+          idleFrozen = true;
+          requestRender?.();
+          stopIdleTick();
+          return;
+        }
+        requestRender?.();
+      }, 1000);
+    };
 
     // thinking_level_select only fires on actual changes, not session start.
     // Always read live level via pi.getThinkingLevel() in render; this just repaints.
@@ -61,12 +90,18 @@ export default function (pi: ExtensionAPI) {
 
     // Seed from existing session history when resuming
     const branch = ctx.sessionManager.getBranch();
+    usageTotals = sumAssistantUsageFromBranch(branch);
     for (let i = branch.length - 1; i >= 0; i--) {
       const entry = branch[i];
       if (entry.type === "message" && entry.message.role === "assistant") {
         lastResponseAt = parseEntryTimestamp(entry.timestamp);
         break;
       }
+    }
+    // Resume past TTL: freeze idle display. Within-TTL start is deferred to
+    // setFooter once requestRender is wired.
+    if (lastResponseAt !== null && Date.now() - lastResponseAt >= getCacheTtlMs()) {
+      idleFrozen = true;
     }
 
     pi.on("agent_start", async () => {
@@ -99,6 +134,8 @@ export default function (pi: ExtensionAPI) {
         assistantStartTime = null;
         lastResponseAt = Date.now();
         idleFrozen = false;
+        usageTotals = addAssistantUsage(usageTotals, m);
+        startIdleTick();
         requestRender?.();
       }
     });
@@ -109,30 +146,27 @@ export default function (pi: ExtensionAPI) {
       footerDispose?.();
       footerDispose = null;
       requestRender = null;
+      stopIdleTick();
     });
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       requestRender = () => tui.requestRender();
-      const unsubBranch = footerData.onBranchChange(() => tui.requestRender());
-
-      const tick = setInterval(() => {
-        if (
-          lastResponseAt === null ||
-          agentActive ||
-          assistantStartTime !== null ||
-          idleFrozen
-        ) {
-          return;
-        }
-        // Render once at TTL, then freeze until the next assistant response.
-        if (Date.now() - lastResponseAt >= getCacheTtlMs()) {
-          idleFrozen = true;
-        }
+      const unsubBranch = footerData.onBranchChange(() => {
+        usageTotals = sumAssistantUsageFromBranch(ctx.sessionManager.getBranch());
         tui.requestRender();
-      }, 1000);
+      });
+
+      // Resume case: prior assistant activity still within TTL.
+      if (
+        lastResponseAt !== null &&
+        !idleFrozen &&
+        Date.now() - lastResponseAt < getCacheTtlMs()
+      ) {
+        startIdleTick();
+      }
 
       const dispose = () => {
-        clearInterval(tick);
+        stopIdleTick();
         unsubBranch();
         requestRender = null;
       };
@@ -142,19 +176,7 @@ export default function (pi: ExtensionAPI) {
         dispose,
         invalidate() {},
         render(width: number): string[] {
-          let input = 0,
-            output = 0,
-            cost = 0,
-            reasoning = 0;
-          for (const e of ctx.sessionManager.getBranch()) {
-            if (e.type === "message" && e.message.role === "assistant") {
-              const m = e.message as AssistantMessage;
-              input += m.usage.input;
-              output += m.usage.output;
-              cost += m.usage.cost.total;
-              reasoning += m.usage.reasoningTokens ?? 0;
-            }
-          }
+          const { input, output, cost, reasoning } = usageTotals;
 
           const fmt = (n: number) => {
             if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -169,12 +191,12 @@ export default function (pi: ExtensionAPI) {
           const contextUsage = ctx.getContextUsage();
           const ctxLimit = contextUsage?.limit ?? ctx.model?.contextWindow ?? 0;
           const ctxTokens = contextUsage?.tokens ?? 0;
-          let contextPct = "";
+          let contextStr = "";
           if (ctxLimit > 0) {
             const pct = (ctxTokens / ctxLimit) * 100;
             const color = pct > 80 ? "error" : pct > 50 ? "warning" : "success";
-            contextPct =
-              theme.fg(color, `${pct.toFixed(1)}%`) + theme.fg("dim", "/" + fmt(ctxLimit));
+            contextStr =
+              theme.fg(color, fmt(ctxTokens)) + theme.fg("dim", "/" + fmt(ctxLimit));
           }
 
           const gitBranch = footerData.getGitBranch();
@@ -216,7 +238,7 @@ export default function (pi: ExtensionAPI) {
             arrowDown,
             reasoningStr,
             costStr,
-            contextPct,
+            contextStr,
             speedStr,
             idleStr,
           ].filter(Boolean);

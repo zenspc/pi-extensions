@@ -31,3 +31,51 @@ export function resolveFooterThinkingLevel(getThinkingLevel) {
 export function thinkingLevelColorToken(level) {
 	return THINKING_LEVEL_COLORS[level] || "accent";
 }
+
+/**
+ * @typedef {{ input: number, output: number, cost: number, reasoning: number }} FooterUsageTotals
+ */
+
+/** @returns {FooterUsageTotals} */
+export function emptyFooterUsageTotals() {
+	return { input: 0, output: 0, cost: 0, reasoning: 0 };
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number}
+ */
+function asNumber(value) {
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Add one assistant message's usage into totals (pure; returns a new object).
+ * @param {FooterUsageTotals} totals
+ * @param {any} message
+ * @returns {FooterUsageTotals}
+ */
+export function addAssistantUsage(totals, message) {
+	const usage = message?.usage;
+	return {
+		input: totals.input + asNumber(usage?.input),
+		output: totals.output + asNumber(usage?.output),
+		cost: totals.cost + asNumber(usage?.cost?.total),
+		reasoning: totals.reasoning + asNumber(usage?.reasoningTokens),
+	};
+}
+
+/**
+ * Sum assistant message usage from a session branch-like array.
+ * @param {Iterable<any>} branch
+ * @returns {FooterUsageTotals}
+ */
+export function sumAssistantUsageFromBranch(branch) {
+	let totals = emptyFooterUsageTotals();
+	for (const entry of branch) {
+		if (entry?.type === "message" && entry?.message?.role === "assistant") {
+			totals = addAssistantUsage(totals, entry.message);
+		}
+	}
+	return totals;
+}
