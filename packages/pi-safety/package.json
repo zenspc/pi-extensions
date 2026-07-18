@@ -23,6 +23,7 @@
   },
   "files": [
     "extensions",
+    "!extensions/**/*.test.ts",
     "README.md",
     "LICENSE"
   ],
@@ -35,6 +36,7 @@
       "./extensions"
     ]
   },
+  "type": "module",
   "scripts": {
     "prepack": "cp --remove-destination ../../LICENSE LICENSE",
     "postpack": "ln -sfn ../../LICENSE LICENSE"
