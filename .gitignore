@@ -9,3 +9,5 @@ local-test/
 plan/
 .pi-subagents/
 .scratch
+/CONTEXT.md
+/docs/adr/
