@@ -12,6 +12,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-preferred-thinking`](./packages/pi-preferred-thinking) | `pi install npm:@zenspc/pi-preferred-thinking` | Per-model thinking level preferences |
 | [`@zenspc/pi-copilot-discovery`](./packages/pi-copilot-discovery) | `pi install npm:@zenspc/pi-copilot-discovery` | Live GitHub Copilot model discovery |
 | [`@zenspc/pi-spinner`](./packages/pi-spinner) | `pi install npm:@zenspc/pi-spinner` | Customize the spinner animation and rotate the loader message |
+| [`@zenspc/pi-quiet`](./packages/pi-quiet) | `pi install npm:@zenspc/pi-quiet` | Quiet Display - dense built-in tool rows |
 
 Pre-1.0 APIs may change.
 
@@ -22,6 +23,7 @@ Pre-1.0 APIs may change.
 - **pi-safety**: best-effort confirmation for known risky patterns. It is not a sandbox or a complete deny-list.
 - **pi-workflow**: plan mode is a workflow aid, not a hard security boundary.
 - **pi-spinner**: treats config files as untrusted input (size caps, symlink refusal, ANSI stripping). Local TUI chrome only; no network or credentials.
+- **pi-quiet**: presentation-only override of built-in tool rendering. Config is untrusted input (size caps, symlink refusal). Does not change tool execution.
 
 See each package README and [SECURITY.md](./SECURITY.md) for details.
 
@@ -37,6 +39,7 @@ pi -e ./packages/pi-devtools
 pi -e ./packages/pi-preferred-thinking
 pi -e ./packages/pi-copilot-discovery
 pi -e ./packages/pi-spinner
+pi -e ./packages/pi-quiet
 
 # install from path into user settings
 pi install ./packages/pi-safety
@@ -45,6 +48,7 @@ pi install ./packages/pi-devtools
 pi install ./packages/pi-preferred-thinking
 pi install ./packages/pi-copilot-discovery
 pi install ./packages/pi-spinner
+pi install ./packages/pi-quiet
 ```
 
 ## Pick pieces from a package

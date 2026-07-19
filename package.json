@@ -25,7 +25,8 @@
       "./packages/pi-devtools/extensions",
       "./packages/pi-preferred-thinking/extensions/preferred-thinking.ts",
       "./packages/pi-copilot-discovery/src/index.ts",
-      "./packages/pi-spinner/src/index.ts"
+      "./packages/pi-spinner/src/index.ts",
+      "./packages/pi-quiet/src/index.ts"
     ]
   }
 }

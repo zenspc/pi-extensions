@@ -12,6 +12,7 @@ Security fixes are applied only to the **latest published version** of each pack
 - `@zenspc/pi-preferred-thinking`
 - `@zenspc/pi-copilot-discovery`
 - `@zenspc/pi-spinner`
+- `@zenspc/pi-quiet`
 
 Older published versions are not maintained with backports unless a release note says otherwise.
 
