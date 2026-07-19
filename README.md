@@ -11,6 +11,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-devtools`](./packages/pi-devtools) | `pi install npm:@zenspc/pi-devtools` | `/context` report + richer footer |
 | [`@zenspc/pi-preferred-thinking`](./packages/pi-preferred-thinking) | `pi install npm:@zenspc/pi-preferred-thinking` | Per-model thinking level preferences |
 | [`@zenspc/pi-copilot-discovery`](./packages/pi-copilot-discovery) | `pi install npm:@zenspc/pi-copilot-discovery` | Live GitHub Copilot model discovery |
+| [`@zenspc/pi-spinner`](./packages/pi-spinner) | `pi install npm:@zenspc/pi-spinner` | Customize the spinner animation and rotate the loader message |
 
 Pre-1.0 APIs may change.
 
@@ -34,6 +35,7 @@ pi -e ./packages/pi-workflow
 pi -e ./packages/pi-devtools
 pi -e ./packages/pi-preferred-thinking
 pi -e ./packages/pi-copilot-discovery
+pi -e ./packages/pi-spinner
 
 # install from path into user settings
 pi install ./packages/pi-safety
@@ -41,6 +43,7 @@ pi install ./packages/pi-workflow
 pi install ./packages/pi-devtools
 pi install ./packages/pi-preferred-thinking
 pi install ./packages/pi-copilot-discovery
+pi install ./packages/pi-spinner
 ```
 
 ## Pick pieces from a package
