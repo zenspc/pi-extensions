@@ -27,6 +27,7 @@
 	],
 	"files": [
 		"src/",
+		"!src/**/*.test.ts",
 		"README.md",
 		"CHANGELOG.md",
 		"LICENSE"
@@ -40,6 +41,7 @@
 		]
 	},
 	"scripts": {
+		"test": "node --experimental-strip-types --test src/config.test.ts",
 		"prepack": "cp --remove-destination ../../LICENSE LICENSE",
 		"postpack": "ln -sfn ../../LICENSE LICENSE"
 	}

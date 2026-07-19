@@ -7,9 +7,13 @@
  */
 
 import type { Theme, WorkingIndicatorOptions } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_MESSAGES, PRESET_NAMES, type BuiltinPresetName } from "./constants.ts";
+
+export { DEFAULT_MESSAGES, PRESET_NAMES };
+export type { BuiltinPresetName };
 
 /** Names of the shipped presets. "custom" means user-supplied raw frames. */
-export type PresetName = "braille" | "dots" | "arrows" | "bars" | "progress" | "rainbow" | "minimal" | "custom";
+export type PresetName = BuiltinPresetName | "custom";
 
 export interface PresetDefinition {
 	readonly name: PresetName;
@@ -123,17 +127,6 @@ export function buildIndicator(
 	});
 	return { frames, intervalMs: preset.intervalMs };
 }
-
-/** Default message list, used when the user has not supplied their own. */
-export const DEFAULT_MESSAGES: readonly string[] = [
-	"Thinking...",
-	"Pondering...",
-	"Brewing ideas...",
-	"Crunching tokens...",
-	"Reading the source...",
-	"Polishing neurons...",
-	"Aligning bits...",
-];
 
 /**
  * Apply theme color to a message. Uses `muted` so messages read as

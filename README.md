@@ -21,6 +21,7 @@ Pre-1.0 APIs may change.
 - **pi-copilot-discovery**: reuses your existing GitHub Copilot credentials and may enable model policies on your Copilot account after login.
 - **pi-safety**: best-effort confirmation for known risky patterns. It is not a sandbox or a complete deny-list.
 - **pi-workflow**: plan mode is a workflow aid, not a hard security boundary.
+- **pi-spinner**: treats config files as untrusted input (size caps, symlink refusal, ANSI stripping). Local TUI chrome only; no network or credentials.
 
 See each package README and [SECURITY.md](./SECURITY.md) for details.
 

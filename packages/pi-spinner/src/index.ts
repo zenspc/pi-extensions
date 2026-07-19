@@ -26,10 +26,10 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { deleteConfig, loadConfig } from "./config.js";
-import { MessageCycler } from "./cycler.js";
-import { buildIndicator } from "./presets.js";
-import { runSpinnerMenu } from "./ui.js";
+import { deleteConfig, loadConfig } from "./config.ts";
+import { MessageCycler } from "./cycler.ts";
+import { buildIndicator } from "./presets.ts";
+import { runSpinnerMenu } from "./ui.ts";
 
 export default function spinnerExtension(pi: ExtensionAPI) {
 	// Per-session state. The session_start handler rebuilds this; the
