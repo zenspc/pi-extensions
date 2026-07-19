@@ -8,3 +8,4 @@ dist/
 local-test/
 plan/
 .pi-subagents/
+.scratch
