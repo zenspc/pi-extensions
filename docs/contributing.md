@@ -11,6 +11,9 @@ packages/
   pi-devtools/
   pi-preferred-thinking/
   pi-copilot-discovery/
+  pi-spinner/
+  pi-quiet/
+  pi-sticky-editor/
 ```
 
 ## Local development
@@ -25,6 +28,10 @@ pi -e ./packages/pi-safety
 pi -e ./packages/pi-workflow
 pi -e ./packages/pi-devtools
 pi -e ./packages/pi-preferred-thinking
+pi -e ./packages/pi-copilot-discovery
+pi -e ./packages/pi-spinner
+pi -e ./packages/pi-quiet
+pi -e ./packages/pi-sticky-editor
 
 # install from path into user settings
 pi install ./packages/pi-safety

@@ -1,0 +1,55 @@
+{
+  "name": "@zenspc/pi-sticky-editor",
+  "version": "0.0.0",
+  "description": "Keep the pi editor and footer fixed while the transcript scrolls.",
+  "keywords": [
+    "sticky-editor",
+    "pi",
+    "pi-extension",
+    "pi-package",
+    "terminal"
+  ],
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-sticky-editor#readme",
+  "bugs": {
+    "url": "https://github.com/zenspc/pi-extensions/issues"
+  },
+  "license": "MIT",
+  "author": "dhairyaar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenspc/pi-extensions.git",
+    "directory": "packages/pi-sticky-editor"
+  },
+  "files": [
+    "src/",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../LICENSE LICENSE"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.80.0",
+    "@earendil-works/pi-tui": ">=0.80.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@earendil-works/pi-tui": "0.80.10"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

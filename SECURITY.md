@@ -13,6 +13,7 @@ Security fixes are applied only to the **latest published version** of each pack
 - `@zenspc/pi-copilot-discovery`
 - `@zenspc/pi-spinner`
 - `@zenspc/pi-quiet`
+- `@zenspc/pi-sticky-editor`
 
 Older published versions are not maintained with backports unless a release note says otherwise.
 
