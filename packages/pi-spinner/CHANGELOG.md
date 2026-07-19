@@ -1,5 +1,11 @@
 # @zenspc/pi-spinner
 
+## 0.1.1
+
+### Patch Changes
+
+- 5e12801: Harden spinner config IO against untrusted project files: size caps, symlink refusal, atomic 0o600 writes, ANSI/control stripping, allowlisted keys/presets, and message/frame bounds.
+
 ## 0.1.0
 
 ### Minor Changes
