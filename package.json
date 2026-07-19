@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "check": "node scripts/check-packages.mjs",
-    "test": "node --experimental-strip-types --test scripts/*.test.mjs packages/*/extensions/*.test.mjs packages/*/extensions/*.test.ts packages/*/src/*.test.ts",
+    "test": "node --experimental-strip-types --test scripts/*.test.mjs packages/*/extensions/*.test.mjs packages/*/extensions/*.test.ts packages/*/src/*.test.ts packages/*/tests/**/*.test.ts",
     "test:local": "node scripts/check-packages.mjs && echo \"Try: pi -e ./packages/<name>\"",
     "changeset": "changeset",
     "version-packages": "changeset version",
