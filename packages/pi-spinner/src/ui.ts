@@ -11,7 +11,7 @@
  * visible immediately.
  */
 
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
 	type SelectItem,
@@ -24,14 +24,16 @@ import {
 import {
 	defaults,
 	type SpinnerConfig,
+	type UserSpinnerConfig,
 	type SaveTarget,
 	globalConfigPath,
 	projectConfigPath,
 	saveConfig,
+	sanitizeMessage,
 	LIMITS,
-} from "./config.js";
-import type { MessageCycler } from "./cycler.js";
-import { PRESETS, findPreset, buildIndicator } from "./presets.js";
+} from "./config.ts";
+import type { MessageCycler } from "./cycler.ts";
+import { PRESETS, findPreset, buildIndicator } from "./presets.ts";
 
 type MainAction = "animation" | "messages" | "interval" | "save" | "reset" | "close";
 
@@ -219,10 +221,12 @@ async function editMessages(state: SpinnerConfig, cycler: MessageCycler | null, 
 	const edited = await ctx.ui.editor("Edit messages (one per line)", prefill);
 	if (edited === undefined) return; // cancelled
 
-	const next = edited
-		.split(/\r?\n/)
-		.map((l) => l.trim())
-		.filter((l) => l.length > 0);
+	const next: string[] = [];
+	for (const line of edited.split(/\r?\n/)) {
+		if (next.length >= LIMITS.MAX_MESSAGES) break;
+		const msg = sanitizeMessage(line);
+		if (msg) next.push(msg);
+	}
 
 	if (next.length === 0) {
 		ctx.ui.notify("Need at least one message", "error");
@@ -288,7 +292,15 @@ async function pickSaveTarget(state: SpinnerConfig, ctx: ExtensionContext): Prom
 
 	if (result === "global" || result === "project") {
 		try {
-			const { path } = saveConfig(result, state, ctx.cwd);
+			// Only persist allowlisted user fields - never write `customized` or other runtime state.
+			const partial: UserSpinnerConfig = {
+				preset: state.preset,
+				messages: state.messages,
+				cycleIntervalMs: state.cycleIntervalMs,
+				customFrames: state.customFrames,
+				customIntervalMs: state.customIntervalMs,
+			};
+			const { path } = saveConfig(result, partial, ctx.cwd);
 			ctx.ui.notify(`Saved to ${result}: ${path}`, "info");
 		} catch (err) {
 			ctx.ui.notify(`Save failed: ${err instanceof Error ? err.message : err}`, "error");

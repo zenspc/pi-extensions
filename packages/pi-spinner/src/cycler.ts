@@ -20,7 +20,7 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { themeMessage } from "./presets.js";
+import { themeMessage } from "./presets.ts";
 
 export interface CyclerOptions {
 	messages: readonly string[];

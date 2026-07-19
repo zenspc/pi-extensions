@@ -28,7 +28,7 @@ If you never customize anything, the extension uses pi's built-in defaults: brai
 | Command | Description |
 |---|---|
 | `/spinner` | Open the interactive customization TUI |
-| `/spinner-reset` | Restore pi's default spinner and stop message rotation |
+| `/spinner-reset` | Delete saved config files and restore pi's default spinner |
 | `/spinner-rotate` | Force-advance to the next message (useful for previewing changes) |
 
 ## Built-in animation presets
@@ -64,6 +64,7 @@ Merge order: built-in defaults < global < project. So a project file with just `
 
 	// Message list, one entry per line in the TUI editor. One is shown at a time
 	// while the agent is working; the cycler rotates through them on a timer.
+	// Max 50 messages; each message is capped at 120 characters after sanitization.
 	"messages": [
 		"Thinking...",
 		"Pondering...",
@@ -117,10 +118,29 @@ Merge order: built-in defaults < global < project. So a project file with just `
 - Custom animation frames are rendered verbatim; the extension wraps them in `theme.fg("accent", ...)` for the built-in presets, so theme changes (light/dark) are honored automatically. If you supply `customFrames`, they also use the accent color.
 - The editor that opens for message editing uses pi's standard input editor, so familiar shortcuts work.
 
+## Security notes
+
+Config files are untrusted input (especially `<project>/.pi/spinner.json` from a cloned repo).
+
+Hardening applied at the config boundary:
+
+- File size capped at 100 KB; larger files are ignored.
+- Only regular files are read or overwritten (symlinks/dirs/devices are refused).
+- Writes are atomic (temp + rename) with mode `0o600`; parent dirs are created as `0o700`.
+- Keys are allowlisted; unknown fields (including `customized` runtime state) are never persisted.
+- Preset names must match a built-in; unknown names are dropped.
+- Messages and frames are stripped of ANSI/control characters before they reach the TUI.
+- Message count (50), message length (120), frame count (32), and frame length (4) are hard-capped.
+- Intervals are clamped to documented ranges.
+
+This package does not touch the network, credentials, or the model context.
+It only changes the local loader animation and text in TUI mode.
+
 ## Source
 
 ```text
 src/index.ts
+src/constants.ts
 src/presets.ts
 src/config.ts
 src/cycler.ts

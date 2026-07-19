@@ -9,7 +9,9 @@ Security fixes are applied only to the **latest published version** of each pack
 - `@zenspc/pi-safety`
 - `@zenspc/pi-workflow`
 - `@zenspc/pi-devtools`
+- `@zenspc/pi-preferred-thinking`
 - `@zenspc/pi-copilot-discovery`
+- `@zenspc/pi-spinner`
 
 Older published versions are not maintained with backports unless a release note says otherwise.
 
