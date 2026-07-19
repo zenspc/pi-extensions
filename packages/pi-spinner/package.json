@@ -17,10 +17,6 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"Brewing ideas...",
-	"Crunching tokens...",
-	"Reading the source...",
-	"Polishing neurons...",
 	"keywords": [
 		"pi-package",
 		"pi-extension",
