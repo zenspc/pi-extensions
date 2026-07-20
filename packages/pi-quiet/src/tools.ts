@@ -5,6 +5,7 @@
  * When Sticky Preference is off, renderCall/renderResult also delegate (Stock Display).
  *
  * Run Compaction: last-member carrier with zero-height hidden members (renderShell: "self").
+ * Tool Shell Background: continuous Stock-matching Box on visible surfaces (self-owned shell).
  */
 
 import type {
@@ -24,7 +25,7 @@ import {
 	createReadToolDefinition,
 	createWriteToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Text } from "@earendil-works/pi-tui";
+import { Box, Container, Text, type Component } from "@earendil-works/pi-tui";
 import { homedir } from "node:os";
 import {
 	type QuietOutcome,
@@ -43,10 +44,27 @@ import {
 	resultIsImageFromContent,
 	resultTextFromContent,
 } from "./result-content.ts";
+import {
+	TOOL_SHELL_PADDING,
+	type ToolShellBg,
+	toolShellBgForQuietOutcome,
+	toolShellBgForStock,
+} from "./shell.ts";
 import type { QuietToolName } from "./tools-meta.ts";
 
 type AnyDef = ToolDefinition<any, any, any>;
 type ThemeColor = "error" | "muted" | "success" | "dim" | "warning" | "toolTitle";
+
+/** Per-tool-execution renderer state (shared call + result via context.state). */
+type ShellState = {
+	shellBox?: Box;
+	/** Isolated lastComponent for delegated Stock call renderer. */
+	stockCall?: Component;
+	/** Isolated lastComponent for delegated Stock result renderer. */
+	stockResult?: Component;
+	/** Nested state object passed into Stock result renderers. */
+	stockResultState?: Record<string, unknown>;
+};
 
 function resultText(result: AgentToolResult<unknown>): string {
 	return resultTextFromContent(result.content);
@@ -71,6 +89,39 @@ function colorForOutcome(kind: QuietOutcome["kind"]): ThemeColor {
 
 function emptyComponent(): Text {
 	return new Text("", 0, 0);
+}
+
+function shellState(context: ToolRenderContext<unknown, unknown>): ShellState {
+	return context.state as ShellState;
+}
+
+function getShellBox(context: ToolRenderContext<unknown, unknown>): Box {
+	const state = shellState(context);
+	if (state.shellBox) return state.shellBox;
+	const box = new Box(TOOL_SHELL_PADDING, TOOL_SHELL_PADDING);
+	state.shellBox = box;
+	return box;
+}
+
+function paintShell(box: Box, theme: Theme, bg: ToolShellBg): void {
+	box.setBgFn((text) => theme.bg(bg, text));
+}
+
+function resetShell(box: Box, theme: Theme, bg: ToolShellBg): void {
+	paintShell(box, theme, bg);
+	box.clear();
+}
+
+/**
+ * Keep the call/header child from renderCall; drop prior result children.
+ * Pi normally clears via renderCall first; this guards result-only invalidates.
+ */
+function trimShellResults(box: Box): void {
+	while (box.children.length > 1) {
+		const last = box.children[box.children.length - 1];
+		if (!last) break;
+		box.removeChild(last);
+	}
 }
 
 function renderQuietLines(lines: string[], theme: Theme, color: ThemeColor): Text {
@@ -123,6 +174,28 @@ function settleIndex(
 	});
 }
 
+function stockCallContext(
+	context: ToolRenderContext<unknown, Record<string, unknown>>,
+): ToolRenderContext<unknown, Record<string, unknown>> {
+	const state = shellState(context);
+	return {
+		...context,
+		lastComponent: state.stockCall,
+	};
+}
+
+function stockResultContext(
+	context: ToolRenderContext<unknown, Record<string, unknown>>,
+): ToolRenderContext<unknown, Record<string, unknown>> {
+	const state = shellState(context);
+	if (!state.stockResultState) state.stockResultState = {};
+	return {
+		...context,
+		lastComponent: state.stockResult,
+		state: state.stockResultState,
+	};
+}
+
 function wrapBuiltin(
 	pi: ExtensionAPI,
 	isEnabled: () => boolean,
@@ -131,6 +204,8 @@ function wrapBuiltin(
 	toolName: QuietToolName,
 ): void {
 	const schemaDef = createDef(process.cwd());
+	// edit already owns Tool Shell Background under renderShell: "self".
+	const stockSelfShell = toolName === "edit";
 
 	pi.registerTool({
 		name: schemaDef.name,
@@ -158,8 +233,19 @@ function wrapBuiltin(
 			});
 
 			if (!isEnabled()) {
-				if (def.renderCall) return def.renderCall(args, theme, context);
-				return new Text(theme.fg("toolTitle", schemaDef.name), 0, 0);
+				if (stockSelfShell) {
+					if (def.renderCall) return def.renderCall(args, theme, context);
+					return new Text(theme.fg("toolTitle", schemaDef.name), 0, 0);
+				}
+				const box = getShellBox(context);
+				resetShell(box, theme, toolShellBgForStock(context.isPartial, context.isError));
+				const stockCtx = stockCallContext(context);
+				const inner = def.renderCall
+					? def.renderCall(args, theme, stockCtx)
+					: new Text(theme.fg("toolTitle", schemaDef.name), 0, 0);
+				shellState(context).stockCall = inner;
+				box.addChild(inner);
+				return box;
 			}
 
 			const role = index.role(context.toolCallId);
@@ -167,14 +253,20 @@ function wrapBuiltin(
 				return emptyComponent();
 			}
 
+			const box = getShellBox(context);
+			// Provisional bg; renderResult refines from Quiet outcome when settled.
+			resetShell(box, theme, toolShellBgForStock(context.isPartial, context.isError));
+
 			const home = homedir();
 			if (role.role === "carrier" && role.memberIds.length >= 2) {
 				const header = formatGroupHeader(toolName, role.memberIds.length);
-				return new Text(theme.fg("toolTitle", theme.bold(header)), 0, 0);
+				box.addChild(new Text(theme.fg("toolTitle", theme.bold(header)), 0, 0));
+				return box;
 			}
 
 			const line = formatSingletonCallLine(toolName, args as Record<string, unknown>, home);
-			return new Text(theme.fg("toolTitle", theme.bold(line)), 0, 0);
+			box.addChild(new Text(theme.fg("toolTitle", theme.bold(line)), 0, 0));
+			return box;
 		},
 
 		renderResult(result, options, theme, context) {
@@ -195,7 +287,19 @@ function wrapBuiltin(
 			}
 
 			if (!isEnabled()) {
-				if (def.renderResult) return def.renderResult(result, options, theme, context);
+				if (stockSelfShell) {
+					if (def.renderResult) return def.renderResult(result, options, theme, context);
+					return emptyComponent();
+				}
+				const box = getShellBox(context);
+				trimShellResults(box);
+				paintShell(box, theme, toolShellBgForStock(options.isPartial, context.isError));
+				if (def.renderResult) {
+					const stockCtx = stockResultContext(context);
+					const inner = def.renderResult(result, options, theme, stockCtx);
+					shellState(context).stockResult = inner;
+					box.addChild(inner);
+				}
 				return emptyComponent();
 			}
 
@@ -205,11 +309,18 @@ function wrapBuiltin(
 				return emptyComponent();
 			}
 
+			const box = getShellBox(context);
+			trimShellResults(box);
 			const home = homedir();
 
 			if (role.role === "carrier" && role.memberIds.length >= 2) {
+				// Groups are settled success/soft only.
+				paintShell(box, theme, toolShellBgForQuietOutcome("success"));
+
 				if (options.expanded && outcome.kind !== "pending") {
-					return renderGroupExpanded(index, createDef, theme, context);
+					const expanded = renderGroupExpanded(index, createDef, theme, context);
+					box.addChild(expanded);
+					return emptyComponent();
 				}
 
 				const members = index.members(context.toolCallId);
@@ -223,17 +334,27 @@ function wrapBuiltin(
 				const allSoft = members.every((m) => m.outcomeKind === "soft");
 				const anyHard = members.some((m) => m.outcomeKind === "hard");
 				const color: ThemeColor = anyHard ? "error" : allSoft ? "muted" : "success";
-				return renderQuietLines(lines, theme, color);
+				box.addChild(renderQuietLines(lines, theme, color));
+				return emptyComponent();
 			}
 
 			// Singleton Quiet Row
+			paintShell(box, theme, toolShellBgForQuietOutcome(outcome.kind));
+
 			if (options.expanded && outcome.kind !== "pending") {
-				if (def.renderResult) return def.renderResult(result, options, theme, context);
+				if (def.renderResult) {
+					const stockCtx = stockResultContext(context);
+					const inner = def.renderResult(result, options, theme, stockCtx);
+					shellState(context).stockResult = inner;
+					box.addChild(inner);
+				}
+				return emptyComponent();
 			}
 
 			const showTail = outcome.kind === "hard";
 			const lines = formatQuietResultLines(outcome, showTail);
-			return renderQuietLines(lines, theme, colorForOutcome(outcome.kind));
+			box.addChild(renderQuietLines(lines, theme, colorForOutcome(outcome.kind)));
+			return emptyComponent();
 		},
 	});
 }
@@ -266,6 +387,9 @@ function renderGroupExpanded(
 					isError: Boolean(member.isError),
 					isPartial: false,
 					expanded: true,
+					// Fresh per-member Stock state; do not share the carrier shell state.
+					state: {},
+					lastComponent: undefined,
 				} as ToolRenderContext<unknown, Record<string, unknown>>;
 				const body = def.renderResult(
 					memberResult,
