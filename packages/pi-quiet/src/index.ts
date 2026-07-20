@@ -1,7 +1,7 @@
 /**
  * @zenspc/pi-quiet - Quiet Display for pi built-in tools.
  *
- * Default once installed: Quiet Display (dense one-line tool rows).
+ * Default once installed: Quiet Display (dense tool rows + Run Compaction).
  * Sticky Preference: ~/.pi/agent/extensions/quiet.json
  *
  * Commands:
@@ -10,9 +10,8 @@
  *   /quiet status    Show preference + config path
  *   /quiet help
  *
- * Scope (v1): read, bash, edit, write, find, grep, ls.
- * Assistant prose, thinking, MCP/extension tools: unchanged.
- * Toggle is forward-only (scrollback not rewritten).
+ * Scope: read, bash, edit, write, find, grep, ls (+ Run Compaction when Quiet is on).
+ * Assistant prose, thinking, MCP/extension tools: unchanged (prose splits compaction).
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -22,8 +21,16 @@ import {
 	formatQuietStatus,
 	parseQuietCommand,
 } from "./command.ts";
+import { CompactionIndex } from "./compaction.ts";
 import { getConfigPath, loadQuietConfig, saveQuietConfig } from "./config.ts";
+import { classifyQuietTool, textLineCount } from "./classify.ts";
+import { messagesFromBranch, rowsFromMessages } from "./history.ts";
+import {
+	resultIsImageFromUnknown,
+	resultTextFromUnknown,
+} from "./result-content.ts";
 import { registerQuietTools } from "./tools.ts";
+import { isQuietToolName } from "./tools-meta.ts";
 
 function notify(
 	ctx: ExtensionCommandContext | ExtensionContext,
@@ -36,12 +43,88 @@ function notify(
 export default function quietExtension(pi: ExtensionAPI) {
 	let enabled = loadQuietConfig().enabled;
 	const configPath = getConfigPath();
+	const index = new CompactionIndex();
 
-	registerQuietTools(pi, () => enabled);
+	registerQuietTools(pi, () => enabled, index);
 
-	pi.on("session_start", async () => {
-		// Re-read Sticky Preference at session start (forward-only within a session).
+	const rebuildFromSession = (ctx: ExtensionContext) => {
+		try {
+			const branch = ctx.sessionManager.getBranch();
+			const messages = messagesFromBranch(branch as { type?: string; message?: unknown }[]);
+			index.rebuild(rowsFromMessages(messages));
+		} catch {
+			index.clear();
+		}
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
 		enabled = loadQuietConfig().enabled;
+		rebuildFromSession(ctx);
+	});
+
+	// Strict transcript neighbors: user/assistant prose splits Compaction Groups.
+	pi.on("message_start", async (event) => {
+		const role = (event.message as { role?: string } | undefined)?.role;
+		if (role === "user" || role === "assistant") {
+			index.addSplitter();
+		}
+	});
+
+	pi.on("tool_execution_start", async (event) => {
+		index.onStart({
+			toolCallId: event.toolCallId,
+			toolName: event.toolName,
+			args:
+				event.args && typeof event.args === "object"
+					? (event.args as Record<string, unknown>)
+					: undefined,
+		});
+	});
+
+	pi.on("tool_execution_end", async (event) => {
+		if (!isQuietToolName(event.toolName)) {
+			index.onEnd({
+				toolCallId: event.toolCallId,
+				toolName: event.toolName,
+				outcomeKind: event.isError ? "hard" : "success",
+				isError: event.isError,
+			});
+			return;
+		}
+
+		const args =
+			// args are not on end event; keep whatever onStart stored
+			index.getRow(event.toolCallId)?.args ?? {};
+		const text = resultTextFromUnknown(event.result);
+		const details = (event.result as { details?: { diff?: string } } | undefined)?.details;
+		const content = typeof args.content === "string" ? args.content : "";
+		const outcome = classifyQuietTool({
+			toolName: event.toolName,
+			isPartial: false,
+			isError: event.isError,
+			text,
+			isImage: resultIsImageFromUnknown(event.result),
+			diff: details?.diff,
+			contentLineCount: textLineCount(content),
+		});
+		if (outcome.kind === "pending") return;
+
+		const resultContent = Array.isArray((event.result as { content?: unknown })?.content)
+			? ((event.result as { content: unknown[] }).content)
+			: [];
+
+		index.onEnd({
+			toolCallId: event.toolCallId,
+			toolName: event.toolName,
+			args,
+			outcomeKind: outcome.kind,
+			chip: outcome.chip,
+			result: {
+				content: resultContent,
+				details: (event.result as { details?: unknown })?.details,
+			},
+			isError: event.isError,
+		});
 	});
 
 	pi.registerCommand("quiet", {

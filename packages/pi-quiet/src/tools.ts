@@ -3,6 +3,8 @@
  *
  * Execution always delegates to pi's create*ToolDefinition for the live cwd.
  * When Sticky Preference is off, renderCall/renderResult also delegate (Stock Display).
+ *
+ * Run Compaction: last-member carrier with zero-height hidden members (renderShell: "self").
  */
 
 import type {
@@ -11,6 +13,7 @@ import type {
 	ExtensionAPI,
 	Theme,
 	ToolDefinition,
+	ToolRenderContext,
 } from "@earendil-works/pi-coding-agent";
 import {
 	createBashToolDefinition,
@@ -21,30 +24,36 @@ import {
 	createReadToolDefinition,
 	createWriteToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { homedir } from "node:os";
 import {
-	type ExploreTool,
 	type QuietOutcome,
-	classifyBashOutcome,
-	classifyEditOutcome,
-	classifyExploreOutcome,
-	classifyReadOutcome,
-	classifyWriteOutcome,
+	classifyQuietTool,
 	textLineCount,
 } from "./classify.ts";
-import { formatCallSummary, formatQuietResultLines } from "./format.ts";
+import type { CompactionIndex, CompactionOutcomeKind } from "./compaction.ts";
+import {
+	formatGroupHeader,
+	formatMemberBullet,
+	formatMemberSummary,
+	formatQuietResultLines,
+	formatSingletonCallLine,
+} from "./format.ts";
+import {
+	resultIsImageFromContent,
+	resultTextFromContent,
+} from "./result-content.ts";
+import type { QuietToolName } from "./tools-meta.ts";
 
 type AnyDef = ToolDefinition<any, any, any>;
 type ThemeColor = "error" | "muted" | "success" | "dim" | "warning" | "toolTitle";
 
 function resultText(result: AgentToolResult<unknown>): string {
-	const block = result.content.find((c) => c.type === "text");
-	return block && block.type === "text" ? block.text : "";
+	return resultTextFromContent(result.content);
 }
 
 function resultIsImage(result: AgentToolResult<unknown>): boolean {
-	return result.content.some((c) => c.type === "image");
+	return resultIsImageFromContent(result.content);
 }
 
 function colorForOutcome(kind: QuietOutcome["kind"]): ThemeColor {
@@ -60,22 +69,66 @@ function colorForOutcome(kind: QuietOutcome["kind"]): ThemeColor {
 	}
 }
 
+function emptyComponent(): Text {
+	return new Text("", 0, 0);
+}
+
 function renderQuietLines(lines: string[], theme: Theme, color: ThemeColor): Text {
 	const painted = lines.map((line) => theme.fg(color, line)).join("\n");
 	return new Text(painted, 0, 0);
 }
 
+function classifyFromResult(
+	toolName: string,
+	result: AgentToolResult<unknown>,
+	isPartial: boolean,
+	isError: boolean,
+	args: Record<string, unknown>,
+): QuietOutcome {
+	const details = result.details as EditToolDetails | undefined;
+	const content = typeof args.content === "string" ? args.content : "";
+	return classifyQuietTool({
+		toolName,
+		isPartial,
+		isError,
+		text: resultText(result),
+		isImage: resultIsImage(result),
+		diff: details?.diff,
+		contentLineCount: textLineCount(content),
+	});
+}
+
+function settleIndex(
+	index: CompactionIndex,
+	toolName: string,
+	toolCallId: string,
+	args: Record<string, unknown>,
+	result: AgentToolResult<unknown>,
+	isError: boolean,
+	outcome: QuietOutcome,
+): void {
+	if (outcome.kind === "pending") return;
+	const outcomeKind = outcome.kind as CompactionOutcomeKind;
+	index.onEnd({
+		toolCallId,
+		toolName,
+		args,
+		outcomeKind,
+		chip: outcome.chip,
+		result: {
+			content: result.content as unknown[],
+			details: result.details,
+		},
+		isError,
+	});
+}
+
 function wrapBuiltin(
 	pi: ExtensionAPI,
 	isEnabled: () => boolean,
+	index: CompactionIndex,
 	createDef: (cwd: string) => AnyDef,
-	classify: (input: {
-		result: AgentToolResult<unknown>;
-		isPartial: boolean;
-		isError: boolean;
-		args: Record<string, unknown>;
-	}) => QuietOutcome,
-	toolName: string,
+	toolName: QuietToolName,
 ): void {
 	const schemaDef = createDef(process.cwd());
 
@@ -87,6 +140,8 @@ function wrapBuiltin(
 		promptGuidelines: schemaDef.promptGuidelines,
 		parameters: schemaDef.parameters,
 		executionMode: schemaDef.executionMode,
+		// Required for zero-height hidden Compaction Group members.
+		renderShell: "self",
 
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const def = createDef(ctx.cwd);
@@ -95,34 +150,87 @@ function wrapBuiltin(
 
 		renderCall(args, theme, context) {
 			const def = createDef(context.cwd);
+			index.registerInvalidate(context.toolCallId, context.invalidate);
+			index.onStart({
+				toolCallId: context.toolCallId,
+				toolName,
+				args: args as Record<string, unknown>,
+			});
+
 			if (!isEnabled()) {
 				if (def.renderCall) return def.renderCall(args, theme, context);
 				return new Text(theme.fg("toolTitle", schemaDef.name), 0, 0);
 			}
-			const line = formatCallSummary(toolName, args as Record<string, unknown>, homedir());
+
+			const role = index.role(context.toolCallId);
+			if (role.role === "hidden") {
+				return emptyComponent();
+			}
+
+			const home = homedir();
+			if (role.role === "carrier" && role.memberIds.length >= 2) {
+				const header = formatGroupHeader(toolName, role.memberIds.length);
+				return new Text(theme.fg("toolTitle", theme.bold(header)), 0, 0);
+			}
+
+			const line = formatSingletonCallLine(toolName, args as Record<string, unknown>, home);
 			return new Text(theme.fg("toolTitle", theme.bold(line)), 0, 0);
 		},
 
 		renderResult(result, options, theme, context) {
 			const def = createDef(context.cwd);
-			if (!isEnabled()) {
-				if (def.renderResult) return def.renderResult(result, options, theme, context);
-				return new Text("", 0, 0);
+			const args = (context.args ?? {}) as Record<string, unknown>;
+			index.registerInvalidate(context.toolCallId, context.invalidate);
+
+			const outcome = classifyFromResult(
+				toolName,
+				result,
+				options.isPartial,
+				context.isError,
+				args,
+			);
+
+			if (!options.isPartial) {
+				settleIndex(index, toolName, context.toolCallId, args, result, context.isError, outcome);
 			}
 
-			const outcome = classify({
-				result,
-				isPartial: options.isPartial,
-				isError: context.isError,
-				args: (context.args ?? {}) as Record<string, unknown>,
-			});
+			if (!isEnabled()) {
+				if (def.renderResult) return def.renderResult(result, options, theme, context);
+				return emptyComponent();
+			}
 
-			// User expand → full Stock Display body (honesty contract).
+			const role = index.role(context.toolCallId);
+
+			if (role.role === "hidden") {
+				return emptyComponent();
+			}
+
+			const home = homedir();
+
+			if (role.role === "carrier" && role.memberIds.length >= 2) {
+				if (options.expanded && outcome.kind !== "pending") {
+					return renderGroupExpanded(index, createDef, theme, context);
+				}
+
+				const members = index.members(context.toolCallId);
+				const lines = members.map((m) =>
+					formatMemberBullet(
+						formatMemberSummary(m.toolName, m.args ?? {}, home),
+						m.chip,
+					),
+				);
+				// Soft members stay muted only when the whole group is soft-only; else success.
+				const allSoft = members.every((m) => m.outcomeKind === "soft");
+				const anyHard = members.some((m) => m.outcomeKind === "hard");
+				const color: ThemeColor = anyHard ? "error" : allSoft ? "muted" : "success";
+				return renderQuietLines(lines, theme, color);
+			}
+
+			// Singleton Quiet Row
 			if (options.expanded && outcome.kind !== "pending") {
 				if (def.renderResult) return def.renderResult(result, options, theme, context);
 			}
 
-			// Hard Breakthrough auto-shows a capped tail even when collapsed.
 			const showTail = outcome.kind === "hard";
 			const lines = formatQuietResultLines(outcome, showTail);
 			return renderQuietLines(lines, theme, colorForOutcome(outcome.kind));
@@ -130,88 +238,69 @@ function wrapBuiltin(
 	});
 }
 
-export function registerQuietTools(pi: ExtensionAPI, isEnabled: () => boolean): void {
-	wrapBuiltin(
-		pi,
-		isEnabled,
-		createReadToolDefinition,
-		({ result, isPartial, isError }) =>
-			classifyReadOutcome({
-				isPartial,
-				isError,
-				text: resultText(result),
-				isImage: resultIsImage(result),
-			}),
-		"read",
-	);
+function renderGroupExpanded(
+	index: CompactionIndex,
+	createDef: (cwd: string) => AnyDef,
+	theme: Theme,
+	context: ToolRenderContext<unknown, Record<string, unknown>>,
+): Container {
+	const container = new Container();
+	const members = index.members(context.toolCallId);
+	const def = createDef(context.cwd);
 
-	wrapBuiltin(
-		pi,
-		isEnabled,
-		createBashToolDefinition,
-		({ result, isPartial, isError }) =>
-			classifyBashOutcome({
-				isPartial,
-				isError,
-				text: resultText(result),
-			}),
-		"bash",
-	);
+	// Whole-group expand: stacked Stock bodies only (header stays on renderCall).
+	for (const member of members) {
+		if (!member.result) continue;
 
-	wrapBuiltin(
-		pi,
-		isEnabled,
-		createEditToolDefinition,
-		({ result, isPartial, isError }) => {
-			const details = result.details as EditToolDetails | undefined;
-			return classifyEditOutcome({
-				isPartial,
-				isError,
-				diff: details?.diff,
-				text: resultText(result),
-			});
-		},
-		"edit",
-	);
+		const memberResult = {
+			content: member.result.content as AgentToolResult<unknown>["content"],
+			details: member.result.details,
+		} as AgentToolResult<unknown>;
 
-	wrapBuiltin(
-		pi,
-		isEnabled,
-		createWriteToolDefinition,
-		({ result, isPartial, isError, args }) => {
-			const content = typeof args.content === "string" ? args.content : "";
-			return classifyWriteOutcome({
-				isPartial,
-				isError,
-				contentLineCount: textLineCount(content),
-				text: resultText(result),
-			});
-		},
-		"write",
-	);
-
-	const explore: Array<{
-		name: ExploreTool;
-		create: (cwd: string) => AnyDef;
-	}> = [
-		{ name: "grep", create: createGrepToolDefinition },
-		{ name: "find", create: createFindToolDefinition },
-		{ name: "ls", create: createLsToolDefinition },
-	];
-
-	for (const { name, create } of explore) {
-		wrapBuiltin(
-			pi,
-			isEnabled,
-			create,
-			({ result, isPartial, isError }) =>
-				classifyExploreOutcome({
-					tool: name,
-					isPartial,
-					isError,
-					text: resultText(result),
-				}),
-			name,
-		);
+		if (def.renderResult) {
+			try {
+				const memberContext = {
+					...context,
+					toolCallId: member.toolCallId,
+					args: (member.args ?? {}) as Record<string, unknown>,
+					isError: Boolean(member.isError),
+					isPartial: false,
+					expanded: true,
+				} as ToolRenderContext<unknown, Record<string, unknown>>;
+				const body = def.renderResult(
+					memberResult,
+					{ expanded: true, isPartial: false },
+					theme,
+					memberContext,
+				);
+				container.addChild(body);
+			} catch {
+				const text = resultText(memberResult);
+				if (text) {
+					container.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
+				}
+			}
+		} else {
+			const text = resultText(memberResult);
+			if (text) {
+				container.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
+			}
+		}
 	}
+
+	return container;
+}
+
+export function registerQuietTools(
+	pi: ExtensionAPI,
+	isEnabled: () => boolean,
+	index: CompactionIndex,
+): void {
+	wrapBuiltin(pi, isEnabled, index, createReadToolDefinition, "read");
+	wrapBuiltin(pi, isEnabled, index, createBashToolDefinition, "bash");
+	wrapBuiltin(pi, isEnabled, index, createEditToolDefinition, "edit");
+	wrapBuiltin(pi, isEnabled, index, createWriteToolDefinition, "write");
+	wrapBuiltin(pi, isEnabled, index, createGrepToolDefinition, "grep");
+	wrapBuiltin(pi, isEnabled, index, createFindToolDefinition, "find");
+	wrapBuiltin(pi, isEnabled, index, createLsToolDefinition, "ls");
 }

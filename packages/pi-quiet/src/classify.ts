@@ -120,3 +120,60 @@ export function classifyWriteOutcome(input: {
 	const n = input.contentLineCount;
 	return { kind: "success", chip: `${n} line${n === 1 ? "" : "s"}` };
 }
+
+export type ClassifyToolInput = {
+	toolName: string;
+	isPartial: boolean;
+	isError: boolean;
+	text: string;
+	isImage?: boolean;
+	diff?: string;
+	/** write content line count from args */
+	contentLineCount?: number;
+};
+
+/** Dispatch to the per-tool classifier for Quiet built-ins. */
+export function classifyQuietTool(input: ClassifyToolInput): QuietOutcome {
+	switch (input.toolName) {
+		case "read":
+			return classifyReadOutcome({
+				isPartial: input.isPartial,
+				isError: input.isError,
+				text: input.text,
+				isImage: input.isImage,
+			});
+		case "bash":
+			return classifyBashOutcome({
+				isPartial: input.isPartial,
+				isError: input.isError,
+				text: input.text,
+			});
+		case "edit":
+			return classifyEditOutcome({
+				isPartial: input.isPartial,
+				isError: input.isError,
+				diff: input.diff,
+				text: input.text,
+			});
+		case "write":
+			return classifyWriteOutcome({
+				isPartial: input.isPartial,
+				isError: input.isError,
+				contentLineCount: input.contentLineCount ?? 0,
+				text: input.text,
+			});
+		case "grep":
+		case "find":
+		case "ls":
+			return classifyExploreOutcome({
+				tool: input.toolName,
+				isPartial: input.isPartial,
+				isError: input.isError,
+				text: input.text,
+			});
+		default:
+			if (input.isPartial) return { kind: "pending" };
+			if (input.isError) return hard("failed", input.text);
+			return { kind: "success", chip: "ok" };
+	}
+}
