@@ -47,6 +47,7 @@ Adjacent settled successes (and Soft Breakthroughs) of the **same tool kind** fo
 ## Behavior notes
 
 - **While running:** static pending marker only (no live stdout firehose).
+- **Tool Shell Background:** visible Quiet Rows and Compaction Groups keep Stock's pending/success/error strip so built-ins match other tools (MCP, etc.). Hidden compaction members stay zero-height.
 - **Hard Breakthrough:** failed edit/write, bash non-zero / thrown error - chip + capped error tail without you expanding.
 - **Expand** (pi's normal expand gesture): full Stock Display body for that row (or whole Compaction Group). Expand does **not** change the Sticky Preference.
 - **`/quiet`:** Sticky Preference only; renders follow the current preference when components redraw.
