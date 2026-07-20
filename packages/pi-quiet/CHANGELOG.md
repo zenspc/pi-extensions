@@ -1,5 +1,13 @@
 # @zenspc/pi-quiet
 
+## 0.2.1
+
+### Patch Changes
+
+- 0ee3b0d: Restore Tool Shell Background on visible Quiet surfaces under `renderShell: "self"`.
+
+  Stock-matching pending/success/error strips on Quiet Rows and Compaction Groups so built-ins match other tools. Hidden compaction members stay zero-height. Quiet-off wraps non-edit built-ins; edit keeps its own shell.
+
 ## 0.2.0
 
 ### Minor Changes
