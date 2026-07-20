@@ -58,4 +58,50 @@ describe("rowsFromMessages", () => {
 		]);
 		assert.equal(msgs.length, 2);
 	});
+
+	it("retains result bodies only for quiet success|soft rows", () => {
+		const messages = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "ok", name: "read", arguments: { path: "/a" } },
+					{ type: "toolCall", id: "hard", name: "read", arguments: { path: "/b" } },
+					{ type: "toolCall", id: "mcp", name: "mcp__x", arguments: {} },
+				],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "ok",
+				toolName: "read",
+				content: [{ type: "text", text: "hello" }],
+				isError: false,
+			},
+			{
+				role: "toolResult",
+				toolCallId: "hard",
+				toolName: "read",
+				content: [{ type: "text", text: "Error: nope" }],
+				isError: true,
+			},
+			{
+				role: "toolResult",
+				toolCallId: "mcp",
+				toolName: "mcp__x",
+				content: [{ type: "text", text: "payload" }],
+				isError: false,
+			},
+		];
+
+		const rows = rowsFromMessages(messages);
+		const byId = new Map(rows.filter((r) => !r.splitter).map((r) => [r.toolCallId, r]));
+
+		assert.equal(byId.get("ok")?.outcomeKind, "success");
+		assert.ok(byId.get("ok")?.result?.content?.length);
+
+		assert.equal(byId.get("hard")?.outcomeKind, "hard");
+		assert.equal(byId.get("hard")?.result, undefined);
+
+		assert.equal(byId.get("mcp")?.quiet, false);
+		assert.equal(byId.get("mcp")?.result, undefined);
+	});
 });

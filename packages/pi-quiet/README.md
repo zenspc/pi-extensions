@@ -40,7 +40,7 @@ Adjacent settled successes (and Soft Breakthroughs) of the **same tool kind** fo
 
 - **Strict neighbors only** - assistant/user prose or a different tool kind splits groups.
 - **Hard Breakthrough** never joins a group and splits runs before/after.
-- **Settled only** - a same-kind run folds only after every neighbor that could join has finished (no live-growing group while tools are still pending).
+- **Pending never joins** - a running tool stays a singleton Quiet Row. Already-settled same-kind neighbors **stay** compacted while a trailing same-kind tool is still running; the Compaction Group grows only after that tool settles successfully (or soft).
 - **Expand** expands the whole group to stacked Stock Display bodies.
 - Groups are **rebuilt from session history** after reload.
 

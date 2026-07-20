@@ -15,6 +15,22 @@ describe("textLineCount / diffLineStats", () => {
 		assert.equal(textLineCount(""), 0);
 		assert.equal(textLineCount("a\nb\n"), 2);
 		assert.equal(textLineCount("a\n\nb"), 2);
+		assert.equal(textLineCount("\n"), 0);
+		assert.equal(textLineCount("\n\n"), 0);
+		assert.equal(textLineCount("only"), 1);
+		assert.equal(textLineCount("a\n"), 1);
+		assert.equal(textLineCount("\na"), 1);
+	});
+
+	it("matches split+filter semantics on a larger fixture", () => {
+		const lines: string[] = [];
+		for (let i = 0; i < 200; i++) {
+			lines.push(i % 5 === 0 ? "" : `line-${i}`);
+		}
+		const text = lines.join("\n") + "\n";
+		const legacy = text.split("\n").filter((line) => line.length > 0).length;
+		assert.equal(textLineCount(text), legacy);
+		assert.equal(textLineCount(text), 160);
 	});
 
 	it("counts added/removed diff lines excluding headers", () => {

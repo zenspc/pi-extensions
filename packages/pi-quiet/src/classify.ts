@@ -19,9 +19,31 @@ export type QuietOutcome = {
 
 export type ExploreTool = "grep" | "find" | "ls";
 
+/** Count non-empty lines without allocating a split array. */
 export function textLineCount(text: string): number {
 	if (!text) return 0;
-	return text.split("\n").filter((line) => line.length > 0).length;
+	let count = 0;
+	let lineStart = 0;
+	for (let i = 0; i <= text.length; i++) {
+		if (i === text.length || text.charCodeAt(i) === 10 /* \n */) {
+			if (i > lineStart) count += 1;
+			lineStart = i + 1;
+		}
+	}
+	return count;
+}
+
+/** True if text has at least one non-empty line (early-exit scan). */
+export function hasNonEmptyLine(text: string): boolean {
+	if (!text) return false;
+	let lineStart = 0;
+	for (let i = 0; i <= text.length; i++) {
+		if (i === text.length || text.charCodeAt(i) === 10 /* \n */) {
+			if (i > lineStart) return true;
+			lineStart = i + 1;
+		}
+	}
+	return false;
 }
 
 /** Count +/− lines in a unified/display diff, ignoring file headers. */
@@ -92,8 +114,7 @@ export function classifyBashOutcome(input: {
 		const chip = exit ? `exit ${exit[1]}` : "failed";
 		return hard(chip, input.text);
 	}
-	const empty = textLineCount(input.text) === 0;
-	if (empty) return { kind: "soft", chip: "exit 0 · empty" };
+	if (!hasNonEmptyLine(input.text)) return { kind: "soft", chip: "exit 0 · empty" };
 	return { kind: "success", chip: "exit 0" };
 }
 

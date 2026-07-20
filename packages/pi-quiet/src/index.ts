@@ -21,7 +21,7 @@ import {
 	formatQuietStatus,
 	parseQuietCommand,
 } from "./command.ts";
-import { CompactionIndex } from "./compaction.ts";
+import { CompactionIndex, shouldRetainResult } from "./compaction.ts";
 import { getConfigPath, loadQuietConfig, saveQuietConfig } from "./config.ts";
 import { classifyQuietTool, textLineCount } from "./classify.ts";
 import { messagesFromBranch, rowsFromMessages } from "./history.ts";
@@ -109,7 +109,8 @@ export default function quietExtension(pi: ExtensionAPI) {
 		});
 		if (outcome.kind === "pending") return;
 
-		const resultContent = Array.isArray((event.result as { content?: unknown })?.content)
+		const keepResult = shouldRetainResult(event.toolName, outcome.kind);
+		const resultContent = keepResult && Array.isArray((event.result as { content?: unknown })?.content)
 			? ((event.result as { content: unknown[] }).content)
 			: [];
 
@@ -119,10 +120,12 @@ export default function quietExtension(pi: ExtensionAPI) {
 			args,
 			outcomeKind: outcome.kind,
 			chip: outcome.chip,
-			result: {
-				content: resultContent,
-				details: (event.result as { details?: unknown })?.details,
-			},
+			result: keepResult
+				? {
+						content: resultContent,
+						details: (event.result as { details?: unknown })?.details,
+				  }
+				: undefined,
 			isError: event.isError,
 		});
 	});
