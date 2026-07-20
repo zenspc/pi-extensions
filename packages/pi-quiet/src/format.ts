@@ -4,12 +4,30 @@
  */
 
 import type { QuietOutcome } from "./classify.ts";
+import type { QuietToolName } from "./tools-meta.ts";
+import { isQuietToolName } from "./tools-meta.ts";
 
 /** Last N lines shown on Hard Breakthrough auto-expand. */
 export const HARD_FAILURE_TAIL_LINES = 12;
 
 /** Max visible characters for bash command on the call line. */
 export const MAX_COMMAND_DISPLAY = 80;
+
+/** Kind Emoji for Quiet built-ins (singleton rows + Group Headers). */
+export const KIND_EMOJI: Record<QuietToolName, string> = {
+	read: "📖",
+	bash: "💻",
+	edit: "✏️",
+	write: "📝",
+	grep: "🔍",
+	find: "🔎",
+	ls: "📂",
+};
+
+export function kindEmoji(tool: string): string {
+	if (!isQuietToolName(tool)) return "";
+	return KIND_EMOJI[tool];
+}
 
 export function shortenPath(path: string, home: string): string {
 	if (!path) return path;
@@ -109,4 +127,58 @@ export function formatQuietResultLines(
 		return [chip, ...tail.split("\n")];
 	}
 	return [chip];
+}
+
+/** Singleton Quiet Row call line: Kind Emoji + call summary. */
+export function formatSingletonCallLine(
+	tool: string,
+	args: CallArgs,
+	home: string,
+): string {
+	const emoji = kindEmoji(tool);
+	const summary = formatCallSummary(tool, args, home);
+	return emoji ? `${emoji} ${summary}` : summary;
+}
+
+/** Group Header: Kind Emoji + kind ×N. */
+export function formatGroupHeader(tool: string, count: number): string {
+	const emoji = kindEmoji(tool);
+	const label = `${tool} ×${count}`;
+	return emoji ? `${emoji} ${label}` : label;
+}
+
+/**
+ * Member Bullet summary fragment with the tool name stripped
+ * (the Group Header already names the kind).
+ */
+export function formatMemberSummary(
+	tool: string,
+	args: CallArgs,
+	home: string,
+): string {
+	const full = formatCallSummary(tool, args, home);
+	switch (tool) {
+		case "bash":
+			return full; // already `$ cmd`
+		case "read":
+			return full.replace(/^read\s+/, "");
+		case "edit":
+			return full.replace(/^edit\s+/, "");
+		case "write":
+			return full.replace(/^write\s+/, "");
+		case "grep":
+			return full.replace(/^grep\s+/, "");
+		case "find":
+			return full.replace(/^find\s+/, "");
+		case "ls":
+			return full.replace(/^ls\s+/, "");
+		default:
+			return full;
+	}
+}
+
+/** One Member Bullet under a Group Header. */
+export function formatMemberBullet(summary: string, chip?: string): string {
+	if (chip) return `  • ${summary} · ${chip}`;
+	return `  • ${summary}`;
 }
