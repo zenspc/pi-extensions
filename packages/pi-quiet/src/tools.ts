@@ -32,7 +32,7 @@ import {
 	classifyQuietTool,
 	textLineCount,
 } from "./classify.ts";
-import type { CompactionIndex, CompactionOutcomeKind } from "./compaction.ts";
+import type { CompactionIndex } from "./compaction.ts";
 import {
 	formatGroupHeader,
 	formatMemberBullet,
@@ -149,31 +149,6 @@ function classifyFromResult(
 	});
 }
 
-function settleIndex(
-	index: CompactionIndex,
-	toolName: string,
-	toolCallId: string,
-	args: Record<string, unknown>,
-	result: AgentToolResult<unknown>,
-	isError: boolean,
-	outcome: QuietOutcome,
-): void {
-	if (outcome.kind === "pending") return;
-	const outcomeKind = outcome.kind as CompactionOutcomeKind;
-	index.onEnd({
-		toolCallId,
-		toolName,
-		args,
-		outcomeKind,
-		chip: outcome.chip,
-		result: {
-			content: result.content as unknown[],
-			details: result.details,
-		},
-		isError,
-	});
-}
-
 function stockCallContext(
 	context: ToolRenderContext<unknown, Record<string, unknown>>,
 ): ToolRenderContext<unknown, Record<string, unknown>> {
@@ -225,12 +200,9 @@ function wrapBuiltin(
 
 		renderCall(args, theme, context) {
 			const def = createDef(context.cwd);
+			// Invalidate registration only - live onStart/onEnd are driven by
+			// tool_execution_* events in index.ts (single writer).
 			index.registerInvalidate(context.toolCallId, context.invalidate);
-			index.onStart({
-				toolCallId: context.toolCallId,
-				toolName,
-				args: args as Record<string, unknown>,
-			});
 
 			if (!isEnabled()) {
 				if (stockSelfShell) {
@@ -274,17 +246,24 @@ function wrapBuiltin(
 			const args = (context.args ?? {}) as Record<string, unknown>;
 			index.registerInvalidate(context.toolCallId, context.invalidate);
 
-			const outcome = classifyFromResult(
-				toolName,
-				result,
-				options.isPartial,
-				context.isError,
-				args,
-			);
-
-			if (!options.isPartial) {
-				settleIndex(index, toolName, context.toolCallId, args, result, context.isError, outcome);
-			}
+			// Prefer settled index chip for success|soft (event path already classified).
+			// Hard still classifies from the live result so the capped failure tail has a body.
+			// Paint-only classify when the end event has not landed yet.
+			const settled = index.getRow(context.toolCallId);
+			const canReuseIndex =
+				!options.isPartial &&
+				settled?.status === "settled" &&
+				(settled.outcomeKind === "success" || settled.outcomeKind === "soft") &&
+				settled.chip !== undefined;
+			const outcome: QuietOutcome = canReuseIndex
+				? { kind: settled.outcomeKind!, chip: settled.chip }
+				: classifyFromResult(
+						toolName,
+						result,
+						options.isPartial,
+						context.isError,
+						args,
+				  );
 
 			if (!isEnabled()) {
 				if (stockSelfShell) {

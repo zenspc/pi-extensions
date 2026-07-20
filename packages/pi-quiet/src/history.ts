@@ -4,7 +4,11 @@
  */
 
 import { classifyQuietTool, textLineCount } from "./classify.ts";
-import type { CompactionOutcomeKind, CompactionRow } from "./compaction.ts";
+import {
+	type CompactionOutcomeKind,
+	type CompactionRow,
+	shouldRetainResult,
+} from "./compaction.ts";
 import {
 	resultIsImageFromContent,
 	resultTextFromContent,
@@ -91,7 +95,8 @@ export function rowsFromMessages(messages: readonly unknown[]): CompactionRow[] 
 				? outcome.kind
 				: undefined;
 
-		const contentBlocks = Array.isArray(msg.content) ? msg.content : [];
+		const keepResult = shouldRetainResult(toolName, outcomeKind);
+		const contentBlocks = keepResult && Array.isArray(msg.content) ? msg.content : [];
 		rows.push({
 			toolCallId,
 			toolName,
@@ -100,10 +105,12 @@ export function rowsFromMessages(messages: readonly unknown[]): CompactionRow[] 
 			outcomeKind,
 			chip: outcome.chip,
 			args,
-			result: {
-				content: contentBlocks,
-				details: msg.details,
-			},
+			result: keepResult
+				? {
+						content: contentBlocks,
+						details: msg.details,
+				  }
+				: undefined,
 			isError: Boolean(msg.isError),
 		});
 	}

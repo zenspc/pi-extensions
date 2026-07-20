@@ -3,6 +3,8 @@
  *
  * Folds maximal runs of strict-neighbor, same-kind, settled success|soft Quiet Rows
  * into Compaction Groups. Last member is the carrier; earlier members are hidden.
+ * Pending rows are always singletons and never join; they do not unpack an already
+ * settled same-kind group that ended immediately before them.
  */
 
 import { isQuietToolName } from "./tools-meta.ts";
@@ -45,13 +47,14 @@ function canJoinGroup(row: CompactionRow): boolean {
 	return row.outcomeKind === "success" || row.outcomeKind === "soft";
 }
 
-/** Same-kind Quiet row still running — blocks folding the settled prefix (no live growth). */
-function isPendingSameKind(row: CompactionRow, kind: string): boolean {
+/** Keep full bodies only for rows that may join a group / need carrier expand. */
+export function shouldRetainResult(
+	toolName: string,
+	outcomeKind: CompactionOutcomeKind | undefined,
+): boolean {
 	return (
-		!row.splitter &&
-		row.quiet &&
-		row.toolName === kind &&
-		row.status === "pending"
+		isQuietToolName(toolName) &&
+		(outcomeKind === "success" || outcomeKind === "soft")
 	);
 }
 
@@ -59,8 +62,9 @@ function isPendingSameKind(row: CompactionRow, kind: string): boolean {
  * Plan compaction roles for an ordered transcript of tool rows (+ optional splitters).
  * Splitter / non-participating rows still appear as singleton so callers can ignore them.
  *
- * A run folds only when every member that could join is settled — a trailing
- * pending same-kind neighbor keeps the settled prefix as singletons.
+ * Compaction Groups are maximal runs of settled success|soft same-kind Quiet neighbors.
+ * Pending tools never join; a trailing pending same-kind neighbor does not unpack the
+ * settled group before it. The group grows only after that tool settles joinably.
  */
 export function planCompaction(rows: readonly CompactionRow[]): CompactionPlan {
 	const plan: CompactionPlan = new Map();
@@ -86,7 +90,6 @@ export function planCompaction(rows: readonly CompactionRow[]): CompactionPlan {
 		const memberIds = [start.toolCallId];
 		const kind = start.toolName;
 		let j = i + 1;
-		let blockedByPending = false;
 		while (j < rows.length) {
 			const next = rows[j]!;
 			if (canJoinGroup(next) && next.toolName === kind) {
@@ -94,18 +97,16 @@ export function planCompaction(rows: readonly CompactionRow[]): CompactionPlan {
 				j += 1;
 				continue;
 			}
-			if (isPendingSameKind(next, kind)) {
-				blockedByPending = true;
-			}
 			break;
 		}
 
-		if (blockedByPending || memberIds.length < 2) {
-			for (const id of memberIds) markSingleton(id);
-			i += memberIds.length;
+		if (memberIds.length < 2) {
+			markSingleton(memberIds[0]!);
+			i += 1;
 			continue;
 		}
 
+		// One shared memberIds array for the whole group (do not mutate after publish).
 		const carrierId = memberIds[memberIds.length - 1]!;
 		for (let k = 0; k < memberIds.length; k++) {
 			const id = memberIds[k]!;
@@ -113,7 +114,7 @@ export function planCompaction(rows: readonly CompactionRow[]): CompactionPlan {
 				role: k === memberIds.length - 1 ? "carrier" : "hidden",
 				groupId: carrierId,
 				carrierId,
-				memberIds: [...memberIds],
+				memberIds,
 			});
 		}
 		i = j;
@@ -133,15 +134,40 @@ export function roleOf(plan: CompactionPlan, toolCallId: string): CompactionRole
 	};
 }
 
+function membersChanged(before: CompactionRole, after: CompactionRole): boolean {
+	if (before.carrierId !== after.carrierId) return true;
+	if (before.memberIds.length !== after.memberIds.length) return true;
+	if (before.memberIds === after.memberIds) return false;
+	for (let i = 0; i < before.memberIds.length; i++) {
+		if (before.memberIds[i] !== after.memberIds[i]) return true;
+	}
+	return false;
+}
+
+/** True when this row's paint surface must refresh after a replan. */
+function paintRoleChanged(before: CompactionRole, after: CompactionRole): boolean {
+	if (before.role !== after.role) return true;
+	// Carriers own the group chrome; membership/carrier identity changes need a repaint.
+	if (after.role === "carrier" || before.role === "carrier") {
+		return membersChanged(before, after);
+	}
+	// Hidden staying hidden (or singleton staying singleton) does not need invalidate
+	// when only the shared membership list grew.
+	return false;
+}
+
 /** Mutable index used by the extension runtime. */
 export class CompactionIndex {
 	private rows: CompactionRow[] = [];
+	/** O(1) lookup for non-splitter tool rows. */
+	private byId = new Map<string, CompactionRow>();
 	private plan: CompactionPlan = new Map();
 	private invalidators = new Map<string, () => void>();
 	private splitterSeq = 0;
 
 	clear(): void {
 		this.rows = [];
+		this.byId.clear();
 		this.plan = new Map();
 		this.invalidators.clear();
 		this.splitterSeq = 0;
@@ -160,7 +186,7 @@ export class CompactionIndex {
 	}
 
 	getRow(toolCallId: string): CompactionRow | undefined {
-		return this.rows.find((r) => r.toolCallId === toolCallId && !r.splitter);
+		return this.byId.get(toolCallId);
 	}
 
 	members(carrierId: string): CompactionRow[] {
@@ -196,36 +222,37 @@ export class CompactionIndex {
 		toolName: string;
 		args?: Record<string, unknown>;
 	}): void {
-		const existing = this.rows.findIndex(
-			(r) => r.toolCallId === input.toolCallId && !r.splitter,
-		);
-		if (existing >= 0) {
-			const prev = this.rows[existing]!;
+		const prev = this.byId.get(input.toolCallId);
+		if (prev) {
 			// Historical paint / re-render must not unsettle a finished row
 			// (that would unpack Compaction Groups rebuilt from session history).
 			if (prev.status === "settled") {
-				this.rows[existing] = {
+				const next: CompactionRow = {
 					...prev,
 					args: input.args ?? prev.args,
 					toolName: input.toolName || prev.toolName,
 				};
+				this.replaceRow(prev, next);
 				return;
 			}
-			this.rows[existing] = {
+			const next: CompactionRow = {
 				...prev,
 				toolName: input.toolName,
 				quiet: isQuietToolName(input.toolName),
 				status: "pending",
 				args: input.args ?? prev.args,
 			};
+			this.replaceRow(prev, next);
 		} else {
-			this.rows.push({
+			const next: CompactionRow = {
 				toolCallId: input.toolCallId,
 				toolName: input.toolName,
 				quiet: isQuietToolName(input.toolName),
 				status: "pending",
 				args: input.args,
-			});
+			};
+			this.rows.push(next);
+			this.byId.set(input.toolCallId, next);
 		}
 		this.replan();
 	}
@@ -239,9 +266,8 @@ export class CompactionIndex {
 		result?: CompactionRow["result"];
 		isError?: boolean;
 	}): void {
-		const idx = this.rows.findIndex(
-			(r) => r.toolCallId === input.toolCallId && !r.splitter,
-		);
+		const keepResult = shouldRetainResult(input.toolName, input.outcomeKind);
+		const prev = this.byId.get(input.toolCallId);
 		const base: CompactionRow = {
 			toolCallId: input.toolCallId,
 			toolName: input.toolName,
@@ -249,18 +275,15 @@ export class CompactionIndex {
 			status: "settled",
 			outcomeKind: input.outcomeKind,
 			chip: input.chip,
-			args: input.args,
-			result: input.result,
+			args: input.args ?? prev?.args,
+			result: keepResult ? input.result : undefined,
 			isError: input.isError,
 		};
-		if (idx >= 0) {
-			const prev = this.rows[idx]!;
-			this.rows[idx] = {
-				...base,
-				args: input.args ?? prev.args,
-			};
+		if (prev) {
+			this.replaceRow(prev, base);
 		} else {
 			this.rows.push(base);
+			this.byId.set(input.toolCallId, base);
 		}
 		this.replan();
 	}
@@ -268,8 +291,22 @@ export class CompactionIndex {
 	/** Replace index contents (session reload). Does not keep invalidators. */
 	rebuild(rows: CompactionRow[]): void {
 		this.rows = rows.map((r) => ({ ...r }));
+		this.byId.clear();
+		for (const row of this.rows) {
+			if (!row.splitter) this.byId.set(row.toolCallId, row);
+		}
 		this.invalidators.clear();
 		this.replan(false);
+	}
+
+	private replaceRow(prev: CompactionRow, next: CompactionRow): void {
+		const idx = this.rows.indexOf(prev);
+		if (idx >= 0) {
+			this.rows[idx] = next;
+		} else {
+			this.rows.push(next);
+		}
+		this.byId.set(next.toolCallId, next);
 	}
 
 	private replan(notify = true): void {
@@ -282,14 +319,8 @@ export class CompactionIndex {
 			if (row.splitter) continue;
 			const before = roleOf(prev, row.toolCallId);
 			const after = roleOf(this.plan, row.toolCallId);
-			if (
-				before.role !== after.role ||
-				before.carrierId !== after.carrierId ||
-				before.memberIds.join("\0") !== after.memberIds.join("\0")
-			) {
+			if (paintRoleChanged(before, after)) {
 				changed.add(row.toolCallId);
-				for (const id of before.memberIds) changed.add(id);
-				for (const id of after.memberIds) changed.add(id);
 			}
 		}
 		for (const id of changed) {
