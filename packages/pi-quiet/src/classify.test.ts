@@ -4,6 +4,8 @@ import {
 	classifyBashOutcome,
 	classifyEditOutcome,
 	classifyExploreOutcome,
+	classifyForeignOutcome,
+	classifyQuietTool,
 	classifyReadOutcome,
 	classifyWriteOutcome,
 	diffLineStats,
@@ -213,6 +215,78 @@ describe("classifyEditOutcome / classifyWriteOutcome", () => {
 				text: "",
 			}),
 			{ kind: "success", chip: "10 lines" },
+		);
+	});
+});
+
+describe("classifyForeignOutcome (Generic Kind Formatter)", () => {
+	it("pending while partial", () => {
+		assert.deepEqual(
+			classifyForeignOutcome({ isPartial: true, isError: false, text: "x" }),
+			{ kind: "pending" },
+		);
+	});
+
+	it("hard on error with failed chip", () => {
+		const out = classifyForeignOutcome({
+			isPartial: false,
+			isError: true,
+			text: "MCP server exploded",
+		});
+		assert.equal(out.kind, "hard");
+		assert.equal(out.chip, "failed");
+		assert.equal(out.body, "MCP server exploded");
+	});
+
+	it("soft on empty successful body", () => {
+		assert.deepEqual(
+			classifyForeignOutcome({ isPartial: false, isError: false, text: "" }),
+			{ kind: "soft", chip: "empty" },
+		);
+		assert.deepEqual(
+			classifyForeignOutcome({ isPartial: false, isError: false, text: "\n\n" }),
+			{ kind: "soft", chip: "empty" },
+		);
+	});
+
+	it("success ok when there is content or an image", () => {
+		assert.deepEqual(
+			classifyForeignOutcome({
+				isPartial: false,
+				isError: false,
+				text: "payload",
+			}),
+			{ kind: "success", chip: "ok" },
+		);
+		assert.deepEqual(
+			classifyForeignOutcome({
+				isPartial: false,
+				isError: false,
+				text: "",
+				isImage: true,
+			}),
+			{ kind: "success", chip: "ok" },
+		);
+	});
+
+	it("classifyQuietTool dispatches Foreign Tools to the generic path", () => {
+		assert.deepEqual(
+			classifyQuietTool({
+				toolName: "mcp",
+				isPartial: false,
+				isError: false,
+				text: "hi",
+			}),
+			{ kind: "success", chip: "ok" },
+		);
+		assert.equal(
+			classifyQuietTool({
+				toolName: "subagent",
+				isPartial: false,
+				isError: true,
+				text: "nope",
+			}).kind,
+			"hard",
 		);
 	});
 });

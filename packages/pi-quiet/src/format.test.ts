@@ -121,8 +121,74 @@ describe("Kind Emoji", () => {
 		assert.equal(KIND_EMOJI.read, "📖");
 	});
 
-	it("unknown tools get an empty marker", () => {
-		assert.equal(kindEmoji("mcp__x"), "");
+	it("Foreign Tools share the puzzle-piece Kind Emoji", () => {
+		assert.equal(kindEmoji("mcp"), "🧩");
+		assert.equal(kindEmoji("mcp__x"), "🧩");
+		assert.equal(kindEmoji("subagent"), "🧩");
+	});
+});
+
+describe("Generic Kind Formatter (Foreign Tools)", () => {
+	it("priority keys win over later string fields", () => {
+		assert.equal(
+			formatCallSummary(
+				"mcp",
+				{ noise: "ignore", tool: "search", path: "/tmp" },
+				"/home/u",
+			),
+			"mcp search",
+		);
+		assert.equal(
+			formatCallSummary("codebase_memory_search_graph", { query: "Quiet Row" }, "/home/u"),
+			"codebase_memory_search_graph Quiet Row",
+		);
+	});
+
+	it("falls back to first safe stringish top-level value", () => {
+		assert.equal(
+			formatCallSummary("mcp", { limit: 10, target: "repo-a" }, "/home/u"),
+			"mcp repo-a",
+		);
+		assert.equal(
+			formatCallSummary("flag", { enabled: true }, "/home/u"),
+			"flag true",
+		);
+	});
+
+	it("shortens path-like peeks and skips secret-ish keys", () => {
+		assert.equal(
+			formatCallSummary("readish", { path: "/home/u/src/a.ts" }, "/home/u"),
+			"readish ~/src/a.ts",
+		);
+		assert.equal(
+			formatCallSummary(
+				"auth",
+				{ token: "sekrit", password: "x", api_key: "k", note: "ok-value" },
+				"/home/u",
+			),
+			"auth ok-value",
+		);
+	});
+
+	it("name only when args empty or only secrets/objects", () => {
+		assert.equal(formatCallSummary("mcp", {}, "/home/u"), "mcp");
+		assert.equal(
+			formatCallSummary("mcp", { token: "x", nested: { a: 1 } }, "/home/u"),
+			"mcp",
+		);
+	});
+
+	it("singleton / header / member use Foreign chrome", () => {
+		assert.equal(
+			formatSingletonCallLine("mcp", { tool: "search" }, "/home/u"),
+			"🧩 mcp search",
+		);
+		assert.equal(formatGroupHeader("mcp", 3), "🧩 mcp ×3");
+		assert.equal(
+			formatMemberSummary("mcp", { tool: "search" }, "/home/u"),
+			"search",
+		);
+		assert.equal(formatMemberSummary("mcp", {}, "/home/u"), "…");
 	});
 });
 

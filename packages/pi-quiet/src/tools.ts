@@ -1,11 +1,11 @@
 /**
- * Built-in tool overrides that apply Quiet Display rendering.
+ * Quiet Display rendering for tools.
  *
- * Execution always delegates to pi's create*ToolDefinition for the live cwd.
- * When Sticky Preference is off, renderCall/renderResult also delegate (Stock Display).
+ * Two registration paths:
+ * - Preferred: Pi registerToolRenderer wrapper for every tool (built-in + Foreign).
+ * - Fallback: registerTool overrides for the seven built-ins only (no Foreign Quiet).
  *
- * Run Compaction: last-member carrier with zero-height hidden members (renderShell: "self").
- * Tool Shell Background: continuous Stock-matching Box on visible surfaces (self-owned shell).
+ * Execution always stays on the original tool definition.
  */
 
 import type {
@@ -15,6 +15,7 @@ import type {
 	Theme,
 	ToolDefinition,
 	ToolRenderContext,
+	ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
 import {
 	createBashToolDefinition,
@@ -50,7 +51,13 @@ import {
 	toolShellBgForQuietOutcome,
 	toolShellBgForStock,
 } from "./shell.ts";
+import {
+	type StockToolRenderers,
+	type ToolRendererWrapper,
+	tryRegisterToolRenderer,
+} from "./tool-renderer-api.ts";
 import type { QuietToolName } from "./tools-meta.ts";
+import { setForeignToolsQuiet } from "./tools-meta.ts";
 
 type AnyDef = ToolDefinition<any, any, any>;
 type ThemeColor = "error" | "muted" | "success" | "dim" | "warning" | "toolTitle";
@@ -64,6 +71,15 @@ type ShellState = {
 	stockResult?: Component;
 	/** Nested state object passed into Stock result renderers. */
 	stockResultState?: Record<string, unknown>;
+};
+
+type StockFns = {
+	/** When true, Quiet-off leaves shell ownership to Stock (e.g. edit). */
+	stockSelfShell?: boolean;
+	renderCall?: StockToolRenderers["renderCall"];
+	renderResult?: StockToolRenderers["renderResult"];
+	/** Fallback title when Stock has no renderCall. */
+	fallbackTitle: string;
 };
 
 function resultText(result: AgentToolResult<unknown>): string {
@@ -171,50 +187,107 @@ function stockResultContext(
 	};
 }
 
-function wrapBuiltin(
-	pi: ExtensionAPI,
+function resolveOutcome(
+	toolName: string,
+	index: CompactionIndex,
+	toolCallId: string,
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	isError: boolean,
+	args: Record<string, unknown>,
+): QuietOutcome {
+	const settled = index.getRow(toolCallId);
+	const canReuseIndex =
+		!options.isPartial &&
+		settled?.status === "settled" &&
+		(settled.outcomeKind === "success" || settled.outcomeKind === "soft") &&
+		settled.chip !== undefined;
+	if (canReuseIndex) {
+		return { kind: settled.outcomeKind!, chip: settled.chip };
+	}
+	return classifyFromResult(toolName, result, options.isPartial, isError, args);
+}
+
+function renderGroupExpanded(
+	index: CompactionIndex,
+	stockResult: StockToolRenderers["renderResult"],
+	theme: Theme,
+	context: ToolRenderContext<unknown, Record<string, unknown>>,
+): Container {
+	const container = new Container();
+	const members = index.members(context.toolCallId);
+
+	// Whole-group expand: stacked Stock bodies only (header stays on renderCall).
+	for (const member of members) {
+		if (!member.result) continue;
+
+		const memberResult = {
+			content: member.result.content as AgentToolResult<unknown>["content"],
+			details: member.result.details,
+		} as AgentToolResult<unknown>;
+
+		if (stockResult) {
+			try {
+				const memberContext = {
+					...context,
+					toolCallId: member.toolCallId,
+					args: (member.args ?? {}) as Record<string, unknown>,
+					isError: Boolean(member.isError),
+					isPartial: false,
+					expanded: true,
+					// Fresh per-member Stock state; do not share the carrier shell state.
+					state: {},
+					lastComponent: undefined,
+				} as ToolRenderContext<unknown, Record<string, unknown>>;
+				const body = stockResult(
+					memberResult,
+					{ expanded: true, isPartial: false },
+					theme,
+					memberContext,
+				);
+				container.addChild(body);
+			} catch {
+				const text = resultText(memberResult);
+				if (text) {
+					container.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
+				}
+			}
+		} else {
+			const text = resultText(memberResult);
+			if (text) {
+				container.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
+			}
+		}
+	}
+
+	return container;
+}
+
+function buildQuietRenderers(
+	toolName: string,
 	isEnabled: () => boolean,
 	index: CompactionIndex,
-	createDef: (cwd: string) => AnyDef,
-	toolName: QuietToolName,
-): void {
-	const schemaDef = createDef(process.cwd());
-	// edit already owns Tool Shell Background under renderShell: "self".
-	const stockSelfShell = toolName === "edit";
-
-	pi.registerTool({
-		name: schemaDef.name,
-		label: schemaDef.label,
-		description: schemaDef.description,
-		promptSnippet: schemaDef.promptSnippet,
-		promptGuidelines: schemaDef.promptGuidelines,
-		parameters: schemaDef.parameters,
-		executionMode: schemaDef.executionMode,
-		// Required for zero-height hidden Compaction Group members.
+	stock: StockFns,
+): Required<Pick<StockToolRenderers, "renderShell">> & StockToolRenderers {
+	return {
 		renderShell: "self",
 
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			const def = createDef(ctx.cwd);
-			return def.execute(toolCallId, params, signal, onUpdate, ctx);
-		},
-
 		renderCall(args, theme, context) {
-			const def = createDef(context.cwd);
 			// Invalidate registration only - live onStart/onEnd are driven by
 			// tool_execution_* events in index.ts (single writer).
 			index.registerInvalidate(context.toolCallId, context.invalidate);
 
 			if (!isEnabled()) {
-				if (stockSelfShell) {
-					if (def.renderCall) return def.renderCall(args, theme, context);
-					return new Text(theme.fg("toolTitle", schemaDef.name), 0, 0);
+				if (stock.stockSelfShell) {
+					if (stock.renderCall) return stock.renderCall(args, theme, context);
+					return new Text(theme.fg("toolTitle", stock.fallbackTitle), 0, 0);
 				}
 				const box = getShellBox(context);
 				resetShell(box, theme, toolShellBgForStock(context.isPartial, context.isError));
 				const stockCtx = stockCallContext(context);
-				const inner = def.renderCall
-					? def.renderCall(args, theme, stockCtx)
-					: new Text(theme.fg("toolTitle", schemaDef.name), 0, 0);
+				const inner = stock.renderCall
+					? stock.renderCall(args, theme, stockCtx)
+					: new Text(theme.fg("toolTitle", stock.fallbackTitle), 0, 0);
 				shellState(context).stockCall = inner;
 				box.addChild(inner);
 				return box;
@@ -242,40 +315,30 @@ function wrapBuiltin(
 		},
 
 		renderResult(result, options, theme, context) {
-			const def = createDef(context.cwd);
 			const args = (context.args ?? {}) as Record<string, unknown>;
 			index.registerInvalidate(context.toolCallId, context.invalidate);
 
-			// Prefer settled index chip for success|soft (event path already classified).
-			// Hard still classifies from the live result so the capped failure tail has a body.
-			// Paint-only classify when the end event has not landed yet.
-			const settled = index.getRow(context.toolCallId);
-			const canReuseIndex =
-				!options.isPartial &&
-				settled?.status === "settled" &&
-				(settled.outcomeKind === "success" || settled.outcomeKind === "soft") &&
-				settled.chip !== undefined;
-			const outcome: QuietOutcome = canReuseIndex
-				? { kind: settled.outcomeKind!, chip: settled.chip }
-				: classifyFromResult(
-						toolName,
-						result,
-						options.isPartial,
-						context.isError,
-						args,
-				  );
+			const outcome = resolveOutcome(
+				toolName,
+				index,
+				context.toolCallId,
+				result,
+				options,
+				context.isError,
+				args,
+			);
 
 			if (!isEnabled()) {
-				if (stockSelfShell) {
-					if (def.renderResult) return def.renderResult(result, options, theme, context);
+				if (stock.stockSelfShell) {
+					if (stock.renderResult) return stock.renderResult(result, options, theme, context);
 					return emptyComponent();
 				}
 				const box = getShellBox(context);
 				trimShellResults(box);
 				paintShell(box, theme, toolShellBgForStock(options.isPartial, context.isError));
-				if (def.renderResult) {
+				if (stock.renderResult) {
 					const stockCtx = stockResultContext(context);
-					const inner = def.renderResult(result, options, theme, stockCtx);
+					const inner = stock.renderResult(result, options, theme, stockCtx);
 					shellState(context).stockResult = inner;
 					box.addChild(inner);
 				}
@@ -297,7 +360,7 @@ function wrapBuiltin(
 				paintShell(box, theme, toolShellBgForQuietOutcome("success"));
 
 				if (options.expanded && outcome.kind !== "pending") {
-					const expanded = renderGroupExpanded(index, createDef, theme, context);
+					const expanded = renderGroupExpanded(index, stock.renderResult, theme, context);
 					box.addChild(expanded);
 					return emptyComponent();
 				}
@@ -321,11 +384,16 @@ function wrapBuiltin(
 			paintShell(box, theme, toolShellBgForQuietOutcome(outcome.kind));
 
 			if (options.expanded && outcome.kind !== "pending") {
-				if (def.renderResult) {
+				if (stock.renderResult) {
 					const stockCtx = stockResultContext(context);
-					const inner = def.renderResult(result, options, theme, stockCtx);
+					const inner = stock.renderResult(result, options, theme, stockCtx);
 					shellState(context).stockResult = inner;
 					box.addChild(inner);
+				} else {
+					const text = resultText(result);
+					if (text) {
+						box.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
+					}
 				}
 				return emptyComponent();
 			}
@@ -335,65 +403,56 @@ function wrapBuiltin(
 			box.addChild(renderQuietLines(lines, theme, colorForOutcome(outcome.kind)));
 			return emptyComponent();
 		},
+	};
+}
+
+function wrapBuiltin(
+	pi: ExtensionAPI,
+	isEnabled: () => boolean,
+	index: CompactionIndex,
+	createDef: (cwd: string) => AnyDef,
+	toolName: QuietToolName,
+): void {
+	const schemaDef = createDef(process.cwd());
+	// edit already owns Tool Shell Background under renderShell: "self".
+	const stockSelfShell = toolName === "edit";
+
+	const quiet = buildQuietRenderers(toolName, isEnabled, index, {
+		stockSelfShell,
+		fallbackTitle: schemaDef.name,
+		renderCall: (args, theme, context) => {
+			const def = createDef(context.cwd);
+			if (def.renderCall) return def.renderCall(args, theme, context);
+			return new Text(theme.fg("toolTitle", schemaDef.name), 0, 0);
+		},
+		renderResult: (result, options, theme, context) => {
+			const def = createDef(context.cwd);
+			if (def.renderResult) return def.renderResult(result, options, theme, context);
+			return emptyComponent();
+		},
+	});
+
+	pi.registerTool({
+		name: schemaDef.name,
+		label: schemaDef.label,
+		description: schemaDef.description,
+		promptSnippet: schemaDef.promptSnippet,
+		promptGuidelines: schemaDef.promptGuidelines,
+		parameters: schemaDef.parameters,
+		executionMode: schemaDef.executionMode,
+		renderShell: quiet.renderShell,
+
+		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const def = createDef(ctx.cwd);
+			return def.execute(toolCallId, params, signal, onUpdate, ctx);
+		},
+
+		renderCall: quiet.renderCall,
+		renderResult: quiet.renderResult,
 	});
 }
 
-function renderGroupExpanded(
-	index: CompactionIndex,
-	createDef: (cwd: string) => AnyDef,
-	theme: Theme,
-	context: ToolRenderContext<unknown, Record<string, unknown>>,
-): Container {
-	const container = new Container();
-	const members = index.members(context.toolCallId);
-	const def = createDef(context.cwd);
-
-	// Whole-group expand: stacked Stock bodies only (header stays on renderCall).
-	for (const member of members) {
-		if (!member.result) continue;
-
-		const memberResult = {
-			content: member.result.content as AgentToolResult<unknown>["content"],
-			details: member.result.details,
-		} as AgentToolResult<unknown>;
-
-		if (def.renderResult) {
-			try {
-				const memberContext = {
-					...context,
-					toolCallId: member.toolCallId,
-					args: (member.args ?? {}) as Record<string, unknown>,
-					isError: Boolean(member.isError),
-					isPartial: false,
-					expanded: true,
-					// Fresh per-member Stock state; do not share the carrier shell state.
-					state: {},
-					lastComponent: undefined,
-				} as ToolRenderContext<unknown, Record<string, unknown>>;
-				const body = def.renderResult(
-					memberResult,
-					{ expanded: true, isPartial: false },
-					theme,
-					memberContext,
-				);
-				container.addChild(body);
-			} catch {
-				const text = resultText(memberResult);
-				if (text) {
-					container.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
-				}
-			}
-		} else {
-			const text = resultText(memberResult);
-			if (text) {
-				container.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
-			}
-		}
-	}
-
-	return container;
-}
-
+/** Built-in registerTool overrides (no Foreign Tool coverage). */
 export function registerQuietTools(
 	pi: ExtensionAPI,
 	isEnabled: () => boolean,
@@ -406,4 +465,32 @@ export function registerQuietTools(
 	wrapBuiltin(pi, isEnabled, index, createGrepToolDefinition, "grep");
 	wrapBuiltin(pi, isEnabled, index, createFindToolDefinition, "find");
 	wrapBuiltin(pi, isEnabled, index, createLsToolDefinition, "ls");
+}
+
+/**
+ * Register a global Tool Renderer Wrapper when Pi exposes the seam.
+ * Returns true when Foreign Tools can participate in Quiet Display.
+ */
+export function registerQuietToolRendererWrapper(
+	pi: ExtensionAPI,
+	isEnabled: () => boolean,
+	index: CompactionIndex,
+): boolean {
+	const wrap: ToolRendererWrapper = (tool, renderers) => {
+		const quiet = buildQuietRenderers(tool.name, isEnabled, index, {
+			stockSelfShell: renderers.renderShell === "self",
+			fallbackTitle: tool.label ?? tool.name,
+			renderCall: renderers.renderCall,
+			renderResult: renderers.renderResult,
+		});
+		return {
+			renderShell: quiet.renderShell,
+			renderCall: quiet.renderCall,
+			renderResult: quiet.renderResult,
+		};
+	};
+
+	const ok = tryRegisterToolRenderer(pi, wrap);
+	if (ok) setForeignToolsQuiet(true);
+	return ok;
 }

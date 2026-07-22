@@ -13,7 +13,7 @@ import {
 	resultIsImageFromContent,
 	resultTextFromContent,
 } from "./result-content.ts";
-import { isQuietToolName } from "./tools-meta.ts";
+import { toolParticipatesInQuiet } from "./tools-meta.ts";
 
 type LooseContent =
 	| string
@@ -100,7 +100,7 @@ export function rowsFromMessages(messages: readonly unknown[]): CompactionRow[] 
 		rows.push({
 			toolCallId,
 			toolName,
-			quiet: isQuietToolName(toolName),
+			quiet: toolParticipatesInQuiet(toolName),
 			status: "settled",
 			outcomeKind,
 			chip: outcome.chip,

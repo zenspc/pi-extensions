@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import { planCompaction, roleOf } from "./compaction.ts";
 import { messagesFromBranch, rowsFromMessages } from "./history.ts";
+import { setForeignToolsQuiet } from "./tools-meta.ts";
+
+afterEach(() => {
+	setForeignToolsQuiet(false);
+});
 
 describe("rowsFromMessages", () => {
 	it("rebuilds a Compaction Group across adjacent reads and splits on assistant prose", () => {
@@ -103,5 +108,43 @@ describe("rowsFromMessages", () => {
 
 		assert.equal(byId.get("mcp")?.quiet, false);
 		assert.equal(byId.get("mcp")?.result, undefined);
+	});
+
+	it("Foreign Tools rebuild as quiet with retained bodies when enabled", () => {
+		setForeignToolsQuiet(true);
+		const messages = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "m1", name: "mcp", arguments: { tool: "search" } },
+					{ type: "toolCall", id: "m2", name: "mcp", arguments: { tool: "list" } },
+				],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "m1",
+				toolName: "mcp",
+				content: [{ type: "text", text: "one" }],
+				isError: false,
+			},
+			{
+				role: "toolResult",
+				toolCallId: "m2",
+				toolName: "mcp",
+				content: [{ type: "text", text: "two" }],
+				isError: false,
+			},
+		];
+
+		const rows = rowsFromMessages(messages);
+		const byId = new Map(rows.filter((r) => !r.splitter).map((r) => [r.toolCallId, r]));
+		assert.equal(byId.get("m1")?.quiet, true);
+		assert.equal(byId.get("m1")?.chip, "ok");
+		assert.ok(byId.get("m1")?.result?.content?.length);
+		assert.equal(byId.get("m2")?.quiet, true);
+
+		const plan = planCompaction(rows);
+		assert.equal(roleOf(plan, "m1").role, "hidden");
+		assert.equal(roleOf(plan, "m2").role, "carrier");
 	});
 });

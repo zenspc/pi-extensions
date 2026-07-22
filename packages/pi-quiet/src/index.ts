@@ -1,5 +1,5 @@
 /**
- * @zenspc/pi-quiet - Quiet Display for pi built-in tools.
+ * @zenspc/pi-quiet - Quiet Display for pi tools.
  *
  * Default once installed: Quiet Display (dense tool rows + Run Compaction).
  * Sticky Preference: ~/.pi/agent/extensions/quiet.json
@@ -10,8 +10,9 @@
  *   /quiet status    Show preference + config path
  *   /quiet help
  *
- * Scope: read, bash, edit, write, find, grep, ls (+ Run Compaction when Quiet is on).
- * Assistant prose, thinking, MCP/extension tools: unchanged (prose splits compaction).
+ * Scope: all tools when Pi exposes registerToolRenderer (built-ins + Foreign Tools).
+ * Fallback without the hook: built-in read/bash/edit/write/find/grep/ls only.
+ * Assistant prose and thinking still split compaction.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -29,8 +30,8 @@ import {
 	resultIsImageFromUnknown,
 	resultTextFromUnknown,
 } from "./result-content.ts";
-import { registerQuietTools } from "./tools.ts";
-import { isQuietToolName } from "./tools-meta.ts";
+import { registerQuietToolRendererWrapper, registerQuietTools } from "./tools.ts";
+import { toolParticipatesInQuiet } from "./tools-meta.ts";
 
 function notify(
 	ctx: ExtensionCommandContext | ExtensionContext,
@@ -45,7 +46,11 @@ export default function quietExtension(pi: ExtensionAPI) {
 	const configPath = getConfigPath();
 	const index = new CompactionIndex();
 
-	registerQuietTools(pi, () => enabled, index);
+	// Prefer Tool Renderer Wrapper (all tools + Foreign). Else built-in overrides only.
+	const usingRendererHook = registerQuietToolRendererWrapper(pi, () => enabled, index);
+	if (!usingRendererHook) {
+		registerQuietTools(pi, () => enabled, index);
+	}
 
 	const rebuildFromSession = (ctx: ExtensionContext) => {
 		try {
@@ -82,7 +87,7 @@ export default function quietExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_execution_end", async (event) => {
-		if (!isQuietToolName(event.toolName)) {
+		if (!toolParticipatesInQuiet(event.toolName)) {
 			index.onEnd({
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
@@ -131,7 +136,9 @@ export default function quietExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("quiet", {
-		description: "Toggle Quiet Display for built-in tool rows",
+		description: usingRendererHook
+			? "Toggle Quiet Display for tool rows (built-in + Foreign Tools)"
+			: "Toggle Quiet Display for built-in tool rows",
 		handler: async (args, ctx) => {
 			const cmd = parseQuietCommand(args);
 			const result = applyQuietCommand(cmd, enabled);

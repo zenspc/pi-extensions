@@ -142,6 +142,20 @@ export function classifyWriteOutcome(input: {
 	return { kind: "success", chip: `${n} line${n === 1 ? "" : "s"}` };
 }
 
+/** Generic Kind Formatter outcomes for Foreign Tools. */
+export function classifyForeignOutcome(input: {
+	isPartial: boolean;
+	isError: boolean;
+	text: string;
+	isImage?: boolean;
+}): QuietOutcome {
+	if (input.isPartial) return { kind: "pending" };
+	if (input.isError) return hard("failed", input.text);
+	if (input.isImage) return { kind: "success", chip: "ok" };
+	if (!hasNonEmptyLine(input.text)) return { kind: "soft", chip: "empty" };
+	return { kind: "success", chip: "ok" };
+}
+
 export type ClassifyToolInput = {
 	toolName: string;
 	isPartial: boolean;
@@ -193,8 +207,11 @@ export function classifyQuietTool(input: ClassifyToolInput): QuietOutcome {
 				text: input.text,
 			});
 		default:
-			if (input.isPartial) return { kind: "pending" };
-			if (input.isError) return hard("failed", input.text);
-			return { kind: "success", chip: "ok" };
+			return classifyForeignOutcome({
+				isPartial: input.isPartial,
+				isError: input.isError,
+				text: input.text,
+				isImage: input.isImage,
+			});
 	}
 }
