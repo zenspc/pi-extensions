@@ -1,6 +1,6 @@
 {
 	"name": "@zenspc/pi-quiet",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "Quiet Display for Pi: verb-first tool rows (built-in + Foreign), Verb Groups, sticky on/off.",
 	"type": "module",
 	"license": "MIT",
