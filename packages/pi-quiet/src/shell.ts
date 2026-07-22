@@ -4,8 +4,11 @@
 
 import type { QuietOutcome } from "./classify.ts";
 
-/** Match Pi ToolExecutionComponent default Box padding. */
-export const TOOL_SHELL_PADDING = 1;
+/**
+ * Quiet Tool Shell padding (tighter than Stock's default of 1).
+ * Keeps pending/success/error strip colors with less vertical chrome.
+ */
+export const TOOL_SHELL_PADDING = 0;
 
 export type ToolShellBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";
 

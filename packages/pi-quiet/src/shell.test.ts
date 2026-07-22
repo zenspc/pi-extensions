@@ -7,8 +7,8 @@ import {
 } from "./shell.ts";
 
 describe("TOOL_SHELL_PADDING", () => {
-	it("matches Stock default Box padding", () => {
-		assert.equal(TOOL_SHELL_PADDING, 1);
+	it("uses compact Quiet padding (tighter than Stock default 1)", () => {
+		assert.equal(TOOL_SHELL_PADDING, 0);
 	});
 });
 

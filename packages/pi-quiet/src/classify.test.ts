@@ -100,7 +100,7 @@ describe("classifyExploreOutcome", () => {
 				isError: false,
 				text: "",
 			}),
-			{ kind: "soft", chip: "0 matches" },
+			{ kind: "soft", chip: "no matches" },
 		);
 		assert.deepEqual(
 			classifyExploreOutcome({
@@ -109,7 +109,16 @@ describe("classifyExploreOutcome", () => {
 				isError: false,
 				text: "\n",
 			}),
-			{ kind: "soft", chip: "0 files" },
+			{ kind: "soft", chip: "no matches" },
+		);
+		assert.deepEqual(
+			classifyExploreOutcome({
+				tool: "ls",
+				isPartial: false,
+				isError: false,
+				text: "",
+			}),
+			{ kind: "soft", chip: "empty" },
 		);
 	});
 
@@ -148,25 +157,25 @@ describe("classifyExploreOutcome", () => {
 });
 
 describe("classifyBashOutcome", () => {
-	it("success exit 0 hides stdout", () => {
+	it("success omits chip even with stdout", () => {
 		assert.deepEqual(
 			classifyBashOutcome({
 				isPartial: false,
 				isError: false,
 				text: "hello\nworld\n",
 			}),
-			{ kind: "success", chip: "exit 0" },
+			{ kind: "success" },
 		);
 	});
 
-	it("soft on empty successful stdout", () => {
+	it("soft on empty successful stdout with no chip", () => {
 		assert.deepEqual(
 			classifyBashOutcome({
 				isPartial: false,
 				isError: false,
 				text: "",
 			}),
-			{ kind: "soft", chip: "exit 0 · empty" },
+			{ kind: "soft" },
 		);
 	});
 
@@ -249,14 +258,14 @@ describe("classifyForeignOutcome (Generic Kind Formatter)", () => {
 		);
 	});
 
-	it("success ok when there is content or an image", () => {
+	it("success omits ok chip when there is content or an image", () => {
 		assert.deepEqual(
 			classifyForeignOutcome({
 				isPartial: false,
 				isError: false,
 				text: "payload",
 			}),
-			{ kind: "success", chip: "ok" },
+			{ kind: "success" },
 		);
 		assert.deepEqual(
 			classifyForeignOutcome({
@@ -265,7 +274,7 @@ describe("classifyForeignOutcome (Generic Kind Formatter)", () => {
 				text: "",
 				isImage: true,
 			}),
-			{ kind: "success", chip: "ok" },
+			{ kind: "success" },
 		);
 	});
 
@@ -277,7 +286,7 @@ describe("classifyForeignOutcome (Generic Kind Formatter)", () => {
 				isError: false,
 				text: "hi",
 			}),
-			{ kind: "success", chip: "ok" },
+			{ kind: "success" },
 		);
 		assert.equal(
 			classifyQuietTool({

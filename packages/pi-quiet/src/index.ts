@@ -1,7 +1,7 @@
 /**
  * @zenspc/pi-quiet - Quiet Display for pi tools.
  *
- * Default once installed: Quiet Display (dense tool rows + Run Compaction).
+ * Default once installed: Quiet Display (verb-first rows + Verb Groups).
  * Sticky Preference: ~/.pi/agent/extensions/quiet.json
  *
  * Commands:
@@ -12,7 +12,7 @@
  *
  * Scope: all tools when Pi exposes registerToolRenderer (built-ins + Foreign Tools).
  * Fallback without the hook: built-in read/bash/edit/write/find/grep/ls only.
- * Assistant prose and thinking still split compaction.
+ * Assistant prose and thinking still split Verb Groups.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";

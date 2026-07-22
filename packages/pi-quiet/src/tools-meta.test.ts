@@ -6,6 +6,8 @@ import {
 	isQuietToolName,
 	setForeignToolsQuiet,
 	toolParticipatesInQuiet,
+	verbGroupJoins,
+	verbGroupKind,
 } from "./tools-meta.ts";
 
 afterEach(() => {
@@ -30,5 +32,27 @@ describe("toolParticipatesInQuiet", () => {
 
 	it("exports the Foreign Kind Emoji", () => {
 		assert.equal(FOREIGN_KIND_EMOJI, "🧩");
+	});
+});
+
+describe("verbGroupKind", () => {
+	it("maps tools to semantic kinds", () => {
+		assert.equal(verbGroupKind("read"), "file");
+		assert.equal(verbGroupKind("grep"), "search");
+		assert.equal(verbGroupKind("find"), "search");
+		assert.equal(verbGroupKind("ls"), "dir");
+		assert.equal(verbGroupKind("bash"), "command");
+		assert.equal(verbGroupKind("edit"), "editFile");
+		assert.equal(verbGroupKind("write"), "editFile");
+		assert.equal(verbGroupKind("mcp"), "other");
+	});
+
+	it("only explore + other kinds join Verb Groups", () => {
+		assert.equal(verbGroupJoins("file"), true);
+		assert.equal(verbGroupJoins("search"), true);
+		assert.equal(verbGroupJoins("dir"), true);
+		assert.equal(verbGroupJoins("other"), true);
+		assert.equal(verbGroupJoins("command"), false);
+		assert.equal(verbGroupJoins("editFile"), false);
 	});
 });
