@@ -1,13 +1,19 @@
 /**
- * Run Compaction planner (pure).
+ * Verb Group planner (pure).
  *
- * Folds maximal runs of strict-neighbor, same-kind, settled success|soft Quiet Rows
- * into Compaction Groups. Last member is the carrier; earlier members are hidden.
+ * Folds maximal runs of strict-neighbor, same Verb Group Kind, settled success|soft
+ * Quiet Rows into Verb Groups. Last member is the carrier; earlier members are hidden.
+ * Only joinable kinds fold (File, Search, Dir, Other). Command and EditFile stay singletons.
  * Pending rows are always singletons and never join; they do not unpack an already
  * settled same-kind group that ended immediately before them.
  */
 
-import { toolParticipatesInQuiet } from "./tools-meta.ts";
+import {
+	toolParticipatesInQuiet,
+	verbGroupJoins,
+	verbGroupKind,
+	type VerbGroupKind,
+} from "./tools-meta.ts";
 
 export type CompactionOutcomeKind = "success" | "soft" | "hard";
 
@@ -40,31 +46,37 @@ export type CompactionRole = {
 
 export type CompactionPlan = Map<string, CompactionRole>;
 
+function rowVerbKind(row: CompactionRow): VerbGroupKind {
+	return verbGroupKind(row.toolName);
+}
+
 function canJoinGroup(row: CompactionRow): boolean {
 	if (row.splitter) return false;
 	if (!row.quiet) return false;
 	if (row.status !== "settled") return false;
-	return row.outcomeKind === "success" || row.outcomeKind === "soft";
+	if (!(row.outcomeKind === "success" || row.outcomeKind === "soft")) return false;
+	return verbGroupJoins(rowVerbKind(row));
 }
 
-/** Keep full bodies only for rows that may join a group / need carrier expand. */
+/** Keep full bodies only for rows that may join a Verb Group / need carrier expand. */
 export function shouldRetainResult(
 	toolName: string,
 	outcomeKind: CompactionOutcomeKind | undefined,
 ): boolean {
 	return (
 		toolParticipatesInQuiet(toolName) &&
+		verbGroupJoins(verbGroupKind(toolName)) &&
 		(outcomeKind === "success" || outcomeKind === "soft")
 	);
 }
 
 /**
- * Plan compaction roles for an ordered transcript of tool rows (+ optional splitters).
+ * Plan Verb Group roles for an ordered transcript of tool rows (+ optional splitters).
  * Splitter / non-participating rows still appear as singleton so callers can ignore them.
  *
- * Compaction Groups are maximal runs of settled success|soft same-kind Quiet neighbors.
- * Pending tools never join; a trailing pending same-kind neighbor does not unpack the
- * settled group before it. The group grows only after that tool settles joinably.
+ * Verb Groups are maximal runs of settled success|soft neighbors sharing a joinable
+ * Verb Group Kind. Pending tools never join; a trailing pending same-kind neighbor does
+ * not unpack the settled group before it. The group grows only after that tool settles joinably.
  */
 export function planCompaction(rows: readonly CompactionRow[]): CompactionPlan {
 	const plan: CompactionPlan = new Map();
@@ -88,11 +100,11 @@ export function planCompaction(rows: readonly CompactionRow[]): CompactionPlan {
 		}
 
 		const memberIds = [start.toolCallId];
-		const kind = start.toolName;
+		const kind = rowVerbKind(start);
 		let j = i + 1;
 		while (j < rows.length) {
 			const next = rows[j]!;
-			if (canJoinGroup(next) && next.toolName === kind) {
+			if (canJoinGroup(next) && rowVerbKind(next) === kind) {
 				memberIds.push(next.toolCallId);
 				j += 1;
 				continue;

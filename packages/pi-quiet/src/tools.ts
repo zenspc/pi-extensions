@@ -35,11 +35,13 @@ import {
 } from "./classify.ts";
 import type { CompactionIndex } from "./compaction.ts";
 import {
+	displayTargets,
 	formatGroupHeader,
 	formatMemberBullet,
 	formatMemberSummary,
 	formatQuietResultLines,
 	formatSingletonCallLine,
+	groupKindForTool,
 } from "./format.ts";
 import {
 	resultIsImageFromContent,
@@ -200,8 +202,7 @@ function resolveOutcome(
 	const canReuseIndex =
 		!options.isPartial &&
 		settled?.status === "settled" &&
-		(settled.outcomeKind === "success" || settled.outcomeKind === "soft") &&
-		settled.chip !== undefined;
+		(settled.outcomeKind === "success" || settled.outcomeKind === "soft");
 	if (canReuseIndex) {
 		return { kind: settled.outcomeKind!, chip: settled.chip };
 	}
@@ -303,13 +304,20 @@ function buildQuietRenderers(
 			resetShell(box, theme, toolShellBgForStock(context.isPartial, context.isError));
 
 			const home = homedir();
+			const argsRec = args as Record<string, unknown>;
 			if (role.role === "carrier" && role.memberIds.length >= 2) {
-				const header = formatGroupHeader(toolName, role.memberIds.length);
+				const header = formatGroupHeader(
+					groupKindForTool(toolName),
+					role.memberIds.length,
+				);
 				box.addChild(new Text(theme.fg("toolTitle", theme.bold(header)), 0, 0));
 				return box;
 			}
 
-			const line = formatSingletonCallLine(toolName, args as Record<string, unknown>, home);
+			// Present tense while running; renderResult rewrites settled lines with chips.
+			const line = formatSingletonCallLine(toolName, argsRec, home, {
+				running: Boolean(context.isPartial),
+			});
 			box.addChild(new Text(theme.fg("toolTitle", theme.bold(line)), 0, 0));
 			return box;
 		},
@@ -366,9 +374,20 @@ function buildQuietRenderers(
 				}
 
 				const members = index.members(context.toolCallId);
-				const lines = members.map((m) =>
+				const pathKeys = members.map((m) => {
+					const a = m.args ?? {};
+					if (typeof a.path === "string" && a.path) return a.path;
+					if (m.toolName === "find" && typeof a.pattern === "string" && a.pattern) {
+						return a.pattern;
+					}
+					return "";
+				});
+				const targets = displayTargets(pathKeys, home);
+				const lines = members.map((m, i) =>
 					formatMemberBullet(
-						formatMemberSummary(m.toolName, m.args ?? {}, home),
+						formatMemberSummary(m.toolName, m.args ?? {}, home, {
+							displayTarget: pathKeys[i] ? targets[i] : undefined,
+						}),
 						m.chip,
 					),
 				);
@@ -384,23 +403,57 @@ function buildQuietRenderers(
 			paintShell(box, theme, toolShellBgForQuietOutcome(outcome.kind));
 
 			if (options.expanded && outcome.kind !== "pending") {
+				// Keep header line in past tense with chip, then Stock body.
+				const headerLine = formatSingletonCallLine(toolName, args, home, {
+					running: false,
+					chip: outcome.kind === "pending" ? undefined : outcome.chip,
+				});
+				if (box.children[0]) {
+					box.removeChild(box.children[0]);
+				}
+				box.addChild(new Text(theme.fg("toolTitle", theme.bold(headerLine)), 0, 0));
 				if (stock.renderResult) {
 					const stockCtx = stockResultContext(context);
 					const inner = stock.renderResult(result, options, theme, stockCtx);
 					shellState(context).stockResult = inner;
 					box.addChild(inner);
 				} else {
-					const text = resultText(result);
-					if (text) {
-						box.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
+					const bodyText = resultText(result);
+					if (bodyText) {
+						box.addChild(new Text(theme.fg("toolOutput", bodyText), 0, 0));
 					}
 				}
 				return emptyComponent();
 			}
 
+			// Collapsed: rewrite call line with past-tense verb + parenthetical chip.
+			if (outcome.kind === "pending") {
+				return emptyComponent();
+			}
+
+			const callLine = formatSingletonCallLine(toolName, args, home, {
+				running: false,
+				chip: outcome.chip,
+			});
+			if (box.children[0]) {
+				box.removeChild(box.children[0]);
+			}
+			box.addChild(
+				new Text(
+					theme.fg(
+						outcome.kind === "hard" ? "error" : colorForOutcome(outcome.kind),
+						theme.bold(callLine),
+					),
+					0,
+					0,
+				),
+			);
+
 			const showTail = outcome.kind === "hard";
-			const lines = formatQuietResultLines(outcome, showTail);
-			box.addChild(renderQuietLines(lines, theme, colorForOutcome(outcome.kind)));
+			const tailLines = formatQuietResultLines(outcome, showTail);
+			if (tailLines.length > 0) {
+				box.addChild(renderQuietLines(tailLines, theme, colorForOutcome(outcome.kind)));
+			}
 			return emptyComponent();
 		},
 	};

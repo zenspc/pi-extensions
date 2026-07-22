@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe("rowsFromMessages", () => {
-	it("rebuilds a Compaction Group across adjacent reads and splits on assistant prose", () => {
+	it("rebuilds a Verb Group across adjacent reads and splits on assistant prose", () => {
 		const messages = [
 			{
 				role: "assistant",
@@ -139,7 +139,8 @@ describe("rowsFromMessages", () => {
 		const rows = rowsFromMessages(messages);
 		const byId = new Map(rows.filter((r) => !r.splitter).map((r) => [r.toolCallId, r]));
 		assert.equal(byId.get("m1")?.quiet, true);
-		assert.equal(byId.get("m1")?.chip, "ok");
+		assert.equal(byId.get("m1")?.chip, undefined);
+		assert.equal(byId.get("m1")?.outcomeKind, "success");
 		assert.ok(byId.get("m1")?.result?.content?.length);
 		assert.equal(byId.get("m2")?.quiet, true);
 

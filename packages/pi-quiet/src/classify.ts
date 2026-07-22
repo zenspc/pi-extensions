@@ -99,7 +99,13 @@ export function classifyExploreOutcome(input: {
 					? "1 entry"
 					: `${n} entries`;
 
-	if (n === 0) return { kind: "soft", chip: label };
+	if (n === 0) {
+		// Soft Breakthrough: kind-specific copy (search says no matches).
+		if (input.tool === "grep" || input.tool === "find") {
+			return { kind: "soft", chip: "no matches" };
+		}
+		return { kind: "soft", chip: "empty" };
+	}
 	return { kind: "success", chip: label };
 }
 
@@ -114,8 +120,9 @@ export function classifyBashOutcome(input: {
 		const chip = exit ? `exit ${exit[1]}` : "failed";
 		return hard(chip, input.text);
 	}
-	if (!hasNonEmptyLine(input.text)) return { kind: "soft", chip: "exit 0 · empty" };
-	return { kind: "success", chip: "exit 0" };
+	// Clean bash success omits the chip (including empty stdout Soft classification).
+	if (!hasNonEmptyLine(input.text)) return { kind: "soft" };
+	return { kind: "success" };
 }
 
 export function classifyEditOutcome(input: {
@@ -151,9 +158,10 @@ export function classifyForeignOutcome(input: {
 }): QuietOutcome {
 	if (input.isPartial) return { kind: "pending" };
 	if (input.isError) return hard("failed", input.text);
-	if (input.isImage) return { kind: "success", chip: "ok" };
+	if (input.isImage) return { kind: "success" };
 	if (!hasNonEmptyLine(input.text)) return { kind: "soft", chip: "empty" };
-	return { kind: "success", chip: "ok" };
+	// Omit uninteresting (ok) chip on Foreign success.
+	return { kind: "success" };
 }
 
 export type ClassifyToolInput = {

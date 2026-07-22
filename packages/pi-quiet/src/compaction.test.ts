@@ -23,7 +23,7 @@ function row(
 	};
 }
 
-describe("planCompaction", () => {
+describe("planCompaction (Verb Groups)", () => {
 	it("leaves singletons alone", () => {
 		const rows = [row({ toolCallId: "a", toolName: "read" })];
 		const plan = planCompaction(rows);
@@ -35,7 +35,7 @@ describe("planCompaction", () => {
 		});
 	});
 
-	it("groups two adjacent same-kind successes; last is carrier", () => {
+	it("groups two adjacent File successes; last is carrier", () => {
 		const rows = [
 			row({ toolCallId: "a", toolName: "read", chip: "1 line" }),
 			row({ toolCallId: "b", toolName: "read", chip: "2 lines" }),
@@ -55,10 +55,21 @@ describe("planCompaction", () => {
 		});
 	});
 
+	it("groups grep and find together as Search", () => {
+		const rows = [
+			row({ toolCallId: "a", toolName: "grep", chip: "2 matches" }),
+			row({ toolCallId: "b", toolName: "find", chip: "3 files" }),
+		];
+		const plan = planCompaction(rows);
+		assert.equal(roleOf(plan, "a").role, "hidden");
+		assert.equal(roleOf(plan, "b").role, "carrier");
+		assert.deepEqual(roleOf(plan, "b").memberIds, ["a", "b"]);
+	});
+
 	it("allows Soft Breakthrough inside a group", () => {
 		const rows = [
 			row({ toolCallId: "a", toolName: "grep", outcomeKind: "success", chip: "2 matches" }),
-			row({ toolCallId: "b", toolName: "grep", outcomeKind: "soft", chip: "0 matches" }),
+			row({ toolCallId: "b", toolName: "grep", outcomeKind: "soft", chip: "no matches" }),
 		];
 		const plan = planCompaction(rows);
 		assert.equal(roleOf(plan, "a").role, "hidden");
@@ -81,7 +92,7 @@ describe("planCompaction", () => {
 		assert.deepEqual(roleOf(plan, "d").memberIds, ["c", "d"]);
 	});
 
-	it("different kinds do not group", () => {
+	it("different Verb Group Kinds do not group", () => {
 		const rows = [
 			row({ toolCallId: "a", toolName: "read" }),
 			row({ toolCallId: "b", toolName: "grep" }),
@@ -91,6 +102,20 @@ describe("planCompaction", () => {
 		assert.equal(roleOf(plan, "a").role, "singleton");
 		assert.equal(roleOf(plan, "b").role, "singleton");
 		assert.equal(roleOf(plan, "c").role, "singleton");
+	});
+
+	it("bash/edit/write never join Verb Groups", () => {
+		for (const toolName of ["bash", "edit", "write"] as const) {
+			const rows = [
+				row({ toolCallId: `${toolName}-1`, toolName }),
+				row({ toolCallId: `${toolName}-2`, toolName }),
+				row({ toolCallId: `${toolName}-3`, toolName }),
+			];
+			const plan = planCompaction(rows);
+			assert.equal(roleOf(plan, `${toolName}-1`).role, "singleton");
+			assert.equal(roleOf(plan, `${toolName}-2`).role, "singleton");
+			assert.equal(roleOf(plan, `${toolName}-3`).role, "singleton");
+		}
 	});
 
 	it("pending in the middle splits neighbors and never joins", () => {
@@ -140,7 +165,7 @@ describe("planCompaction", () => {
 			row({ toolCallId: "a", toolName: "read" }),
 			row({ toolCallId: "b", toolName: "read" }),
 			row({ toolCallId: "c", toolName: "read" }),
-			row({ toolCallId: "d", toolName: "read", outcomeKind: "success", chip: "1" }),
+			row({ toolCallId: "d", toolName: "read", outcomeKind: "success", chip: "1 line" }),
 		];
 		const plan = planCompaction(rows);
 		assert.equal(roleOf(plan, "a").role, "hidden");
@@ -174,7 +199,7 @@ describe("planCompaction", () => {
 	it("soft + success join; trailing pending stays singleton only", () => {
 		const rows = [
 			row({ toolCallId: "a", toolName: "grep", outcomeKind: "success", chip: "2 matches" }),
-			row({ toolCallId: "b", toolName: "grep", outcomeKind: "soft", chip: "0 matches" }),
+			row({ toolCallId: "b", toolName: "grep", outcomeKind: "soft", chip: "no matches" }),
 			row({
 				toolCallId: "c",
 				toolName: "grep",
@@ -229,20 +254,20 @@ describe("planCompaction", () => {
 		assert.deepEqual(roleOf(plan, "c").memberIds, ["b", "c"]);
 	});
 
-	it("Foreign Tools group by exact tool name when quiet", () => {
+	it("Foreign Tools group together as Other regardless of exact name", () => {
 		const rows = [
-			row({ toolCallId: "a", toolName: "mcp", chip: "ok" }),
-			row({ toolCallId: "b", toolName: "mcp", chip: "ok" }),
-			row({ toolCallId: "c", toolName: "subagent", chip: "ok" }),
+			row({ toolCallId: "a", toolName: "mcp", chip: undefined }),
+			row({ toolCallId: "b", toolName: "subagent", chip: undefined }),
+			row({ toolCallId: "c", toolName: "other_tool", chip: undefined }),
 		];
 		const plan = planCompaction(rows);
 		assert.equal(roleOf(plan, "a").role, "hidden");
-		assert.deepEqual(roleOf(plan, "b").memberIds, ["a", "b"]);
-		assert.equal(roleOf(plan, "c").role, "singleton");
+		assert.equal(roleOf(plan, "b").role, "hidden");
+		assert.deepEqual(roleOf(plan, "c").memberIds, ["a", "b", "c"]);
 	});
 
-	it("groups all seven quiet kinds the same way", () => {
-		for (const toolName of ["read", "bash", "edit", "write", "find", "grep", "ls"] as const) {
+	it("groups joinable explore kinds", () => {
+		for (const toolName of ["read", "find", "grep", "ls"] as const) {
 			const rows = [
 				row({ toolCallId: `${toolName}-1`, toolName }),
 				row({ toolCallId: `${toolName}-2`, toolName }),
@@ -268,7 +293,7 @@ describe("CompactionIndex", () => {
 			toolCallId: "a",
 			toolName: "read",
 			outcomeKind: "success",
-			chip: "1",
+			chip: "1 line",
 			args: { path: "/a" },
 			result: { content: [{ type: "text", text: "hi" }] },
 		});
@@ -289,7 +314,7 @@ describe("CompactionIndex", () => {
 				toolCallId: id,
 				toolName: "read",
 				outcomeKind: "success",
-				chip: "1",
+				chip: "1 line",
 				args: { path: `f${i}` },
 				result: { content: [{ type: "text", text: "hi" }] },
 			});
@@ -314,7 +339,7 @@ describe("CompactionIndex", () => {
 			toolCallId: "a",
 			toolName: "read",
 			outcomeKind: "success",
-			chip: "1",
+			chip: "1 line",
 			args: { path: "/a" },
 			result: { content: [{ type: "text", text: "a" }] },
 		});
@@ -323,7 +348,7 @@ describe("CompactionIndex", () => {
 			toolCallId: "b",
 			toolName: "read",
 			outcomeKind: "success",
-			chip: "1",
+			chip: "1 line",
 			args: { path: "/b" },
 			result: { content: [{ type: "text", text: "b" }] },
 		});
@@ -338,7 +363,7 @@ describe("CompactionIndex", () => {
 			toolCallId: "c",
 			toolName: "read",
 			outcomeKind: "success",
-			chip: "1",
+			chip: "1 line",
 			args: { path: "/c" },
 			result: { content: [{ type: "text", text: "c" }] },
 		});
@@ -348,7 +373,7 @@ describe("CompactionIndex", () => {
 		assert.ok((counts.get("c") ?? 0) >= 1, "new carrier must invalidate");
 	});
 
-	it("retains result only for quiet success|soft rows", () => {
+	it("retains result only for joinable quiet success|soft rows", () => {
 		const index = new CompactionIndex();
 		const body = { content: [{ type: "text", text: "boom" }], details: { x: 1 } };
 
@@ -372,11 +397,20 @@ describe("CompactionIndex", () => {
 		assert.equal(index.getRow("mcp")?.quiet, false);
 		assert.equal(index.getRow("mcp")?.result, undefined);
 
+		// bash is quiet but never joins - no retained body needed for groups.
+		index.onEnd({
+			toolCallId: "bash",
+			toolName: "bash",
+			outcomeKind: "success",
+			result: body,
+		});
+		assert.equal(index.getRow("bash")?.result, undefined);
+
 		index.onEnd({
 			toolCallId: "ok",
 			toolName: "read",
 			outcomeKind: "success",
-			chip: "1",
+			chip: "1 line",
 			result: body,
 		});
 		assert.deepEqual(index.getRow("ok")?.result, body);
@@ -385,7 +419,7 @@ describe("CompactionIndex", () => {
 			toolCallId: "soft",
 			toolName: "grep",
 			outcomeKind: "soft",
-			chip: "0 matches",
+			chip: "no matches",
 			result: body,
 		});
 		assert.deepEqual(index.getRow("soft")?.result, body);
@@ -400,22 +434,21 @@ describe("CompactionIndex", () => {
 			toolCallId: "mcp",
 			toolName: "mcp",
 			outcomeKind: "success",
-			chip: "ok",
 			args: { tool: "search" },
 			result: body,
 		});
 		assert.equal(index.getRow("mcp")?.quiet, true);
 		assert.deepEqual(index.getRow("mcp")?.result, body);
 
-		index.onStart({ toolCallId: "m2", toolName: "mcp", args: { tool: "list" } });
+		index.onStart({ toolCallId: "m2", toolName: "subagent", args: { tool: "list" } });
 		index.onEnd({
 			toolCallId: "m2",
-			toolName: "mcp",
+			toolName: "subagent",
 			outcomeKind: "success",
-			chip: "ok",
 			args: { tool: "list" },
 			result: body,
 		});
+		// Different Foreign names still fold as Other.
 		assert.equal(index.role("mcp").role, "hidden");
 		assert.equal(index.role("m2").role, "carrier");
 		assert.deepEqual(index.role("m2").memberIds, ["mcp", "m2"]);
