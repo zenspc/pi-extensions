@@ -7,7 +7,7 @@
  * settled same-kind group that ended immediately before them.
  */
 
-import { isQuietToolName } from "./tools-meta.ts";
+import { toolParticipatesInQuiet } from "./tools-meta.ts";
 
 export type CompactionOutcomeKind = "success" | "soft" | "hard";
 
@@ -53,7 +53,7 @@ export function shouldRetainResult(
 	outcomeKind: CompactionOutcomeKind | undefined,
 ): boolean {
 	return (
-		isQuietToolName(toolName) &&
+		toolParticipatesInQuiet(toolName) &&
 		(outcomeKind === "success" || outcomeKind === "soft")
 	);
 }
@@ -238,7 +238,7 @@ export class CompactionIndex {
 			const next: CompactionRow = {
 				...prev,
 				toolName: input.toolName,
-				quiet: isQuietToolName(input.toolName),
+				quiet: toolParticipatesInQuiet(input.toolName),
 				status: "pending",
 				args: input.args ?? prev.args,
 			};
@@ -247,7 +247,7 @@ export class CompactionIndex {
 			const next: CompactionRow = {
 				toolCallId: input.toolCallId,
 				toolName: input.toolName,
-				quiet: isQuietToolName(input.toolName),
+				quiet: toolParticipatesInQuiet(input.toolName),
 				status: "pending",
 				args: input.args,
 			};
@@ -271,7 +271,7 @@ export class CompactionIndex {
 		const base: CompactionRow = {
 			toolCallId: input.toolCallId,
 			toolName: input.toolName,
-			quiet: isQuietToolName(input.toolName),
+			quiet: toolParticipatesInQuiet(input.toolName),
 			status: "settled",
 			outcomeKind: input.outcomeKind,
 			chip: input.chip,

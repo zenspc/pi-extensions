@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import {
 	CompactionIndex,
 	type CompactionRow,
 	planCompaction,
 	roleOf,
 } from "./compaction.ts";
+import { setForeignToolsQuiet } from "./tools-meta.ts";
+
+afterEach(() => {
+	setForeignToolsQuiet(false);
+});
 
 function row(
 	partial: Partial<CompactionRow> & Pick<CompactionRow, "toolCallId" | "toolName">,
@@ -224,6 +229,18 @@ describe("planCompaction", () => {
 		assert.deepEqual(roleOf(plan, "c").memberIds, ["b", "c"]);
 	});
 
+	it("Foreign Tools group by exact tool name when quiet", () => {
+		const rows = [
+			row({ toolCallId: "a", toolName: "mcp", chip: "ok" }),
+			row({ toolCallId: "b", toolName: "mcp", chip: "ok" }),
+			row({ toolCallId: "c", toolName: "subagent", chip: "ok" }),
+		];
+		const plan = planCompaction(rows);
+		assert.equal(roleOf(plan, "a").role, "hidden");
+		assert.deepEqual(roleOf(plan, "b").memberIds, ["a", "b"]);
+		assert.equal(roleOf(plan, "c").role, "singleton");
+	});
+
 	it("groups all seven quiet kinds the same way", () => {
 		for (const toolName of ["read", "bash", "edit", "write", "find", "grep", "ls"] as const) {
 			const rows = [
@@ -345,12 +362,14 @@ describe("CompactionIndex", () => {
 		});
 		assert.equal(index.getRow("hard")?.result, undefined);
 
+		// Foreign Tools stay non-participating until the renderer hook enables them.
 		index.onEnd({
 			toolCallId: "mcp",
 			toolName: "mcp__x",
 			outcomeKind: "success",
 			result: body,
 		});
+		assert.equal(index.getRow("mcp")?.quiet, false);
 		assert.equal(index.getRow("mcp")?.result, undefined);
 
 		index.onEnd({
@@ -370,5 +389,35 @@ describe("CompactionIndex", () => {
 			result: body,
 		});
 		assert.deepEqual(index.getRow("soft")?.result, body);
+	});
+
+	it("retains Foreign Tool success bodies when Foreign Quiet is enabled", () => {
+		setForeignToolsQuiet(true);
+		const index = new CompactionIndex();
+		const body = { content: [{ type: "text", text: "payload" }] };
+
+		index.onEnd({
+			toolCallId: "mcp",
+			toolName: "mcp",
+			outcomeKind: "success",
+			chip: "ok",
+			args: { tool: "search" },
+			result: body,
+		});
+		assert.equal(index.getRow("mcp")?.quiet, true);
+		assert.deepEqual(index.getRow("mcp")?.result, body);
+
+		index.onStart({ toolCallId: "m2", toolName: "mcp", args: { tool: "list" } });
+		index.onEnd({
+			toolCallId: "m2",
+			toolName: "mcp",
+			outcomeKind: "success",
+			chip: "ok",
+			args: { tool: "list" },
+			result: body,
+		});
+		assert.equal(index.role("mcp").role, "hidden");
+		assert.equal(index.role("m2").role, "carrier");
+		assert.deepEqual(index.role("m2").memberIds, ["mcp", "m2"]);
 	});
 });
