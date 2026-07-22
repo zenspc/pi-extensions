@@ -1,6 +1,6 @@
 {
 	"name": "@zenspc/pi-quiet",
-	"version": "0.2.2",
+	"version": "0.3.0",
 	"description": "Quiet Display for Pi: dense tool rows (built-in + Foreign), Run Compaction, sticky on/off.",
 	"type": "module",
 	"license": "MIT",
