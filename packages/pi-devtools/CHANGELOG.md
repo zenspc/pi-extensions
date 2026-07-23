@@ -1,5 +1,11 @@
 # @zenspc/pi-devtools
 
+## 0.2.3
+
+### Patch Changes
+
+- 69cc084: Make `/context` overlays scroll in-component (↑↓/jk, PgUp/PgDn, g/G) so previews stay usable when other extensions own terminal scrolling.
+
 ## 0.2.2
 
 ### Patch Changes
