@@ -12,6 +12,35 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Box, matchesKey, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	applyScrollAction,
+	clampScrollOffset,
+	scrollActionForInput as scrollActionForInputRaw,
+	scrollRangeLabel,
+} from "./context-scroll.mjs";
+
+function scrollActionForInput(data: string, pageSize: number) {
+	return scrollActionForInputRaw(data, pageSize, matchesKey);
+}
+
+function terminalRows(tui: any): number {
+	const fromTui = tui?.terminal?.rows;
+	if (typeof fromTui === "number" && fromTui > 0) return fromTui;
+	const fromStdout = process.stdout?.rows;
+	if (typeof fromStdout === "number" && fromStdout > 0) return fromStdout;
+	return 24;
+}
+
+/** Full-screen custom UI options so sticky/scroll extensions do not steal keys. */
+const SCROLLABLE_OVERLAY_OPTIONS = {
+	overlay: true as const,
+	overlayOptions: {
+		anchor: "top-left" as const,
+		width: "100%" as const,
+		maxHeight: "100%" as const,
+		margin: 0,
+	},
+};
 
 type AnyRecord = Record<string, any>;
 
@@ -743,6 +772,7 @@ function helpText(): string {
 		"Report / dump content is not added to the model context.",
 		"",
 		"TUI: on /context prompt, press e or space to expand/collapse the body.",
+		"TUI: ↑/↓ j/k Ctrl+N/P scroll · PgUp/PgDn page · g/G or Home/End jump.",
 		"",
 		"Security note:",
 		"  Default prompt view is size metadata only.",
@@ -838,11 +868,88 @@ function formatPromptStatsPlain(title: string, body: string, expanded: boolean):
 	return `${header}${note}\n\n${capped.text}`;
 }
 
+/**
+ * Full-screen scrollable custom UI.
+ *
+ * Uses an overlay so extensions that hijack terminal/transcript scrolling
+ * (e.g. sticky editor) do not steal PageUp/PageDown or clip the body.
+ * Content scrolls inside the component via ↑↓ / j k / Ctrl+N/P / PgUp/PgDn.
+ * Overlay content is never added to the model context.
+ */
+async function showScrollableOverlay(
+	ctx: any,
+	buildBodyLines: (width: number, theme: any) => string[],
+	hints: (theme: any) => string,
+	handleExtraInput?: (data: string, api: { requestRender: () => void }) => boolean,
+) {
+	await ctx.ui.custom(
+		(tui: any, theme: any, _kb: any, done: (value?: unknown) => void) => {
+			let scrollOffset = 0;
+			// Last render metrics so handleInput can page by viewport size.
+			let lastViewport = 1;
+			let lastContent = 0;
+
+			return {
+				render(width: number): string[] {
+					const rows = terminalRows(tui);
+					// Box paddingY=1 consumes 2 rows; keep total <= terminal height.
+					const boxPadY = 2;
+					const footerLines = 1;
+					const maxInner = Math.max(4, rows - boxPadY);
+					const viewport = Math.max(1, maxInner - footerLines);
+					const innerWidth = Math.max(20, width - 2);
+
+					const body = buildBodyLines(innerWidth, theme).map((line) =>
+						visibleWidth(line) > innerWidth ? truncateToWidth(line, innerWidth) : line,
+					);
+					lastContent = body.length;
+					lastViewport = viewport;
+					scrollOffset = clampScrollOffset(scrollOffset, body.length, viewport);
+
+					const visible = body.slice(scrollOffset, scrollOffset + viewport);
+					// Pad short content so the footer stays at the bottom of the overlay.
+					while (visible.length < viewport) visible.push("");
+
+					const range = scrollRangeLabel(scrollOffset, viewport, body.length);
+					const canScroll = body.length > viewport;
+					const footer = theme.fg(
+						"dim",
+						canScroll
+							? `${range} · ${hints(theme)}`
+							: hints(theme),
+					);
+
+					const box = new Box(1, 1, (s) => theme.bg("customMessageBg", s));
+					box.addChild(new Text([...visible, footer].join("\n"), 0, 0));
+					return box.render(width);
+				},
+				invalidate() {},
+				handleInput(data: string) {
+					if (matchesKey(data, "enter") || matchesKey(data, "escape")) {
+						done(undefined);
+						return;
+					}
+					if (handleExtraInput?.(data, { requestRender: () => tui.requestRender() })) {
+						return;
+					}
+					const action = scrollActionForInput(data, Math.max(1, lastViewport - 1));
+					if (!action) return;
+					const next = applyScrollAction(action, scrollOffset, lastContent, lastViewport);
+					if (next === scrollOffset) return;
+					scrollOffset = next;
+					tui.requestRender();
+				},
+			};
+		},
+		SCROLLABLE_OVERLAY_OPTIONS,
+	);
+}
+
 async function showTextOverlay(title: string, body: string, ctx: any) {
 	const capped = capDump(body);
-	await ctx.ui.custom((_tui: any, theme: any, _kb: any, done: (value?: unknown) => void) => ({
-		render(width: number): string[] {
-			const box = new Box(1, 1, (s) => theme.bg("customMessageBg", s));
+	await showScrollableOverlay(
+		ctx,
+		(width, theme) => {
 			const header = [
 				theme.fg("accent", theme.bold(title)),
 				theme.fg(
@@ -850,61 +957,49 @@ async function showTextOverlay(title: string, body: string, ctx: any) {
 					`${capped.totalChars} chars · est ${fmt(estimateTokens(body))} tokens${capped.truncated ? " · display truncated" : ""}`,
 				),
 				"",
-			].join("\n");
-			const footer = `\n${theme.fg("dim", "Esc/Enter to close · not added to model context")}`;
-			const content = header + capped.text + footer;
-			const lines = content.split("\n").map((line) =>
+			];
+			const bodyLines = capped.text.split("\n").map((line) =>
 				visibleWidth(line) > width ? truncateToWidth(line, width) : line,
 			);
-			box.addChild(new Text(lines.join("\n"), 0, 0));
-			return box.render(width);
+			return [...header, ...bodyLines];
 		},
-		invalidate() {},
-		handleInput(data: string) {
-			if (matchesKey(data, "enter") || matchesKey(data, "escape")) done(undefined);
-		},
-	}));
+		() => "↑↓/jk scroll · PgUp/PgDn page · Esc/Enter close · not added to model context",
+	);
 }
 
 async function showPromptOverlay(title: string, body: string, ctx: any, initiallyExpanded = false) {
 	const stats = promptStats(body);
 	let expanded = initiallyExpanded;
-	await ctx.ui.custom((tui: any, theme: any, _kb: any, done: (value?: unknown) => void) => ({
-		render(width: number): string[] {
-			const box = new Box(1, 1, (s) => theme.bg("customMessageBg", s));
-			const headerLines = [
+	await showScrollableOverlay(
+		ctx,
+		(width, theme) => {
+			const lines = [
 				theme.fg("accent", theme.bold(title)),
 				theme.fg("dim", formatPromptStats(stats)),
 			];
-			let bodyText = "";
 			if (expanded) {
 				const capped = capDump(body);
-				const truncateNote = capped.truncated
-					? `\n${theme.fg("dim", "display truncated")}`
-					: "";
-				bodyText = `\n${truncateNote}\n${capped.text}`;
+				lines.push("");
+				if (capped.truncated) lines.push(theme.fg("dim", "display truncated"));
+				for (const line of capped.text.split("\n")) {
+					lines.push(visibleWidth(line) > width ? truncateToWidth(line, width) : line);
+				}
 			}
-			const expandHint = expanded ? "e/space collapse" : "e/space expand";
-			const footer = `\n${theme.fg("dim", `${expandHint} · Esc/Enter close · not added to model context`)}`;
-			const content = `${headerLines.join("\n")}${bodyText}${footer}`;
-			const lines = content.split("\n").map((line) =>
-				visibleWidth(line) > width ? truncateToWidth(line, width) : line,
-			);
-			box.addChild(new Text(lines.join("\n"), 0, 0));
-			return box.render(width);
+			return lines;
 		},
-		invalidate() {},
-		handleInput(data: string) {
-			if (matchesKey(data, "enter") || matchesKey(data, "escape")) {
-				done(undefined);
-				return;
-			}
+		() => {
+			const expandHint = expanded ? "e/space collapse" : "e/space expand";
+			return `${expandHint} · ↑↓/jk scroll · Esc/Enter close · not added to model context`;
+		},
+		(data, api) => {
 			if (matchesKey(data, "space") || data === "e" || data === "E") {
 				expanded = !expanded;
-				tui.requestRender();
+				api.requestRender();
+				return true;
 			}
+			return false;
 		},
-	}));
+	);
 }
 
 async function presentPrompt(title: string, body: string, ctx: any, expanded: boolean) {
@@ -917,28 +1012,16 @@ async function presentPrompt(title: string, body: string, ctx: any, expanded: bo
 }
 
 async function showContextOverlay(report: ContextReport, ctx: any) {
-	// overlay:false replaces the main viewport so the report fills the
-	// screen, is scrollable (Ctrl+N/P), and disappears on Esc without
-	// adding anything to the model context.
-	await ctx.ui.custom((_tui: any, theme: any, _kb: any, done: (value?: unknown) => void) => ({
-		render(width: number): string[] {
-			const box = new Box(1, 1, (s) => theme.bg("customMessageBg", s));
-			const body = [
-				...renderReport(report, theme, Math.max(20, width - 2)),
-				"",
-				theme.fg(
-					"dim",
-					"Esc/Enter to close · not added to model context · estimates = chars/4 unless provider measured",
-				),
-			].join("\n");
-			box.addChild(new Text(body, 0, 0));
-			return box.render(width);
-		},
-		invalidate() {},
-		handleInput(data: string) {
-			if (matchesKey(data, "enter") || matchesKey(data, "escape")) done(undefined);
-		},
-	}));
+	await showScrollableOverlay(
+		ctx,
+		(width, theme) => [
+			...renderReport(report, theme, width),
+			"",
+			theme.fg("dim", "estimates = chars/4 unless provider measured"),
+		],
+		() =>
+			"↑↓/jk · Ctrl+N/P scroll · PgUp/PgDn page · Esc/Enter close · not added to model context",
+	);
 }
 
 async function presentText(title: string, body: string, ctx: any) {
