@@ -66,6 +66,13 @@ Subcommands:
 In the TUI, `/context prompt` starts collapsed.
 Press `e` or `space` to expand or collapse the body.
 
+Context overlays scroll inside the component (not via terminal scrollback), so they keep working when other extensions (for example sticky editor) own transcript scrolling:
+
+- `↑` / `↓`, `j` / `k`, `Ctrl+N` / `Ctrl+P` - line scroll
+- `PgUp` / `PgDn` - page scroll
+- `g` / `Home`, `G` / `End` - jump top/bottom
+- `Esc` / `Enter` - close
+
 Overlay content is never added to the model context.
 
 Security note:
@@ -129,5 +136,6 @@ Or:
 extensions/cd-command.ts
 extensions/cd-helpers.mjs
 extensions/context-command.ts
+extensions/context-scroll.mjs
 extensions/custom-footer.ts
 ```
