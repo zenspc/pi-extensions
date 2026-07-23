@@ -1,6 +1,6 @@
 {
   "name": "@zenspc/pi-devtools",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Context usage report, cwd switching (/cd), and richer session footer for Pi",
   "keywords": [
     "pi-package",
