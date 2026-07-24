@@ -1,0 +1,49 @@
+{
+	"name": "@zenspc/pi-codebase-memory",
+	"version": "0.0.0",
+	"description": "Token-efficient codebase intelligence for pi. Wraps codebase-memory-mcp into 4 consolidated tools instead of 14.",
+	"type": "module",
+	"license": "MIT",
+	"author": "dhairyaar",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/zenspc/pi-extensions.git",
+		"directory": "packages/pi-codebase-memory"
+	},
+	"bugs": {
+		"url": "https://github.com/zenspc/pi-extensions/issues"
+	},
+	"homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-codebase-memory#readme",
+	"publishConfig": {
+		"access": "public"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"codebase-memory",
+		"search",
+		"graph",
+		"intelligence"
+	],
+	"files": [
+		"src/",
+		"!src/**/*.test.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	],
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"typebox": "*"
+	},
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"scripts": {
+		"test": "node --experimental-strip-types --test src/*.test.ts",
+		"prepack": "cp --remove-destination ../../LICENSE LICENSE",
+		"postpack": "ln -sfn ../../LICENSE LICENSE"
+	}
+}
