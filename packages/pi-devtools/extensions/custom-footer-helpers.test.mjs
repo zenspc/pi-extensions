@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
 	addAssistantUsage,
 	emptyFooterUsageTotals,
+	latestCacheHitRate,
 	resolveFooterThinkingLevel,
 	sumAssistantUsageFromBranch,
 	thinkingLevelColorToken,
@@ -93,6 +94,8 @@ describe("emptyFooterUsageTotals", () => {
 			output: 0,
 			cost: 0,
 			reasoning: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
 		});
 	});
 });
@@ -108,7 +111,9 @@ describe("sumAssistantUsageFromBranch", () => {
 				input: 100,
 				output: 50,
 				cost: { total: 0.012 },
-				reasoningTokens: 20,
+				reasoning: 20,
+				cacheRead: 7,
+				cacheWrite: 3,
 			}),
 		];
 		assert.deepEqual(sumAssistantUsageFromBranch(branch), {
@@ -116,6 +121,8 @@ describe("sumAssistantUsageFromBranch", () => {
 			output: 50,
 			cost: 0.012,
 			reasoning: 20,
+			cacheRead: 7,
+			cacheWrite: 3,
 		});
 	});
 
@@ -126,7 +133,9 @@ describe("sumAssistantUsageFromBranch", () => {
 				input: 10,
 				output: 5,
 				cost: { total: 0.001 },
-				reasoningTokens: 2,
+				reasoning: 2,
+				cacheRead: 4,
+				cacheWrite: 2,
 			}),
 			{ type: "message", message: { role: "toolResult", content: "ok" } },
 			{ type: "compaction", summary: "x" },
@@ -136,10 +145,12 @@ describe("sumAssistantUsageFromBranch", () => {
 			output: 5,
 			cost: 0.001,
 			reasoning: 2,
+			cacheRead: 4,
+			cacheWrite: 2,
 		});
 	});
 
-	it("treats missing reasoningTokens as 0", () => {
+	it("treats missing reasoning as 0", () => {
 		const branch = [
 			assistantEntry({
 				input: 1,
@@ -152,6 +163,8 @@ describe("sumAssistantUsageFromBranch", () => {
 			output: 2,
 			cost: 0.5,
 			reasoning: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
 		});
 	});
 
@@ -176,7 +189,9 @@ describe("addAssistantUsage", () => {
 				input: 100,
 				output: 40,
 				cost: { total: 0.01 },
-				reasoningTokens: 5,
+				reasoning: 5,
+				cacheRead: 7,
+				cacheWrite: 3,
 			},
 		};
 		const m2 = {
@@ -185,7 +200,9 @@ describe("addAssistantUsage", () => {
 				input: 200,
 				output: 60,
 				cost: { total: 0.02 },
-				reasoningTokens: 15,
+				reasoning: 15,
+				cacheRead: 12,
+				cacheWrite: 5,
 			},
 		};
 		const folded = addAssistantUsage(addAssistantUsage(emptyFooterUsageTotals(), m1), m2);
@@ -199,6 +216,48 @@ describe("addAssistantUsage", () => {
 			output: 100,
 			cost: 0.03,
 			reasoning: 20,
+			cacheRead: 19,
+			cacheWrite: 8,
 		});
+	});
+
+	it("ignores the obsolete reasoning-token field name", () => {
+		// Regression: the footer previously read a reasoning-tokens field that
+		// does not exist on the real Usage shape (the field is usage.reasoning).
+		// The old name is built dynamically so the literal cannot be mistaken
+		// for a live usage read in grep audits.
+		const oldFieldName = "reasoning" + "Tokens";
+		const totals = addAssistantUsage(emptyFooterUsageTotals(), {
+			role: "assistant",
+			usage: { [oldFieldName]: 99, reasoning: 5 },
+		});
+		assert.equal(totals.reasoning, 5);
+		assert.notEqual(totals.reasoning, 99);
+	});
+});
+
+describe("latestCacheHitRate", () => {
+	it("returns null when usage is missing or empty", () => {
+		assert.equal(latestCacheHitRate({}), null);
+		assert.equal(latestCacheHitRate({ usage: {} }), null);
+		assert.equal(latestCacheHitRate(null), null);
+	});
+
+	it("returns null when input + cacheRead + cacheWrite is 0", () => {
+		assert.equal(latestCacheHitRate({ usage: { input: 0, cacheRead: 0, cacheWrite: 0 } }), null);
+	});
+
+	it("computes the exact percentage for a known input", () => {
+		assert.equal(
+			latestCacheHitRate({ usage: { input: 10, cacheRead: 90, cacheWrite: 0 } }),
+			90.0,
+		);
+	});
+
+	it("uses all three terms in the denominator", () => {
+		assert.equal(
+			latestCacheHitRate({ usage: { input: 25, cacheRead: 50, cacheWrite: 25 } }),
+			50.0,
+		);
 	});
 });

@@ -33,12 +33,12 @@ export function thinkingLevelColorToken(level) {
 }
 
 /**
- * @typedef {{ input: number, output: number, cost: number, reasoning: number }} FooterUsageTotals
+ * @typedef {{ input: number, output: number, cost: number, reasoning: number, cacheRead: number, cacheWrite: number }} FooterUsageTotals
  */
 
 /** @returns {FooterUsageTotals} */
 export function emptyFooterUsageTotals() {
-	return { input: 0, output: 0, cost: 0, reasoning: 0 };
+	return { input: 0, output: 0, cost: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 };
 }
 
 /**
@@ -60,9 +60,27 @@ export function addAssistantUsage(totals, message) {
 	return {
 		input: totals.input + asNumber(usage?.input),
 		output: totals.output + asNumber(usage?.output),
+		cacheRead: totals.cacheRead + asNumber(usage?.cacheRead),
+		cacheWrite: totals.cacheWrite + asNumber(usage?.cacheWrite),
 		cost: totals.cost + asNumber(usage?.cost?.total),
-		reasoning: totals.reasoning + asNumber(usage?.reasoningTokens),
+		reasoning: totals.reasoning + asNumber(usage?.reasoning),
 	};
+}
+
+/**
+ * Latest-response cache hit rate as a percentage, or null when not computable.
+ *
+ * Matches the built-in footer's definition: cacheRead / (input + cacheRead +
+ * cacheWrite) * 100. Returns null when the denominator is <= 0.
+ *
+ * @param {any} message  // AssistantMessage-like with usage fields
+ * @returns {number | null}
+ */
+export function latestCacheHitRate(message) {
+	const usage = message?.usage;
+	const denom = asNumber(usage?.input) + asNumber(usage?.cacheRead) + asNumber(usage?.cacheWrite);
+	if (denom <= 0) return null;
+	return (asNumber(usage?.cacheRead) / denom) * 100;
 }
 
 /**

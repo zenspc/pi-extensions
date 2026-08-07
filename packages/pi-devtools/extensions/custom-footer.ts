@@ -4,6 +4,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
   addAssistantUsage,
   emptyFooterUsageTotals,
+  latestCacheHitRate,
   resolveFooterThinkingLevel,
   sumAssistantUsageFromBranch,
   thinkingLevelColorToken,
@@ -47,6 +48,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     // Track tokens/sec for the most recent assistant response
     let lastSpeed: number | null = null;
+    // Latest-response cache hit rate (percent), for the CH stat
+    let lastCacheHitRate: number | null = null;
     let assistantStartTime: number | null = null;
 
     // Time since last assistant response (prompt-cache freshness heuristic)
@@ -95,6 +98,7 @@ export default function (pi: ExtensionAPI) {
       const entry = branch[i];
       if (entry.type === "message" && entry.message.role === "assistant") {
         lastResponseAt = parseEntryTimestamp(entry.timestamp);
+        lastCacheHitRate = latestCacheHitRate(entry.message);
         break;
       }
     }
@@ -133,6 +137,7 @@ export default function (pi: ExtensionAPI) {
         }
         assistantStartTime = null;
         lastResponseAt = Date.now();
+        lastCacheHitRate = latestCacheHitRate(m);
         idleFrozen = false;
         usageTotals = addAssistantUsage(usageTotals, m);
         startIdleTick();
@@ -176,7 +181,7 @@ export default function (pi: ExtensionAPI) {
         dispose,
         invalidate() {},
         render(width: number): string[] {
-          const { input, output, cost, reasoning } = usageTotals;
+          const { input, output, cost, reasoning, cacheRead, cacheWrite } = usageTotals;
 
           const fmt = (n: number) => {
             if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -187,16 +192,24 @@ export default function (pi: ExtensionAPI) {
           // Separator
           const sep = " " + theme.fg("dim", "│") + " ";
 
-          // Session context usage — model's context window
+          // Session context usage: canonical ContextUsage fields. tokens/percent
+          // are null right after compaction until the next LLM response; render
+          // that as "?" like the built-in footer. Use nullish (== null) checks:
+          // getContextUsage() can return undefined, and a crash in render() is
+          // not acceptable on this hot path.
           const contextUsage = ctx.getContextUsage();
-          const ctxLimit = contextUsage?.limit ?? ctx.model?.contextWindow ?? 0;
-          const ctxTokens = contextUsage?.tokens ?? 0;
+          const ctxLimit = contextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
+          const ctxPct = contextUsage?.percent; // number | null | undefined
           let contextStr = "";
           if (ctxLimit > 0) {
-            const pct = (ctxTokens / ctxLimit) * 100;
-            const color = pct > 80 ? "error" : pct > 50 ? "warning" : "success";
+            const pctStr = ctxPct == null ? "?" : ctxPct.toFixed(1);
+            // percent drives the color; unknown (post-compaction) -> neutral/dim
+            const color =
+              ctxPct == null ? "dim" :
+              ctxPct > 80 ? "error" :
+              ctxPct > 50 ? "warning" : "success";
             contextStr =
-              theme.fg(color, fmt(ctxTokens)) + theme.fg("dim", "/" + fmt(ctxLimit));
+              theme.fg(color, pctStr + "%") + theme.fg("dim", "/" + fmt(ctxLimit));
           }
 
           const gitBranch = footerData.getGitBranch();
@@ -204,6 +217,18 @@ export default function (pi: ExtensionAPI) {
           // Colored stat labels — using valid theme token names only
           const arrowUp = theme.fg("success", "↑") + theme.fg("text", fmt(input));
           const arrowDown = theme.fg("error", "↓") + theme.fg("text", fmt(output));
+          const cacheReadStr =
+            cacheRead > 0 ? theme.fg("mdLink", "R") + theme.fg("text", fmt(cacheRead)) : "";
+          const cacheWriteStr =
+            cacheWrite > 0 ? theme.fg("mdLink", "W") + theme.fg("text", fmt(cacheWrite)) : "";
+          // CH only when the session has cache activity, like the built-in footer
+          // (footer.js: totalCacheRead>0 || totalCacheWrite>0, and a computable
+          // latest hit rate). Without the gate, cache-less providers would show
+          // a permanent CH0.0%.
+          const hitRateStr =
+            (cacheRead > 0 || cacheWrite > 0) && lastCacheHitRate !== null
+              ? theme.fg("mdLink", "CH") + theme.fg("text", lastCacheHitRate.toFixed(1) + "%")
+              : "";
           const reasoningStr =
             reasoning > 0 ? theme.fg("accent", "R") + theme.fg("text", fmt(reasoning)) : "";
           const costStr = theme.fg("warning", "$" + cost.toFixed(3));
@@ -236,6 +261,9 @@ export default function (pi: ExtensionAPI) {
           const leftParts = [
             arrowUp,
             arrowDown,
+            cacheReadStr,
+            cacheWriteStr,
+            hitRateStr,
             reasoningStr,
             costStr,
             contextStr,
