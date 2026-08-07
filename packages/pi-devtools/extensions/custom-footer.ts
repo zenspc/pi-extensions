@@ -8,6 +8,7 @@ import {
   resolveFooterThinkingLevel,
   sumAssistantUsageFromBranch,
   thinkingLevelColorToken,
+  trimLeftParts,
 } from "./custom-footer-helpers.mjs";
 
 // Heuristic only: providers can invalidate prompt cache for non-time reasons
@@ -31,6 +32,12 @@ function formatElapsed(ms: number): string {
   const hours = Math.floor(totalMin / 60);
   const min = totalMin % 60;
   return `${hours}h${String(min).padStart(2, "0")}m`;
+}
+
+// Same control-char + multi-space collapse as the built-in footer, so
+// extension statuses render identically to Pi's own footer line.
+function sanitizeStatusText(text: string): string {
+  return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
 }
 
 function parseEntryTimestamp(timestamp: unknown): number | null {
@@ -88,6 +95,12 @@ export default function (pi: ExtensionAPI) {
     // thinking_level_select only fires on actual changes, not session start.
     // Always read live level via pi.getThinkingLevel() in render; this just repaints.
     pi.on("thinking_level_select", async () => {
+      requestRender?.();
+    });
+
+    // Model switches do not fire agent/message events. Repaint so the model
+    // id and provider shown in the footer update immediately after /model.
+    pi.on("model_select", async () => {
       requestRender?.();
     });
 
@@ -252,6 +265,16 @@ export default function (pi: ExtensionAPI) {
           const levelColor = thinkingLevelColorToken(thinkingLevel);
           const levelDot = theme.fg(levelColor, "●");
           const modelStr = theme.fg("accent", ctx.model?.id || "no-model");
+          // Provider prefix when multiple providers are configured and it fits.
+          let modelDisplay = modelStr;
+          const providerCount = footerData.getAvailableProviderCount();
+          const providerName = ctx.model?.provider;
+          if (providerCount > 1 && providerName) {
+            const withProvider = theme.fg("dim", `(${providerName}) `) + modelStr;
+            if (visibleWidth(withProvider) <= width) {
+              modelDisplay = withProvider;
+            }
+          }
           const levelStr = theme.fg("muted", thinkingLevel);
 
           // Git branch — use success color
@@ -274,17 +297,58 @@ export default function (pi: ExtensionAPI) {
           const left = leftParts.join(sep);
 
           // ===== RIGHT: model info =====
-          const rightParts = [modelStr, levelDot + " " + levelStr, gitStr].filter(Boolean);
+          const rightParts = [modelDisplay, levelDot + " " + levelStr, gitStr].filter(Boolean);
 
           const right = rightParts.join(" " + theme.fg("dim", "•") + " ");
-          const midSep = right ? " " + theme.fg("dim", "│") + " " : "";
+          const rightWidth = visibleWidth(right);
+          const sepWidth = visibleWidth(sep);
 
-          // Pad left side so right side is right-aligned
-          const leftContent = left + midSep;
-          const padNeeded = Math.max(1, width - visibleWidth(leftContent) - visibleWidth(right));
-          const pad = " ".repeat(padNeeded);
+          // The right side (model/level/git) is the identity anchor users scan
+          // for on narrow panes, so it is never end-truncated. Budget the left
+          // side so right + separator always fit: drop lowest-priority stats
+          // from the end first, always keeping the ↑/↓ anchors.
+          let leftToRender = left;
+          const leftBudget = Math.max(0, width - rightWidth - sepWidth);
+          if (rightWidth === 0) {
+            leftToRender = truncateToWidth(left, width, "…");
+          } else if (visibleWidth(left) > leftBudget) {
+            const anchorCount = 2; // arrowUp, arrowDown always visible
+            const trimmedParts = trimLeftParts(leftParts, sep, leftBudget, anchorCount);
+            leftToRender = trimmedParts.join(sep);
+            if (visibleWidth(leftToRender) > leftBudget) {
+              leftToRender = truncateToWidth(leftToRender, leftBudget, "…");
+            }
+          }
 
-          return [truncateToWidth(leftContent + pad + right, width)];
+          const leftWidth = visibleWidth(leftToRender);
+          // The right side gets every column left over; end-truncate it only
+          // when even an empty left cannot make room (right alone wider than
+          // the pane). Mirrors the built-in footer, which truncates the right
+          // side and never end-truncates the whole line.
+          const rightRoom = Math.max(0, width - leftWidth - (rightWidth === 0 ? 0 : sepWidth));
+          let rightToRender = right;
+          if (rightWidth > rightRoom) {
+            rightToRender = truncateToWidth(right, rightRoom, "…");
+          }
+          const rightToRenderWidth = visibleWidth(rightToRender);
+          const pad =
+            rightWidth === 0 ? "" : " ".repeat(Math.max(0, rightRoom - rightToRenderWidth));
+          const statsLine =
+            rightWidth === 0 ? leftToRender : leftToRender + sep + pad + rightToRender;
+
+          const lines: string[] = [statsLine];
+
+          // ===== EXTENSION STATUSES =====
+          const extensionStatuses = footerData.getExtensionStatuses();
+          if (extensionStatuses.size > 0) {
+            const sortedStatuses = Array.from(extensionStatuses.entries())
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([, text]) => sanitizeStatusText(text));
+            const statusLine = sortedStatuses.join(" ");
+            lines.push(truncateToWidth(statusLine, width, theme.fg("dim", "…")));
+          }
+
+          return lines;
         },
       };
     });

@@ -93,6 +93,9 @@ Richer footer status for the active session, including response timing and cache
 
 `PI_CACHE_RETENTION=long` switches the cache TTL heuristic to the longer retention window.
 
+Extension statuses set via `ctx.ui.setStatus()` render as a footer status line.
+When multiple providers are configured, the active provider is shown in parentheses.
+
 ## Install only one extension
 
 ```json

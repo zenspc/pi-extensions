@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	addAssistantUsage,
+	displayWidth,
 	emptyFooterUsageTotals,
 	latestCacheHitRate,
 	resolveFooterThinkingLevel,
 	sumAssistantUsageFromBranch,
 	thinkingLevelColorToken,
 	THINKING_LEVEL_COLORS,
+	trimLeftParts,
 } from "./custom-footer-helpers.mjs";
 
 /**
@@ -233,6 +235,71 @@ describe("addAssistantUsage", () => {
 		});
 		assert.equal(totals.reasoning, 5);
 		assert.notEqual(totals.reasoning, 99);
+	});
+});
+
+describe("displayWidth", () => {
+	it("counts plain ASCII by character", () => {
+		assert.equal(displayWidth("↑ 12.3k"), 7);
+	});
+
+	it("ignores ANSI escape sequences", () => {
+		assert.equal(displayWidth("\x1b[32mabc\x1b[0m"), 3);
+	});
+
+	it("counts East Asian wide characters as two columns", () => {
+		assert.equal(displayWidth("中文"), 4);
+	});
+
+	it("expands tabs to three columns", () => {
+		assert.equal(displayWidth("a\tb"), 5);
+	});
+
+	it("counts zero-width characters as zero", () => {
+		assert.equal(displayWidth("e\u0301"), 1); // e + combining acute
+		assert.equal(displayWidth("a\u200db"), 2); // ZWJ between two letters
+	});
+
+	it("returns 0 for the empty string", () => {
+		assert.equal(displayWidth(""), 0);
+	});
+});
+
+describe("trimLeftParts", () => {
+	it("returns parts unchanged when everything fits", () => {
+		assert.deepEqual(trimLeftParts(["↑1", "↓2", "CH90%"], " | ", 20), ["↑1", "↓2", "CH90%"]);
+	});
+
+	it("drops only the last part when one extra", () => {
+		assert.deepEqual(trimLeftParts(["aa", "bb", "cc"], " ", 6), ["aa", "bb"]);
+	});
+
+	it("drops from the end until it fits", () => {
+		assert.deepEqual(trimLeftParts(["aa", "bb", "cc", "dd"], " ", 5), ["aa", "bb"]);
+	});
+
+	it("keeps the anchored prefix even when it exceeds the budget (keepFrom=2)", () => {
+		assert.deepEqual(trimLeftParts(["a", "b", "c", "d"], " ", 1, 2), ["a", "b"]);
+	});
+
+	it("returns [] for empty parts", () => {
+		assert.deepEqual(trimLeftParts([], " | ", 10), []);
+	});
+
+	it("drops the only part at budget 0 when it is droppable (default keepFrom=0)", () => {
+		assert.deepEqual(trimLeftParts(["xx"], " | ", 0), []);
+	});
+
+	it("keeps a single anchor part as-is at budget 0 (keepFrom=1)", () => {
+		assert.deepEqual(trimLeftParts(["xx"], " | ", 0, 1), ["xx"]);
+	});
+
+	it("drops trailing parts by index, not value (duplicate parts)", () => {
+		assert.deepEqual(trimLeftParts(["x", "x", "x"], " ", 1), ["x"]);
+	});
+
+	it("is a no-op when keepFrom equals parts.length", () => {
+		assert.deepEqual(trimLeftParts(["a", "b"], " ", 0, 2), ["a", "b"]);
 	});
 });
 
