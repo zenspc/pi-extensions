@@ -19,6 +19,8 @@ pi install ./packages/pi-spinner
 
 1. Run `/spinner` inside pi to open the customization TUI.
 2. Pick an animation preset, edit your message list, set the cycle interval, and save (to global or project).
+   You can also edit custom frames and the frame interval from the same menu.
+   An empty frames editor clears the override so the preset shows again.
 3. Next time pi streams a response, the loader uses your new animation and rotates through your messages.
 
 If you never customize anything, the extension uses pi's built-in defaults: braille spinner, "Working..." text, no rotation. You can opt out by running `/spinner-reset` and the loader returns to pi's default.
@@ -75,7 +77,8 @@ Merge order: built-in defaults < global < project. So a project file with just `
 	"cycleIntervalMs": 5000,
 
 	// Optional raw animation frames. When non-empty, this overrides `preset`.
-	// Each frame is up to 4 characters; max 32 frames.
+	// Each frame is up to 8 characters; max 32 frames.
+	// Editable from /spinner; an empty frames editor clears the override.
 	"customFrames": ["⠋", "⠙", "⠹", "⠸"],
 	// Frame interval (ms) for `customFrames`. Clamped to [50, 2000]. Default 100.
 	"customIntervalMs": 80
@@ -116,7 +119,9 @@ Merge order: built-in defaults < global < project. So a project file with just `
 
 - The custom loader is only visible in interactive TUI mode, consistent with pi's own loading UI. RPC/print/JSON runs ignore it.
 - Custom animation frames are rendered verbatim; the extension wraps them in `theme.fg("accent", ...)` for the built-in presets, so theme changes (light/dark) are honored automatically. If you supply `customFrames`, they also use the accent color.
-- The editor that opens for message editing uses pi's standard input editor, so familiar shortcuts work.
+- The editor that opens for message and custom-frame editing uses pi's standard input editor, so familiar shortcuts work.
+- Custom frames are also editable from `/spinner`.
+  An empty frames editor clears the override so the preset is active again.
 
 ## Security notes
 
@@ -130,7 +135,7 @@ Hardening applied at the config boundary:
 - Keys are allowlisted; unknown fields (including `customized` runtime state) are never persisted.
 - Preset names must match a built-in; unknown names are dropped.
 - Messages and frames are stripped of ANSI/control characters before they reach the TUI.
-- Message count (50), message length (120), frame count (32), and frame length (4) are hard-capped.
+- Message count (50), message length (120), frame count (32), and frame length (8) are hard-capped.
 - Intervals are clamped to documented ranges.
 
 This package does not touch the network, credentials, or the model context.

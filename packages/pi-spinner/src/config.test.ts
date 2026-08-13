@@ -50,8 +50,10 @@ describe("sanitizeMessage / sanitizeFrame", () => {
 		assert.equal(sanitizeMessage(12), undefined);
 		const long = "x".repeat(LIMITS.MAX_MESSAGE_LENGTH + 40);
 		assert.equal(sanitizeMessage(long)?.length, LIMITS.MAX_MESSAGE_LENGTH);
-		assert.equal(sanitizeFrame("toolong"), undefined); // > MAX_FRAME_LENGTH after clean
 		assert.equal(sanitizeFrame("abcd"), "abcd");
+		assert.equal(sanitizeFrame("▱▱▱▱▱"), "▱▱▱▱▱");
+		assert.equal(sanitizeFrame("12345678"), "12345678");
+		assert.equal(sanitizeFrame("123456789"), undefined);
 	});
 });
 

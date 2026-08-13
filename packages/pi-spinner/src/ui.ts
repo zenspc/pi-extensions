@@ -30,17 +30,20 @@ import {
 	projectConfigPath,
 	saveConfig,
 	sanitizeMessage,
+	sanitizeFrame,
 	LIMITS,
 } from "./config.ts";
 import type { MessageCycler } from "./cycler.ts";
 import { PRESETS, findPreset, buildIndicator } from "./presets.ts";
 
-type MainAction = "animation" | "messages" | "interval" | "save" | "reset" | "close";
+type MainAction = "animation" | "messages" | "interval" | "frames" | "frameInterval" | "save" | "reset" | "close";
 
 const MAIN_ITEMS: SelectItem<MainAction>[] = [
 	{ value: "animation", label: "Animation preset", description: "change the spinner" },
 	{ value: "messages", label: "Messages", description: "edit the message list" },
 	{ value: "interval", label: "Cycle interval", description: "how often to switch messages" },
+	{ value: "frames", label: "Custom frames", description: "override the preset with raw frames" },
+	{ value: "frameInterval", label: "Frame interval", description: "speed of custom frames" },
 	{ value: "save", label: "Save settings", description: "write to global or project" },
 	{ value: "reset", label: "Reset to defaults", description: "restore built-in animation + messages" },
 	{ value: "close", label: "Close", description: "discard unsaved changes" },
@@ -79,6 +82,12 @@ export async function runSpinnerMenu(opts: SpinnerMenuOptions): Promise<void> {
 				break;
 			case "interval":
 				await editInterval(state, cycler, ctx);
+				break;
+			case "frames":
+				await editCustomFrames(state, cycler, ctx);
+				break;
+			case "frameInterval":
+				await editFrameInterval(state, cycler, ctx);
 				break;
 			case "save":
 				await pickSaveTarget(state, ctx);
@@ -168,6 +177,11 @@ async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Prom
 		if (item.value === "animation") return { ...item, description: presetLabel };
 		if (item.value === "messages") return { ...item, description: `${state.messages.length} entries` };
 		if (item.value === "interval") return { ...item, description: cycleLabel };
+		if (item.value === "frames") {
+			const n = state.customFrames.length;
+			return { ...item, description: n === 0 ? "off" : `${n} frames (overrides preset)` };
+		}
+		if (item.value === "frameInterval") return { ...item, description: `${state.customIntervalMs}ms` };
 		return item;
 	});
 
@@ -180,6 +194,7 @@ async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Prom
 					headerLines: [
 						`  preset: ${presetLabel}`,
 						`  messages: ${state.messages.length}  ·  cycle: ${cycleLabel}`,
+						`  custom frames: ${state.customFrames.length || "off"}`,
 					],
 					hint: "↑↓ navigate · enter select · esc close",
 					cancelValue: "close",
@@ -236,6 +251,53 @@ async function editMessages(state: SpinnerConfig, cycler: MessageCycler | null, 
 	state.messages = next;
 	applyPreview(state, cycler, ctx);
 	ctx.ui.notify(`Messages updated: ${next.length} entries`, "info");
+}
+
+async function editCustomFrames(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const prefill = state.customFrames.join("\n");
+	const edited = await ctx.ui.editor("Edit custom frames (one per line; empty clears)", prefill);
+	if (edited === undefined) return;
+
+	const next: string[] = [];
+	for (const line of edited.split(/\r?\n/)) {
+		if (next.length >= LIMITS.MAX_CUSTOM_FRAMES) break;
+		const frame = sanitizeFrame(line);
+		if (frame) next.push(frame);
+	}
+
+	if (next.length === 0) {
+		state.customFrames = [];
+		applyPreview(state, cycler, ctx);
+		ctx.ui.notify("Custom frames cleared; preset is active", "info");
+		return;
+	}
+
+	state.customFrames = next;
+	applyPreview(state, cycler, ctx);
+	ctx.ui.notify(`Custom frames updated: ${next.length} frames`, "info");
+}
+
+async function editFrameInterval(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const raw = await ctx.ui.input("Frame interval (milliseconds)", String(state.customIntervalMs));
+	if (raw === undefined) return;
+
+	const ms = Number.parseInt(raw.trim(), 10);
+	if (!Number.isFinite(ms) || ms <= 0) {
+		ctx.ui.notify("Invalid number", "error");
+		return;
+	}
+
+	if (ms < LIMITS.MIN_FRAME_INTERVAL_MS || ms > LIMITS.MAX_FRAME_INTERVAL_MS) {
+		ctx.ui.notify(
+			`Must be between ${LIMITS.MIN_FRAME_INTERVAL_MS}ms and ${LIMITS.MAX_FRAME_INTERVAL_MS}ms`,
+			"error",
+		);
+		return;
+	}
+
+	state.customIntervalMs = ms;
+	applyPreview(state, cycler, ctx);
+	ctx.ui.notify(`Frame interval: ${state.customIntervalMs}ms`, "info");
 }
 
 async function editInterval(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
