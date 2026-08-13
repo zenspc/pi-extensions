@@ -68,6 +68,7 @@ export interface UserSpinnerConfig {
 	customFrames?: string[];
 	customIntervalMs?: number;
 	activityMessages?: boolean;
+	syncThinkingLabel?: boolean;
 }
 
 export interface SpinnerConfig {
@@ -79,9 +80,10 @@ export interface SpinnerConfig {
 	customFrames: string[];
 	customIntervalMs: number;
 	activityMessages: boolean;
+	syncThinkingLabel: boolean;
 	/** True when at least one user config file was found on disk. */
 	customized: boolean;
-	/** True when a user file set something other than activityMessages. */
+	/** True when a user file set something other than activityMessages or syncThinkingLabel. */
 	hasRotationConfig: boolean;
 }
 
@@ -123,6 +125,7 @@ export function defaults(): SpinnerConfig {
 		customFrames: [],
 		customIntervalMs: 100,
 		activityMessages: false,
+		syncThinkingLabel: false,
 		customized: false,
 		hasRotationConfig: false,
 	};
@@ -237,6 +240,10 @@ export function parseUserSpinnerConfig(raw: unknown): UserSpinnerConfig {
 		out.activityMessages = src.activityMessages;
 	}
 
+	if (typeof src.syncThinkingLabel === "boolean") {
+		out.syncThinkingLabel = src.syncThinkingLabel;
+	}
+
 	return out;
 }
 
@@ -262,6 +269,7 @@ export function mergeSpinnerConfig(base: SpinnerConfig, override: UserSpinnerCon
 	if (override.customFrames !== undefined) next.customFrames = [...override.customFrames];
 	if (override.customIntervalMs !== undefined) next.customIntervalMs = override.customIntervalMs;
 	if (override.activityMessages !== undefined) next.activityMessages = override.activityMessages;
+	if (override.syncThinkingLabel !== undefined) next.syncThinkingLabel = override.syncThinkingLabel;
 	return next;
 }
 
@@ -321,6 +329,7 @@ export function writeConfigFile(path: string, partial: UserSpinnerConfig): { ok:
 	}
 	if (next.customIntervalMs !== undefined) ordered.customIntervalMs = next.customIntervalMs;
 	if (next.activityMessages !== undefined) ordered.activityMessages = next.activityMessages;
+	if (next.syncThinkingLabel !== undefined) ordered.syncThinkingLabel = next.syncThinkingLabel;
 
 	const body = `${JSON.stringify(ordered, null, "\t")}\n`;
 	const dir = dirname(path);
@@ -386,7 +395,7 @@ export function projectConfigPath(cwd: string): string {
  */
 function hasRotationOverride(raw: UserSpinnerConfig | undefined): boolean {
 	if (!raw) return false;
-	return Object.keys(raw).some((key) => key !== "activityMessages");
+	return Object.keys(raw).some((key) => key !== "activityMessages" && key !== "syncThinkingLabel");
 }
 
 export function loadConfigFromPaths(globalPath: string, projectPath: string): SpinnerConfig {

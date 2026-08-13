@@ -14,6 +14,9 @@
  *   - On stop(): clears the pending timer and (by default) restores pi's
  *     default "Working..." text. Pass `{ restoreDefault: false }` to skip
  *     the restoration. The cycler is fully re-startable afterwards.
+ *   - When `syncThinkingLabel` is on, every message set above is also pushed
+ *     to `ctx.ui.setHiddenThinkingLabel()` (raw, un-themed), and stop()
+ *     restores pi's default thinking label alongside the working message.
  *
  * Uses setTimeout (chained) rather than setInterval so a long blocking
  * operation does not pile up overlapping ticks. The next tick is scheduled
@@ -29,6 +32,8 @@ export interface CyclerOptions {
 	intervalMs: number;
 	ctx: ExtensionContext;
 	cycleMode?: CycleMode;
+	/** When true, mirror the current raw message onto pi's hidden-thinking label. */
+	syncThinkingLabel?: boolean;
 }
 
 export interface StopOptions {
@@ -44,12 +49,14 @@ export class MessageCycler {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private lastIndex = -1;
 	private running = false;
+	private syncThinkingLabel: boolean;
 
 	constructor(opts: CyclerOptions) {
 		this.messages = opts.messages;
 		this.intervalMs = opts.intervalMs;
 		this.ctx = opts.ctx;
 		this.cycleMode = opts.cycleMode ?? "random";
+		this.syncThinkingLabel = opts.syncThinkingLabel ?? false;
 	}
 
 	/** Swap in a new message list and/or interval (e.g. after editing config). */
@@ -83,6 +90,7 @@ export class MessageCycler {
 		}
 		if (opts.restoreDefault !== false) {
 			this.ctx.ui.setWorkingMessage();
+			this.syncThinking();
 		}
 	}
 
@@ -106,6 +114,7 @@ export class MessageCycler {
 			this.timer = undefined;
 		}
 		this.ctx.ui.setWorkingMessage(themeMessage(message, this.ctx.ui.theme));
+		this.syncThinking(message);
 	}
 
 	/**
@@ -123,6 +132,12 @@ export class MessageCycler {
 	/** True if a tick is currently scheduled. */
 	get isRunning(): boolean {
 		return this.running;
+	}
+
+	/** Mirror the current message onto the hidden-thinking label when enabled. */
+	private syncThinking(label?: string): void {
+		if (!this.syncThinkingLabel) return;
+		this.ctx.ui.setHiddenThinkingLabel(label);
 	}
 
 	private pickIndex(): number {
@@ -144,6 +159,7 @@ export class MessageCycler {
 		this.lastIndex = idx;
 		const raw = this.messages[idx] ?? "Working...";
 		this.ctx.ui.setWorkingMessage(themeMessage(raw, this.ctx.ui.theme));
+		this.syncThinking(raw);
 		this.timer = setTimeout(() => this.tick(), this.intervalMs);
 	}
 }

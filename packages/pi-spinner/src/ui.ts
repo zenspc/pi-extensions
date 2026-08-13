@@ -52,6 +52,7 @@ type MainAction =
 	| "cycleMode"
 	| "pack"
 	| "activity"
+	| "thinking"
 	| "save"
 	| "reset"
 	| "close";
@@ -65,6 +66,7 @@ const MAIN_ITEMS: SelectItem<MainAction>[] = [
 	{ value: "cycleMode", label: "Cycle order", description: "random or sequential" },
 	{ value: "pack", label: "Message pack", description: "replace the list with a built-in pack" },
 	{ value: "activity", label: "Activity messages", description: "show the current tool while it runs" },
+	{ value: "thinking", label: "Thinking label", description: "sync the loader message to the Ctrl+T label" },
 	{ value: "save", label: "Save settings", description: "write to global or project" },
 	{ value: "reset", label: "Reset to defaults", description: "restore built-in animation + messages" },
 	{ value: "close", label: "Close", description: "discard unsaved changes" },
@@ -119,6 +121,10 @@ export async function runSpinnerMenu(opts: SpinnerMenuOptions): Promise<void> {
 			case "activity":
 				state.activityMessages = !state.activityMessages;
 				ctx.ui.notify(`Activity messages: ${state.activityMessages ? "on" : "off"}`, "info");
+				break;
+			case "thinking":
+				state.syncThinkingLabel = !state.syncThinkingLabel;
+				ctx.ui.notify(`Thinking label: ${state.syncThinkingLabel ? "on" : "off"}`, "info");
 				break;
 			case "save":
 				await pickSaveTarget(state, ctx);
@@ -216,6 +222,7 @@ async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Prom
 		if (item.value === "cycleMode") return { ...item, description: state.cycleMode };
 		if (item.value === "pack") return { ...item, description: state.messagePack };
 		if (item.value === "activity") return { ...item, description: state.activityMessages ? "on" : "off" };
+		if (item.value === "thinking") return { ...item, description: state.syncThinkingLabel ? "on" : "off" };
 		return item;
 	});
 
@@ -447,6 +454,7 @@ async function pickSaveTarget(state: SpinnerConfig, ctx: ExtensionContext): Prom
 				customFrames: state.customFrames,
 				customIntervalMs: state.customIntervalMs,
 				activityMessages: state.activityMessages,
+				syncThinkingLabel: state.syncThinkingLabel,
 			};
 			const { path } = saveConfig(result, partial, ctx.cwd);
 			ctx.ui.notify(`Saved to ${result}: ${path}`, "info");
@@ -477,6 +485,7 @@ async function handleReset(state: SpinnerConfig, cycler: MessageCycler | null, c
 	state.customFrames = [...d.customFrames];
 	state.customIntervalMs = d.customIntervalMs;
 	state.activityMessages = d.activityMessages;
+	state.syncThinkingLabel = d.syncThinkingLabel;
 
 	if (cycler) {
 		cycler.update(state.messages, state.cycleIntervalMs, state.cycleMode);

@@ -93,6 +93,97 @@ describe("MessageCycler sequential mode", () => {
 	});
 });
 
+describe("MessageCycler thinking-label sync", () => {
+	function syncCtx(work: string[], thinking: Array<string | undefined>) {
+		return {
+			mode: "tui",
+			ui: {
+				theme: { fg: (_k: string, t: string) => `[${t}]` },
+				setWorkingMessage: (m?: string) => {
+					if (m !== undefined) work.push(m);
+				},
+				setHiddenThinkingLabel: (label?: string) => {
+					thinking.push(label);
+				},
+			},
+		} as unknown as ExtensionContext;
+	}
+
+	it("does not call the thinking API when the flag is off", () => {
+		const work: string[] = [];
+		const thinking: Array<string | undefined> = [];
+		const cycler = new MessageCycler({
+			messages: ["A", "B"],
+			intervalMs: 60_000,
+			ctx: syncCtx(work, thinking),
+			cycleMode: "sequential",
+		});
+		cycler.start();
+		cycler.tickNow();
+		assert.equal(thinking.length, 0);
+		cycler.stop({ restoreDefault: false });
+	});
+
+	it("syncs the raw message, not the themed string", () => {
+		const work: string[] = [];
+		const thinking: Array<string | undefined> = [];
+		const cycler = new MessageCycler({
+			messages: ["Pondering..."],
+			intervalMs: 60_000,
+			ctx: syncCtx(work, thinking),
+			syncThinkingLabel: true,
+		});
+		cycler.start();
+		assert.deepEqual(thinking, ["Pondering..."]);
+		assert.deepEqual(work, ["[Pondering...]"]);
+		cycler.stop({ restoreDefault: false });
+	});
+
+	it("restores the default label on stop()", () => {
+		const work: string[] = [];
+		const thinking: Array<string | undefined> = [];
+		const cycler = new MessageCycler({
+			messages: ["Pondering..."],
+			intervalMs: 60_000,
+			ctx: syncCtx(work, thinking),
+			syncThinkingLabel: true,
+		});
+		cycler.start();
+		cycler.stop();
+		assert.equal(thinking.at(-1), undefined);
+	});
+
+	it("does not restore the label on stop({ restoreDefault: false })", () => {
+		const work: string[] = [];
+		const thinking: Array<string | undefined> = [];
+		const cycler = new MessageCycler({
+			messages: ["Pondering..."],
+			intervalMs: 60_000,
+			ctx: syncCtx(work, thinking),
+			syncThinkingLabel: true,
+		});
+		cycler.start();
+		cycler.stop({ restoreDefault: false });
+		assert.deepEqual(thinking, ["Pondering..."]);
+	});
+
+	it("syncs the override message from pauseForOverride", () => {
+		const work: string[] = [];
+		const thinking: Array<string | undefined> = [];
+		const cycler = new MessageCycler({
+			messages: ["A", "B"],
+			intervalMs: 60_000,
+			ctx: syncCtx(work, thinking),
+			cycleMode: "sequential",
+			syncThinkingLabel: true,
+		});
+		cycler.start();
+		cycler.pauseForOverride("Reading x");
+		assert.deepEqual(thinking, ["A", "Reading x"]);
+		cycler.stop({ restoreDefault: false });
+	});
+});
+
 describe("MessageCycler activity override", () => {
 	it("keeps sequential lastIndex across pause and resume", () => {
 		const sink: string[] = [];

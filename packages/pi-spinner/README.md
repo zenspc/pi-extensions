@@ -111,7 +111,12 @@ Merge order: built-in defaults < global < project. So a project file with just `
 	// When true, the working message briefly shows the current tool
 	// (basename / first token only) while it runs. The cycler resumes
 	// after the tool ends. Default false. TUI only.
-	"activityMessages": false
+	"activityMessages": false,
+
+	// When true, the current rotating message is also used as pi's
+	// Ctrl+T hidden-thinking label (raw, un-themed). Off restores pi's
+	// default on session shutdown. Default false.
+	"syncThinkingLabel": false
 }
 ```
 
@@ -144,6 +149,7 @@ Merge order: built-in defaults < global < project. So a project file with just `
 - If `activityMessages` is on, `tool_execution_start` overrides the working message with a sanitized one-liner for the current tool (basename or first command token only).
   The cycler resumes after `tool_execution_end`, and leftover overrides are cleared on `agent_end` / `agent_settled`.
   Off by default; TUI only; activity text is never written back to `spinner.json`.
+- If `syncThinkingLabel` is on, the current rotating message is also used as pi's Ctrl+T hidden-thinking label (raw, un-themed). Pi's default label is restored on `session_shutdown` (or `/spinner-reset`).
 - Both APIs already persist across loader recreations inside a session, so the animation and current message survive between agent turns without extra work.
 - On `session_shutdown` (e.g. `/new`, `/resume`, `/fork`, `/reload`, or exit), the cycler is stopped and pi's default "Working..." text is restored.
 - In non-TUI modes (`rpc`, `json`, `print`), the underlying APIs are no-ops, and the extension short-circuits its session_start work, so it never spins a timer in those modes.

@@ -82,6 +82,7 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 			messages: cfg.messages,
 			intervalMs: cfg.cycleIntervalMs,
 			cycleMode: cfg.cycleMode,
+			syncThinkingLabel: cfg.syncThinkingLabel,
 			ctx,
 		});
 		cycler.start();
@@ -155,6 +156,7 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 				messages: cfg.messages,
 				intervalMs: cfg.cycleIntervalMs,
 				cycleMode: cfg.cycleMode,
+				syncThinkingLabel: cfg.syncThinkingLabel,
 				ctx,
 			});
 			cycler.start();
@@ -207,6 +209,9 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 			}
 			case "reset": {
 				stopCycler();
+				// Clear any leftover custom thinking label even when no cycler
+				// was running (e.g. a partial reset with sync on but no rotation).
+				ctx.ui.setHiddenThinkingLabel();
 				if (cmd.target === "all") {
 					activityEnabled = false;
 					ctx.ui.setWorkingMessage();

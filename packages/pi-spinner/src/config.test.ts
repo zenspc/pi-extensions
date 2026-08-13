@@ -82,6 +82,7 @@ describe("parseUserSpinnerConfig", () => {
 			customFrames: ["⠋", "⠙"],
 			customIntervalMs: 80,
 			activityMessages: true,
+			syncThinkingLabel: true,
 		});
 		assert.deepEqual(parsed, {
 			preset: "dots",
@@ -92,6 +93,7 @@ describe("parseUserSpinnerConfig", () => {
 			customFrames: ["⠋", "⠙"],
 			customIntervalMs: 80,
 			activityMessages: true,
+			syncThinkingLabel: true,
 		});
 	});
 
@@ -100,6 +102,13 @@ describe("parseUserSpinnerConfig", () => {
 		assert.equal(parseUserSpinnerConfig({ activityMessages: false }).activityMessages, false);
 		assert.equal(parseUserSpinnerConfig({ activityMessages: "true" }).activityMessages, undefined);
 		assert.equal(parseUserSpinnerConfig({ activityMessages: 1 }).activityMessages, undefined);
+	});
+
+	it("accepts only real booleans for syncThinkingLabel", () => {
+		assert.equal(parseUserSpinnerConfig({ syncThinkingLabel: true }).syncThinkingLabel, true);
+		assert.equal(parseUserSpinnerConfig({ syncThinkingLabel: false }).syncThinkingLabel, false);
+		assert.equal(parseUserSpinnerConfig({ syncThinkingLabel: "yes" }).syncThinkingLabel, undefined);
+		assert.equal(parseUserSpinnerConfig({ syncThinkingLabel: 1 }).syncThinkingLabel, undefined);
 	});
 
 	it("lowercases cycleMode and messagePack", () => {
@@ -184,6 +193,7 @@ describe("defaults", () => {
 		assert.equal(d.cycleMode, "random");
 		assert.equal(d.messagePack, "default");
 		assert.equal(d.activityMessages, false);
+		assert.equal(d.syncThinkingLabel, false);
 		assert.equal(d.hasRotationConfig, false);
 	});
 });
@@ -305,6 +315,20 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 		}
 	});
 
+	it("persists syncThinkingLabel false when present", () => {
+		const dir = tempDir();
+		const path = join(dir, "spinner.json");
+		try {
+			const result = writeConfigFile(path, { syncThinkingLabel: false });
+			assert.equal(result.ok, true);
+			const onDisk = JSON.parse(readFileSync(path, "utf8"));
+			assert.equal(onDisk.syncThinkingLabel, false);
+			assert.equal(readConfigFile(path)?.syncThinkingLabel, false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("strips hostile content when saving", () => {
 		const dir = tempDir();
 		const path = join(dir, "spinner.json");
@@ -377,6 +401,21 @@ describe("loadConfigFromPaths", () => {
 			const cfg = loadConfigFromPaths(globalPath, projectPath);
 			assert.equal(cfg.customized, true);
 			assert.equal(cfg.activityMessages, true);
+			assert.equal(cfg.hasRotationConfig, false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("treats a file that only enables syncThinkingLabel as customized but not rotating", () => {
+		const dir = tempDir();
+		const globalPath = join(dir, "global.json");
+		const projectPath = join(dir, "project.json");
+		try {
+			writeConfigFile(globalPath, { syncThinkingLabel: true });
+			const cfg = loadConfigFromPaths(globalPath, projectPath);
+			assert.equal(cfg.customized, true);
+			assert.equal(cfg.syncThinkingLabel, true);
 			assert.equal(cfg.hasRotationConfig, false);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
