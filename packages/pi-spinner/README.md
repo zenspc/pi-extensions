@@ -44,6 +44,8 @@ If you never customize anything, the extension uses pi's built-in defaults: brai
 | `progress` | Five-frame progress bar that fills and resets |
 | `rainbow` | Dots cycling through the full theme color palette |
 | `minimal` | Static muted ellipsis, no animation |
+| `dot` | Single static accent dot |
+| `hidden` | No glyph; the working message still shows. Compaction and retry loaders stay on pi's built-in styling. |
 
 ## Config files
 
@@ -60,7 +62,7 @@ Merge order: built-in defaults < global < project. So a project file with just `
 
 ```jsonc
 {
-	// Animation preset name. One of: braille, dots, arrows, bars, progress, rainbow, minimal.
+	// Animation preset name. One of: braille, dots, arrows, bars, progress, rainbow, minimal, dot, hidden.
 	// Ignored if `customFrames` is non-empty.
 	"preset": "dots",
 

@@ -11,6 +11,8 @@ export const PRESET_NAMES = [
 	"progress",
 	"rainbow",
 	"minimal",
+	"dot",
+	"hidden",
 ] as const;
 
 export type BuiltinPresetName = (typeof PRESET_NAMES)[number];

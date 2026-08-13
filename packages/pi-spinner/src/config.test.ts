@@ -61,7 +61,10 @@ describe("isKnownPreset", () => {
 	it("accepts built-ins only", () => {
 		assert.equal(isKnownPreset("braille"), true);
 		assert.equal(isKnownPreset("rainbow"), true);
+		assert.equal(isKnownPreset("hidden"), true);
+		assert.equal(isKnownPreset("dot"), true);
 		assert.equal(isKnownPreset("custom"), false);
+		assert.equal(isKnownPreset("none"), false);
 		assert.equal(isKnownPreset("nope"), false);
 		assert.equal(isKnownPreset(""), false);
 		assert.equal(isKnownPreset(1), false);
