@@ -92,3 +92,36 @@ describe("MessageCycler sequential mode", () => {
 		cycler.stop({ restoreDefault: false });
 	});
 });
+
+describe("MessageCycler activity override", () => {
+	it("keeps sequential lastIndex across pause and resume", () => {
+		const sink: string[] = [];
+		const cycler = startedCycler(sink, {
+			messages: ["A", "B", "C"],
+			cycleMode: "sequential",
+		});
+		assert.deepEqual(sink, ["A"]);
+		cycler.pauseForOverride("Reading x");
+		assert.equal(sink.at(-1), "Reading x");
+		cycler.resumeAfterOverride();
+		cycler.tickNow();
+		assert.equal(sink.at(-1), "B");
+		cycler.stop({ restoreDefault: false });
+	});
+
+	it("sets the override while not running without starting the timer", () => {
+		const sink: string[] = [];
+		const cycler = new MessageCycler({
+			messages: ["A", "B"],
+			intervalMs: 60_000,
+			ctx: fakeCtx(sink),
+			cycleMode: "sequential",
+		});
+		cycler.pauseForOverride("Reading x");
+		assert.equal(sink.at(-1), "Reading x");
+		assert.equal(cycler.isRunning, false);
+		cycler.resumeAfterOverride();
+		assert.equal(sink.at(-1), "Reading x");
+		assert.equal(cycler.isRunning, false);
+	});
+});

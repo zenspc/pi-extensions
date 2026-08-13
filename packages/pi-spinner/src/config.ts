@@ -67,6 +67,7 @@ export interface UserSpinnerConfig {
 	cycleMode?: CycleMode;
 	customFrames?: string[];
 	customIntervalMs?: number;
+	activityMessages?: boolean;
 }
 
 export interface SpinnerConfig {
@@ -77,8 +78,11 @@ export interface SpinnerConfig {
 	cycleMode: CycleMode;
 	customFrames: string[];
 	customIntervalMs: number;
+	activityMessages: boolean;
 	/** True when at least one user config file was found on disk. */
 	customized: boolean;
+	/** True when a user file set something other than activityMessages. */
+	hasRotationConfig: boolean;
 }
 
 /** Cap untrusted config file size (DoS / parse cost). */
@@ -118,7 +122,9 @@ export function defaults(): SpinnerConfig {
 		cycleMode: "random",
 		customFrames: [],
 		customIntervalMs: 100,
+		activityMessages: false,
 		customized: false,
+		hasRotationConfig: false,
 	};
 }
 
@@ -227,6 +233,10 @@ export function parseUserSpinnerConfig(raw: unknown): UserSpinnerConfig {
 		out.customIntervalMs = clamp(src.customIntervalMs, MIN_FRAME_INTERVAL_MS, MAX_FRAME_INTERVAL_MS);
 	}
 
+	if (typeof src.activityMessages === "boolean") {
+		out.activityMessages = src.activityMessages;
+	}
+
 	return out;
 }
 
@@ -251,6 +261,7 @@ export function mergeSpinnerConfig(base: SpinnerConfig, override: UserSpinnerCon
 	if (override.cycleMode !== undefined) next.cycleMode = override.cycleMode;
 	if (override.customFrames !== undefined) next.customFrames = [...override.customFrames];
 	if (override.customIntervalMs !== undefined) next.customIntervalMs = override.customIntervalMs;
+	if (override.activityMessages !== undefined) next.activityMessages = override.activityMessages;
 	return next;
 }
 
@@ -309,6 +320,7 @@ export function writeConfigFile(path: string, partial: UserSpinnerConfig): { ok:
 		ordered.customFrames = next.customFrames;
 	}
 	if (next.customIntervalMs !== undefined) ordered.customIntervalMs = next.customIntervalMs;
+	if (next.activityMessages !== undefined) ordered.activityMessages = next.activityMessages;
 
 	const body = `${JSON.stringify(ordered, null, "\t")}\n`;
 	const dir = dirname(path);
@@ -372,6 +384,11 @@ export function projectConfigPath(cwd: string): string {
  * Load the merged config from explicit paths (defaults < global < project).
  * Used by tests and by loadConfig().
  */
+function hasRotationOverride(raw: UserSpinnerConfig | undefined): boolean {
+	if (!raw) return false;
+	return Object.keys(raw).some((key) => key !== "activityMessages");
+}
+
 export function loadConfigFromPaths(globalPath: string, projectPath: string): SpinnerConfig {
 	const globalRaw = readConfigFile(globalPath);
 	const projectRaw = readConfigFile(projectPath);
@@ -379,6 +396,7 @@ export function loadConfigFromPaths(globalPath: string, projectPath: string): Sp
 	return {
 		...merged,
 		customized: globalRaw !== undefined || projectRaw !== undefined,
+		hasRotationConfig: hasRotationOverride(globalRaw) || hasRotationOverride(projectRaw),
 	};
 }
 

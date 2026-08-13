@@ -23,6 +23,8 @@
  *   session_start    load config, apply indicator; start the message cycler
  *                    only when the user has customized something (the
  *                    README's "no rotation by default" promise).
+ *   tool_execution_* opt-in activity override of the working message
+ *   agent_end/settled clear a leftover activity override
  *   session_shutdown stop cycler (clears timer + restores default message)
  *
  * Mode behavior:
@@ -48,9 +50,10 @@ import {
 	saveConfig,
 	type UserSpinnerConfig,
 } from "./config.ts";
+import { formatActivityMessage } from "./activity.ts";
 import { MESSAGE_PACKS, type MessagePackName } from "./constants.ts";
 import { MessageCycler } from "./cycler.ts";
-import { buildIndicator, findPreset } from "./presets.ts";
+import { buildIndicator, findPreset, themeMessage } from "./presets.ts";
 import { runSpinnerMenu } from "./ui.ts";
 
 export default function spinnerExtension(pi: ExtensionAPI) {
@@ -58,20 +61,22 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 	// session_shutdown handler tears it down. Closure-scoped so commands
 	// registered in this factory instance see the current cycler.
 	let cycler: MessageCycler | null = null;
+	let activityEnabled = false;
+	let activeToolCallId: string | undefined;
 
 	function startCycler(ctx: ExtensionContext): void {
 		if (ctx.mode !== "tui") return;
 		const cfg = loadConfig(ctx.cwd);
+		activityEnabled = cfg.activityMessages;
 
 		// Indicator: apply once, pi persists it across loader recreations.
 		ctx.ui.setWorkingIndicator(
 			buildIndicator(cfg.preset, cfg.customFrames, cfg.customIntervalMs, ctx.ui.theme),
 		);
 
-		// Cycler: rotate messages on a timer. Only spin one when the user
-		// has actually configured something - this honours the README's
-		// "no rotation by default" promise for a clean install.
-		if (!cfg.customized) return;
+		// Cycler: rotate messages on a timer. An activity-only file is
+		// customized but must not start rotation by itself.
+		if (!cfg.hasRotationConfig) return;
 
 		cycler = new MessageCycler({
 			messages: cfg.messages,
@@ -83,9 +88,32 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 	}
 
 	function stopCycler(): void {
+		activeToolCallId = undefined;
 		if (!cycler) return;
 		cycler.stop();
 		cycler = null;
+	}
+
+	function toolArgs(raw: unknown): Record<string, unknown> | undefined {
+		return raw && typeof raw === "object" && !Array.isArray(raw)
+			? (raw as Record<string, unknown>)
+			: undefined;
+	}
+
+	function applyActivityOverride(ctx: ExtensionContext, message: string): void {
+		if (cycler) {
+			cycler.pauseForOverride(message);
+			return;
+		}
+		ctx.ui.setWorkingMessage(themeMessage(message, ctx.ui.theme));
+	}
+
+	function clearActivityOverride(ctx?: ExtensionContext): void {
+		const had = activeToolCallId !== undefined;
+		activeToolCallId = undefined;
+		if (!had) return;
+		if (cycler) cycler.resumeAfterOverride();
+		else ctx?.ui.setWorkingMessage();
 	}
 
 	function refreshLive(ctx: ExtensionContext): void {
@@ -180,6 +208,7 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 			case "reset": {
 				stopCycler();
 				if (cmd.target === "all") {
+					activityEnabled = false;
 					ctx.ui.setWorkingMessage();
 					ctx.ui.setWorkingIndicator();
 					deleteConfig("global", ctx.cwd);
@@ -220,7 +249,10 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 	// ── Lifecycle ────────────────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
-		if (ctx.mode !== "tui") return;
+		if (ctx.mode !== "tui") {
+			activityEnabled = false;
+			return;
+		}
 		// Defensive: if a previous session left a cycler running somehow,
 		// make sure it's stopped before we install a new one.
 		stopCycler();
@@ -229,6 +261,27 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async (_event, _ctx) => {
 		stopCycler();
+	});
+
+	pi.on("tool_execution_start", async (event, ctx) => {
+		if (!activityEnabled || ctx.mode !== "tui") return;
+		const msg = formatActivityMessage(event.toolName, toolArgs(event.args));
+		if (!msg) return;
+		activeToolCallId = event.toolCallId;
+		applyActivityOverride(ctx, msg);
+	});
+
+	pi.on("tool_execution_end", async (event, ctx) => {
+		if (event.toolCallId !== activeToolCallId) return;
+		clearActivityOverride(ctx);
+	});
+
+	pi.on("agent_end", async (_event, ctx) => {
+		clearActivityOverride(ctx);
+	});
+
+	pi.on("agent_settled", async (_event, ctx) => {
+		clearActivityOverride(ctx);
 	});
 
 	// ── Commands ─────────────────────────────────────────────────────────

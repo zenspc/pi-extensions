@@ -81,6 +81,7 @@ describe("parseUserSpinnerConfig", () => {
 			cycleMode: "sequential",
 			customFrames: ["⠋", "⠙"],
 			customIntervalMs: 80,
+			activityMessages: true,
 		});
 		assert.deepEqual(parsed, {
 			preset: "dots",
@@ -90,7 +91,15 @@ describe("parseUserSpinnerConfig", () => {
 			cycleMode: "sequential",
 			customFrames: ["⠋", "⠙"],
 			customIntervalMs: 80,
+			activityMessages: true,
 		});
+	});
+
+	it("accepts only real booleans for activityMessages", () => {
+		assert.equal(parseUserSpinnerConfig({ activityMessages: true }).activityMessages, true);
+		assert.equal(parseUserSpinnerConfig({ activityMessages: false }).activityMessages, false);
+		assert.equal(parseUserSpinnerConfig({ activityMessages: "true" }).activityMessages, undefined);
+		assert.equal(parseUserSpinnerConfig({ activityMessages: 1 }).activityMessages, undefined);
 	});
 
 	it("lowercases cycleMode and messagePack", () => {
@@ -174,6 +183,8 @@ describe("defaults", () => {
 		const d = defaults();
 		assert.equal(d.cycleMode, "random");
 		assert.equal(d.messagePack, "default");
+		assert.equal(d.activityMessages, false);
+		assert.equal(d.hasRotationConfig, false);
 	});
 });
 
@@ -205,6 +216,7 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 				messagePack: "dry",
 				cycleIntervalMs: 4000,
 				cycleMode: "sequential",
+				activityMessages: true,
 			});
 			assert.equal(result.ok, true);
 			const st = lstatSync(path);
@@ -219,6 +231,7 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 				messagePack: "dry",
 				cycleIntervalMs: 4000,
 				cycleMode: "sequential",
+				activityMessages: true,
 			});
 
 			// No runtime-only fields leaked into the file.
@@ -278,6 +291,20 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 		}
 	});
 
+	it("persists activityMessages false when present", () => {
+		const dir = tempDir();
+		const path = join(dir, "spinner.json");
+		try {
+			const result = writeConfigFile(path, { activityMessages: false });
+			assert.equal(result.ok, true);
+			const onDisk = JSON.parse(readFileSync(path, "utf8"));
+			assert.equal(onDisk.activityMessages, false);
+			assert.equal(readConfigFile(path)?.activityMessages, false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("strips hostile content when saving", () => {
 		const dir = tempDir();
 		const path = join(dir, "spinner.json");
@@ -313,6 +340,7 @@ describe("loadConfigFromPaths", () => {
 			// No files → defaults, not customized
 			const plain = loadConfigFromPaths(globalPath, projectPath);
 			assert.equal(plain.customized, false);
+			assert.equal(plain.hasRotationConfig, false);
 			assert.equal(plain.preset, "braille");
 
 			writeConfigFile(globalPath, {
@@ -322,6 +350,7 @@ describe("loadConfigFromPaths", () => {
 			});
 			const globalOnly = loadConfigFromPaths(globalPath, projectPath);
 			assert.equal(globalOnly.customized, true);
+			assert.equal(globalOnly.hasRotationConfig, true);
 			assert.equal(globalOnly.preset, "dots");
 			assert.deepEqual(globalOnly.messages, ["G1", "G2"]);
 			assert.equal(globalOnly.cycleIntervalMs, 6000);
@@ -334,6 +363,21 @@ describe("loadConfigFromPaths", () => {
 			assert.deepEqual(both.messages, ["G1", "G2"]);
 			assert.equal(both.cycleIntervalMs, 6000);
 			assert.equal(both.cycleMode, "sequential");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("treats a file that only enables activityMessages as customized", () => {
+		const dir = tempDir();
+		const globalPath = join(dir, "global.json");
+		const projectPath = join(dir, "project.json");
+		try {
+			writeConfigFile(globalPath, { activityMessages: true });
+			const cfg = loadConfigFromPaths(globalPath, projectPath);
+			assert.equal(cfg.customized, true);
+			assert.equal(cfg.activityMessages, true);
+			assert.equal(cfg.hasRotationConfig, false);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

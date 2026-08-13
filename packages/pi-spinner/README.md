@@ -23,6 +23,7 @@ pi install ./packages/pi-spinner
    An empty frames editor clears the override so the preset shows again.
    Cycle order can be random or sequential.
    A built-in message pack (default, calm, dry) replaces the current list when you pick it in the TUI.
+   Activity messages are off by default; turn them on from the TUI to briefly show the current tool.
 3. Next time pi streams a response, the loader uses your new animation and rotates through your messages.
 
 If you never customize anything, the extension uses pi's built-in defaults: braille spinner, "Working..." text, no rotation. You can opt out by running `/spinner-reset` and the loader returns to pi's default.
@@ -105,7 +106,12 @@ Merge order: built-in defaults < global < project. So a project file with just `
 	// Editable from /spinner; an empty frames editor clears the override.
 	"customFrames": ["⠋", "⠙", "⠹", "⠸"],
 	// Frame interval (ms) for `customFrames`. Clamped to [50, 2000]. Default 100.
-	"customIntervalMs": 80
+	"customIntervalMs": 80,
+
+	// When true, the working message briefly shows the current tool
+	// (basename / first token only) while it runs. The cycler resumes
+	// after the tool ends. Default false. TUI only.
+	"activityMessages": false
 }
 ```
 
@@ -135,6 +141,9 @@ Merge order: built-in defaults < global < project. So a project file with just `
 ## How it works
 
 - On `session_start`, the extension reads and merges the config files, calls `ctx.ui.setWorkingIndicator(...)` with themed frames, and starts a `MessageCycler` that calls `ctx.ui.setWorkingMessage(...)` on a timer.
+- If `activityMessages` is on, `tool_execution_start` overrides the working message with a sanitized one-liner for the current tool (basename or first command token only).
+  The cycler resumes after `tool_execution_end`, and leftover overrides are cleared on `agent_end` / `agent_settled`.
+  Off by default; TUI only; activity text is never written back to `spinner.json`.
 - Both APIs already persist across loader recreations inside a session, so the animation and current message survive between agent turns without extra work.
 - On `session_shutdown` (e.g. `/new`, `/resume`, `/fork`, `/reload`, or exit), the cycler is stopped and pi's default "Working..." text is restored.
 - In non-TUI modes (`rpc`, `json`, `print`), the underlying APIs are no-ops, and the extension short-circuits its session_start work, so it never spins a timer in those modes.
@@ -161,6 +170,8 @@ Hardening applied at the config boundary:
 - `cycleMode` must be `random` or `sequential`; unknown values are dropped.
 - `messagePack` must be `default`, `calm`, or `dry`; unknown values are dropped.
 - Messages and frames are stripped of ANSI/control characters before they reach the TUI.
+- Tool args used for activity messages are sanitized the same way as config messages before they reach the TUI (ANSI/control stripped, then capped at 40 characters).
+  Only a basename or the first command token is shown; full paths and command lines are not.
 - Message count (50), message length (120), frame count (32), and frame length (8) are hard-capped.
 - Intervals are clamped to documented ranges.
 
@@ -175,6 +186,7 @@ src/command.ts
 src/constants.ts
 src/presets.ts
 src/config.ts
+src/activity.ts
 src/cycler.ts
 src/ui.ts
 ```

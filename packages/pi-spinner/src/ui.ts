@@ -51,6 +51,7 @@ type MainAction =
 	| "frameInterval"
 	| "cycleMode"
 	| "pack"
+	| "activity"
 	| "save"
 	| "reset"
 	| "close";
@@ -63,6 +64,7 @@ const MAIN_ITEMS: SelectItem<MainAction>[] = [
 	{ value: "frameInterval", label: "Frame interval", description: "speed of custom frames" },
 	{ value: "cycleMode", label: "Cycle order", description: "random or sequential" },
 	{ value: "pack", label: "Message pack", description: "replace the list with a built-in pack" },
+	{ value: "activity", label: "Activity messages", description: "show the current tool while it runs" },
 	{ value: "save", label: "Save settings", description: "write to global or project" },
 	{ value: "reset", label: "Reset to defaults", description: "restore built-in animation + messages" },
 	{ value: "close", label: "Close", description: "discard unsaved changes" },
@@ -113,6 +115,10 @@ export async function runSpinnerMenu(opts: SpinnerMenuOptions): Promise<void> {
 				break;
 			case "pack":
 				await pickMessagePack(state, cycler, ctx);
+				break;
+			case "activity":
+				state.activityMessages = !state.activityMessages;
+				ctx.ui.notify(`Activity messages: ${state.activityMessages ? "on" : "off"}`, "info");
 				break;
 			case "save":
 				await pickSaveTarget(state, ctx);
@@ -209,6 +215,7 @@ async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Prom
 		if (item.value === "frameInterval") return { ...item, description: `${state.customIntervalMs}ms` };
 		if (item.value === "cycleMode") return { ...item, description: state.cycleMode };
 		if (item.value === "pack") return { ...item, description: state.messagePack };
+		if (item.value === "activity") return { ...item, description: state.activityMessages ? "on" : "off" };
 		return item;
 	});
 
@@ -439,6 +446,7 @@ async function pickSaveTarget(state: SpinnerConfig, ctx: ExtensionContext): Prom
 				cycleMode: state.cycleMode,
 				customFrames: state.customFrames,
 				customIntervalMs: state.customIntervalMs,
+				activityMessages: state.activityMessages,
 			};
 			const { path } = saveConfig(result, partial, ctx.cwd);
 			ctx.ui.notify(`Saved to ${result}: ${path}`, "info");
@@ -468,6 +476,7 @@ async function handleReset(state: SpinnerConfig, cycler: MessageCycler | null, c
 	state.cycleMode = d.cycleMode;
 	state.customFrames = [...d.customFrames];
 	state.customIntervalMs = d.customIntervalMs;
+	state.activityMessages = d.activityMessages;
 
 	if (cycler) {
 		cycler.update(state.messages, state.cycleIntervalMs, state.cycleMode);

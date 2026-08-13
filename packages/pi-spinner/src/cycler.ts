@@ -96,6 +96,30 @@ export class MessageCycler {
 		this.tick();
 	}
 
+	/**
+	 * Pause the rotation timer and show `message` without changing
+	 * `running` or `lastIndex`. Works even when the cycler is stopped.
+	 */
+	pauseForOverride(message: string): void {
+		if (this.timer !== undefined) {
+			clearTimeout(this.timer);
+			this.timer = undefined;
+		}
+		this.ctx.ui.setWorkingMessage(themeMessage(message, this.ctx.ui.theme));
+	}
+
+	/**
+	 * Resume rotation after an override. Schedules the next tick without
+	 * changing the current message, so the override stays up until then.
+	 */
+	resumeAfterOverride(): void {
+		if (!this.running || this.messages.length === 0) return;
+		if (this.timer !== undefined) {
+			clearTimeout(this.timer);
+		}
+		this.timer = setTimeout(() => this.tick(), this.intervalMs);
+	}
+
 	/** True if a tick is currently scheduled. */
 	get isRunning(): boolean {
 		return this.running;
