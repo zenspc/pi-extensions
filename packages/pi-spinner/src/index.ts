@@ -9,9 +9,15 @@
  *   - Project:   <cwd>/.pi/spinner.json
  *
  * Commands:
- *   /spinner          Open the interactive customization TUI
- *   /spinner-reset    Delete saved config and restore pi's defaults
- *   /spinner-rotate   Force-advance to the next message (useful for previewing)
+ *   /spinner                Open the interactive customization TUI
+ *   /spinner status|help    Show merged config or usage
+ *   /spinner <preset>       Set animation (saves to global)
+ *   /spinner pack <name>    Replace messages with a built-in pack
+ *   /spinner random|sequential
+ *   /spinner rotate         Same as /spinner-rotate
+ *   /spinner reset [global|project]
+ *   /spinner-reset          Delete saved config (optional scoped target)
+ *   /spinner-rotate         Force-advance to the next message
  *
  * Lifecycle:
  *   session_start    load config, apply indicator; start the message cycler
@@ -23,12 +29,28 @@
  *   The underlying setWorkingMessage / setWorkingIndicator APIs are no-ops
  *   outside of TUI mode. We additionally short-circuit session_start work
  *   when ctx.mode !== "tui" so we never spin a timer in rpc/json/print.
+ *   Slash mutations still persist to disk in any mode.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { deleteConfig, loadConfig } from "./config.ts";
+import {
+	formatSpinnerHelp,
+	formatSpinnerStatus,
+	getSpinnerArgumentCompletions,
+	parseSpinnerCommand,
+	type SpinnerCommand,
+} from "./command.ts";
+import {
+	deleteConfig,
+	globalConfigPath,
+	loadConfig,
+	projectConfigPath,
+	saveConfig,
+	type UserSpinnerConfig,
+} from "./config.ts";
+import { MESSAGE_PACKS, type MessagePackName } from "./constants.ts";
 import { MessageCycler } from "./cycler.ts";
-import { buildIndicator } from "./presets.ts";
+import { buildIndicator, findPreset } from "./presets.ts";
 import { runSpinnerMenu } from "./ui.ts";
 
 export default function spinnerExtension(pi: ExtensionAPI) {
@@ -66,6 +88,135 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 		cycler = null;
 	}
 
+	function refreshLive(ctx: ExtensionContext): void {
+		if (ctx.mode !== "tui") return;
+		stopCycler();
+		startCycler(ctx);
+	}
+
+	function saveGlobal(partial: UserSpinnerConfig, ctx: ExtensionContext): boolean {
+		try {
+			saveConfig("global", partial, ctx.cwd);
+			return true;
+		} catch (err) {
+			ctx.ui.notify(`Save failed: ${err instanceof Error ? err.message : err}`, "error");
+			return false;
+		}
+	}
+
+	function rotateNow(ctx: ExtensionContext): void {
+		if (!cycler || !cycler.isRunning) {
+			ctx.ui.notify("Cycler is not running", "warning");
+			return;
+		}
+		cycler.tickNow();
+	}
+
+	function openMenu(ctx: ExtensionContext): Promise<void> {
+		if (ctx.mode !== "tui") {
+			ctx.ui.notify("/spinner requires TUI mode", "warning");
+			return Promise.resolve();
+		}
+		const cfg = loadConfig(ctx.cwd);
+		// Spin up a temporary cycler for live preview if the user hasn't
+		// saved any config yet. The cycler dies with the session; on next
+		// session_start, loadConfig() will report customized=false again
+		// and no cycler is started unless the user has saved something.
+		if (!cycler) {
+			cycler = new MessageCycler({
+				messages: cfg.messages,
+				intervalMs: cfg.cycleIntervalMs,
+				cycleMode: cfg.cycleMode,
+				ctx,
+			});
+			cycler.start();
+		}
+		return runSpinnerMenu({ initial: cfg, cycler, ctx });
+	}
+
+	function applySpinnerCommand(cmd: SpinnerCommand, ctx: ExtensionContext): void | Promise<void> {
+		const paths = { global: globalConfigPath(), project: projectConfigPath(ctx.cwd) };
+
+		switch (cmd.action) {
+			case "menu":
+				return openMenu(ctx);
+			case "help":
+				ctx.ui.notify(formatSpinnerHelp(paths), "info");
+				return;
+			case "status":
+				ctx.ui.notify(formatSpinnerStatus(loadConfig(ctx.cwd), paths), "info");
+				return;
+			case "unknown":
+				ctx.ui.notify(formatSpinnerHelp(paths), "warning");
+				return;
+			case "rotate":
+				rotateNow(ctx);
+				return;
+			case "preset": {
+				if (!saveGlobal({ preset: cmd.name }, ctx)) return;
+				refreshLive(ctx);
+				ctx.ui.notify(`Animation: ${findPreset(cmd.name)?.label ?? cmd.name}`, "info");
+				return;
+			}
+			case "pack": {
+				const name = cmd.name as MessagePackName;
+				const messages = [...MESSAGE_PACKS[name]];
+				if (!saveGlobal({ messagePack: name, messages }, ctx)) return;
+				refreshLive(ctx);
+				ctx.ui.notify(`Messages replaced with the ${name} pack (${messages.length})`, "info");
+				return;
+			}
+			case "cycleMode": {
+				if (!saveGlobal({ cycleMode: cmd.mode }, ctx)) return;
+				if (cycler?.isRunning) {
+					const cfg = loadConfig(ctx.cwd);
+					cycler.update(cfg.messages, cfg.cycleIntervalMs, cmd.mode);
+				} else {
+					refreshLive(ctx);
+				}
+				ctx.ui.notify(`Cycle order: ${cmd.mode}`, "info");
+				return;
+			}
+			case "reset": {
+				stopCycler();
+				if (cmd.target === "all") {
+					ctx.ui.setWorkingMessage();
+					ctx.ui.setWorkingIndicator();
+					deleteConfig("global", ctx.cwd);
+					deleteConfig("project", ctx.cwd);
+					ctx.ui.notify("Spinner reset to defaults", "info");
+					return;
+				}
+				deleteConfig(cmd.target, ctx.cwd);
+				startCycler(ctx);
+				ctx.ui.notify(`Spinner reset (${cmd.target})`, "info");
+				return;
+			}
+		}
+	}
+
+	function spinnerCompletions(prefix: string) {
+		if (typeof getSpinnerArgumentCompletions !== "function") return null;
+		try {
+			return getSpinnerArgumentCompletions(prefix);
+		} catch {
+			return null;
+		}
+	}
+
+	function resetCompletions(prefix: string) {
+		try {
+			const start = (typeof prefix === "string" ? prefix : "").trim().toLowerCase();
+			if (start.includes(" ")) return null;
+			const items = (["global", "project"] as const)
+				.filter((name) => name.startsWith(start))
+				.map((name) => ({ value: name, label: name }));
+			return items.length > 0 ? items : null;
+		} catch {
+			return null;
+		}
+	}
+
 	// ── Lifecycle ────────────────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -84,52 +235,32 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand("spinner", {
 		description: "Customize the spinner animation and message rotation.",
-		handler: async (_args, ctx) => {
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("/spinner requires TUI mode", "warning");
-				return;
-			}
-			const cfg = loadConfig(ctx.cwd);
-			// Spin up a temporary cycler for live preview if the user hasn't
-			// saved any config yet. The cycler dies with the session; on next
-			// session_start, loadConfig() will report customized=false again
-			// and no cycler is started unless the user has saved something.
-			if (!cycler) {
-				cycler = new MessageCycler({
-					messages: cfg.messages,
-					intervalMs: cfg.cycleIntervalMs,
-					cycleMode: cfg.cycleMode,
-					ctx,
-				});
-				cycler.start();
-			}
-			await runSpinnerMenu({ initial: cfg, cycler, ctx });
+		getArgumentCompletions: spinnerCompletions,
+		handler: async (args, ctx) => {
+			await applySpinnerCommand(parseSpinnerCommand(args), ctx);
 		},
 	});
 
 	pi.registerCommand("spinner-reset", {
 		description: "Restore pi's default spinner and clear the message rotation.",
-		handler: async (_args, ctx) => {
-			stopCycler();
-			ctx.ui.setWorkingMessage();
-			ctx.ui.setWorkingIndicator();
-			// Durable: delete both saved files so the next session_start
-			// sees customized=false and skips the cycler entirely. Without
-			// this, /spinner-reset would only last one session.
-			deleteConfig("global", ctx.cwd);
-			deleteConfig("project", ctx.cwd);
-			ctx.ui.notify("Spinner reset to defaults", "info");
+		getArgumentCompletions: resetCompletions,
+		handler: async (args, ctx) => {
+			const cmd = parseSpinnerCommand(`reset ${args ?? ""}`);
+			if (cmd.action !== "reset") {
+				ctx.ui.notify(formatSpinnerHelp({
+					global: globalConfigPath(),
+					project: projectConfigPath(ctx.cwd),
+				}), "warning");
+				return;
+			}
+			await applySpinnerCommand(cmd, ctx);
 		},
 	});
 
 	pi.registerCommand("spinner-rotate", {
 		description: "Force-advance to the next message in the rotation (for previewing).",
 		handler: async (_args, ctx) => {
-			if (!cycler || !cycler.isRunning) {
-				ctx.ui.notify("Cycler is not running", "warning");
-				return;
-			}
-			cycler.tickNow();
+			rotateNow(ctx);
 		},
 	});
 }

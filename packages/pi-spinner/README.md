@@ -31,9 +31,18 @@ If you never customize anything, the extension uses pi's built-in defaults: brai
 
 | Command | Description |
 |---|---|
-| `/spinner` | Open the interactive customization TUI |
-| `/spinner-reset` | Delete saved config files and restore pi's default spinner |
-| `/spinner-rotate` | Force-advance to the next message (useful for previewing changes) |
+| `/spinner` | Open the TUI |
+| `/spinner status` | Show merged config + paths |
+| `/spinner help` | Usage |
+| `/spinner <preset>` | Set preset (including `hidden`, `dot`) |
+| `/spinner pack <name>` | Replace messages with a built-in pack |
+| `/spinner random` / `/spinner sequential` | Set cycle order |
+| `/spinner rotate` | Same as `/spinner-rotate` |
+| `/spinner reset` | Same as `/spinner-reset` (both files) |
+| `/spinner-reset [global\|project]` | Scoped or full reset |
+
+Slash mutations save to the **global** file unless the verb is a scoped reset.
+Project overrides still win on next load if present.
 
 ## Built-in animation presets
 
@@ -162,6 +171,7 @@ It only changes the local loader animation and text in TUI mode.
 
 ```text
 src/index.ts
+src/command.ts
 src/constants.ts
 src/presets.ts
 src/config.ts
