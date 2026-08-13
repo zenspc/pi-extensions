@@ -54,6 +54,7 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 		cycler = new MessageCycler({
 			messages: cfg.messages,
 			intervalMs: cfg.cycleIntervalMs,
+			cycleMode: cfg.cycleMode,
 			ctx,
 		});
 		cycler.start();
@@ -97,6 +98,7 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 				cycler = new MessageCycler({
 					messages: cfg.messages,
 					intervalMs: cfg.cycleIntervalMs,
+					cycleMode: cfg.cycleMode,
 					ctx,
 				});
 				cycler.start();

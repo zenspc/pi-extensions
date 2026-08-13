@@ -76,17 +76,50 @@ describe("parseUserSpinnerConfig", () => {
 		const parsed = parseUserSpinnerConfig({
 			preset: "dots",
 			messages: ["One", "Two"],
+			messagePack: "calm",
 			cycleIntervalMs: 3000,
+			cycleMode: "sequential",
 			customFrames: ["⠋", "⠙"],
 			customIntervalMs: 80,
 		});
 		assert.deepEqual(parsed, {
 			preset: "dots",
 			messages: ["One", "Two"],
+			messagePack: "calm",
 			cycleIntervalMs: 3000,
+			cycleMode: "sequential",
 			customFrames: ["⠋", "⠙"],
 			customIntervalMs: 80,
 		});
+	});
+
+	it("lowercases cycleMode and messagePack", () => {
+		const parsed = parseUserSpinnerConfig({
+			cycleMode: "RANDOM",
+			messagePack: "CALM",
+		});
+		assert.equal(parsed.cycleMode, "random");
+		assert.equal(parsed.messagePack, "calm");
+	});
+
+	it("drops unknown cycleMode and messagePack names", () => {
+		const parsed = parseUserSpinnerConfig({
+			cycleMode: "shuffle",
+			messagePack: "fun",
+			messages: ["keep me"],
+		});
+		assert.equal(parsed.cycleMode, undefined);
+		assert.equal(parsed.messagePack, undefined);
+		assert.deepEqual(parsed.messages, ["keep me"]);
+	});
+
+	it("does not replace messages when parsing messagePack", () => {
+		const parsed = parseUserSpinnerConfig({
+			messagePack: "calm",
+			messages: ["Custom A", "Custom B"],
+		});
+		assert.equal(parsed.messagePack, "calm");
+		assert.deepEqual(parsed.messages, ["Custom A", "Custom B"]);
 	});
 
 	it("drops unknown presets, junk keys, and invalid types", () => {
@@ -136,6 +169,14 @@ describe("parseUserSpinnerConfig", () => {
 	});
 });
 
+describe("defaults", () => {
+	it("uses random cycle mode and the default pack", () => {
+		const d = defaults();
+		assert.equal(d.cycleMode, "random");
+		assert.equal(d.messagePack, "default");
+	});
+});
+
 describe("mergeSpinnerConfig", () => {
 	it("applies overrides without mutating the base", () => {
 		const base = defaults();
@@ -161,7 +202,9 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 			const result = writeConfigFile(path, {
 				preset: "bars",
 				messages: ["A", "B"],
+				messagePack: "dry",
 				cycleIntervalMs: 4000,
+				cycleMode: "sequential",
 			});
 			assert.equal(result.ok, true);
 			const st = lstatSync(path);
@@ -173,7 +216,9 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 			assert.deepEqual(loaded, {
 				preset: "bars",
 				messages: ["A", "B"],
+				messagePack: "dry",
 				cycleIntervalMs: 4000,
+				cycleMode: "sequential",
 			});
 
 			// No runtime-only fields leaked into the file.
@@ -270,20 +315,25 @@ describe("loadConfigFromPaths", () => {
 			assert.equal(plain.customized, false);
 			assert.equal(plain.preset, "braille");
 
-			writeConfigFile(globalPath, { preset: "dots", messages: ["G1", "G2"], cycleIntervalMs: 6000 });
+			writeConfigFile(globalPath, {
+				preset: "dots",
+				messages: ["G1", "G2"],
+				cycleIntervalMs: 6000,
+			});
 			const globalOnly = loadConfigFromPaths(globalPath, projectPath);
 			assert.equal(globalOnly.customized, true);
 			assert.equal(globalOnly.preset, "dots");
 			assert.deepEqual(globalOnly.messages, ["G1", "G2"]);
 			assert.equal(globalOnly.cycleIntervalMs, 6000);
 
-			writeConfigFile(projectPath, { preset: "rainbow" });
+			writeConfigFile(projectPath, { preset: "rainbow", cycleMode: "sequential" });
 			const both = loadConfigFromPaths(globalPath, projectPath);
 			assert.equal(both.customized, true);
 			assert.equal(both.preset, "rainbow");
 			// Project did not override messages → global messages remain
 			assert.deepEqual(both.messages, ["G1", "G2"]);
 			assert.equal(both.cycleIntervalMs, 6000);
+			assert.equal(both.cycleMode, "sequential");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

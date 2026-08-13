@@ -21,6 +21,8 @@ pi install ./packages/pi-spinner
 2. Pick an animation preset, edit your message list, set the cycle interval, and save (to global or project).
    You can also edit custom frames and the frame interval from the same menu.
    An empty frames editor clears the override so the preset shows again.
+   Cycle order can be random or sequential.
+   A built-in message pack (default, calm, dry) replaces the current list when you pick it in the TUI.
 3. Next time pi streams a response, the loader uses your new animation and rotates through your messages.
 
 If you never customize anything, the extension uses pi's built-in defaults: braille spinner, "Working..." text, no rotation. You can opt out by running `/spinner-reset` and the loader returns to pi's default.
@@ -75,8 +77,19 @@ Merge order: built-in defaults < global < project. So a project file with just `
 		"Brewing ideas...",
 	],
 
+	// Last picked built-in pack name. One of: default, calm, dry.
+	// Picking a pack in the TUI replaces `messages` with that pack.
+	// A JSON file that sets only `messagePack` does not rewrite `messages` on load.
+	// The `messages` key still wins; otherwise the default list remains.
+	"messagePack": "default",
+
 	// How often (ms) to switch to the next message. Clamped to [1500, 15000].
 	"cycleIntervalMs": 5000,
+
+	// Order used when picking the next message.
+	// `random` (default) shuffles and avoids an immediate repeat.
+	// `sequential` walks the list and wraps.
+	"cycleMode": "random",
 
 	// Optional raw animation frames. When non-empty, this overrides `preset`.
 	// Each frame is up to 8 characters; max 32 frames.
@@ -136,6 +149,8 @@ Hardening applied at the config boundary:
 - Writes are atomic (temp + rename) with mode `0o600`; parent dirs are created as `0o700`.
 - Keys are allowlisted; unknown fields (including `customized` runtime state) are never persisted.
 - Preset names must match a built-in; unknown names are dropped.
+- `cycleMode` must be `random` or `sequential`; unknown values are dropped.
+- `messagePack` must be `default`, `calm`, or `dry`; unknown values are dropped.
 - Messages and frames are stripped of ANSI/control characters before they reach the TUI.
 - Message count (50), message length (120), frame count (32), and frame length (8) are hard-capped.
 - Intervals are clamped to documented ranges.

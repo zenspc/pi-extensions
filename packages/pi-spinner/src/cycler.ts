@@ -6,10 +6,11 @@
  * for calling start() on session_start and stop() on session_shutdown.
  *
  * Behavior:
- *   - On start(): picks a random message, calls setWorkingMessage, then
- *     schedules the next tick.
- *   - On tick(): picks a new message (avoiding immediate repeat when there
- *     are 2+ options), calls setWorkingMessage, schedules the next tick.
+ *   - On start(): picks the first message (sequential) or a random one
+ *     (random, the default), calls setWorkingMessage, then schedules the
+ *     next tick.
+ *   - On tick(): picks the next message. Sequential walks the list and
+ *     wraps. Random avoids an immediate repeat when there are 2+ options.
  *   - On stop(): clears the pending timer and (by default) restores pi's
  *     default "Working..." text. Pass `{ restoreDefault: false }` to skip
  *     the restoration. The cycler is fully re-startable afterwards.
@@ -20,12 +21,14 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { CycleMode } from "./constants.ts";
 import { themeMessage } from "./presets.ts";
 
 export interface CyclerOptions {
 	messages: readonly string[];
 	intervalMs: number;
 	ctx: ExtensionContext;
+	cycleMode?: CycleMode;
 }
 
 export interface StopOptions {
@@ -37,6 +40,7 @@ export class MessageCycler {
 	private messages: readonly string[];
 	private intervalMs: number;
 	private ctx: ExtensionContext;
+	private cycleMode: CycleMode;
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private lastIndex = -1;
 	private running = false;
@@ -45,12 +49,15 @@ export class MessageCycler {
 		this.messages = opts.messages;
 		this.intervalMs = opts.intervalMs;
 		this.ctx = opts.ctx;
+		this.cycleMode = opts.cycleMode ?? "random";
 	}
 
 	/** Swap in a new message list and/or interval (e.g. after editing config). */
-	update(messages: readonly string[], intervalMs: number): void {
+	update(messages: readonly string[], intervalMs: number, cycleMode?: CycleMode): void {
 		this.messages = messages;
 		this.intervalMs = intervalMs;
+		if (cycleMode !== undefined) this.cycleMode = cycleMode;
+		this.lastIndex = -1;
 		// If running, the change takes effect on the next scheduled tick.
 	}
 
@@ -96,6 +103,9 @@ export class MessageCycler {
 
 	private pickIndex(): number {
 		if (this.messages.length === 1) return 0;
+		if (this.cycleMode === "sequential") {
+			return this.lastIndex < 0 ? 0 : (this.lastIndex + 1) % this.messages.length;
+		}
 		// Avoid immediate repeat when 2+ messages exist
 		let idx = Math.floor(Math.random() * this.messages.length);
 		if (idx === this.lastIndex) {
