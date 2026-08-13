@@ -30,17 +30,43 @@ import {
 	projectConfigPath,
 	saveConfig,
 	sanitizeMessage,
+	sanitizeFrame,
 	LIMITS,
 } from "./config.ts";
+import {
+	CYCLE_MODES,
+	MESSAGE_PACKS,
+	MESSAGE_PACK_NAMES,
+	type CycleMode,
+	type MessagePackName,
+} from "./constants.ts";
 import type { MessageCycler } from "./cycler.ts";
 import { PRESETS, findPreset, buildIndicator } from "./presets.ts";
 
-type MainAction = "animation" | "messages" | "interval" | "save" | "reset" | "close";
+type MainAction =
+	| "animation"
+	| "messages"
+	| "interval"
+	| "frames"
+	| "frameInterval"
+	| "cycleMode"
+	| "pack"
+	| "activity"
+	| "thinking"
+	| "save"
+	| "reset"
+	| "close";
 
 const MAIN_ITEMS: SelectItem<MainAction>[] = [
 	{ value: "animation", label: "Animation preset", description: "change the spinner" },
 	{ value: "messages", label: "Messages", description: "edit the message list" },
 	{ value: "interval", label: "Cycle interval", description: "how often to switch messages" },
+	{ value: "frames", label: "Custom frames", description: "override the preset with raw frames" },
+	{ value: "frameInterval", label: "Frame interval", description: "speed of custom frames" },
+	{ value: "cycleMode", label: "Cycle order", description: "random or sequential" },
+	{ value: "pack", label: "Message pack", description: "replace the list with a built-in pack" },
+	{ value: "activity", label: "Activity messages", description: "show the current tool while it runs" },
+	{ value: "thinking", label: "Thinking label", description: "sync the loader message to the Ctrl+T label" },
 	{ value: "save", label: "Save settings", description: "write to global or project" },
 	{ value: "reset", label: "Reset to defaults", description: "restore built-in animation + messages" },
 	{ value: "close", label: "Close", description: "discard unsaved changes" },
@@ -79,6 +105,26 @@ export async function runSpinnerMenu(opts: SpinnerMenuOptions): Promise<void> {
 				break;
 			case "interval":
 				await editInterval(state, cycler, ctx);
+				break;
+			case "frames":
+				await editCustomFrames(state, cycler, ctx);
+				break;
+			case "frameInterval":
+				await editFrameInterval(state, cycler, ctx);
+				break;
+			case "cycleMode":
+				await pickCycleMode(state, cycler, ctx);
+				break;
+			case "pack":
+				await pickMessagePack(state, cycler, ctx);
+				break;
+			case "activity":
+				state.activityMessages = !state.activityMessages;
+				ctx.ui.notify(`Activity messages: ${state.activityMessages ? "on" : "off"}`, "info");
+				break;
+			case "thinking":
+				state.syncThinkingLabel = !state.syncThinkingLabel;
+				ctx.ui.notify(`Thinking label: ${state.syncThinkingLabel ? "on" : "off"}`, "info");
 				break;
 			case "save":
 				await pickSaveTarget(state, ctx);
@@ -168,6 +214,15 @@ async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Prom
 		if (item.value === "animation") return { ...item, description: presetLabel };
 		if (item.value === "messages") return { ...item, description: `${state.messages.length} entries` };
 		if (item.value === "interval") return { ...item, description: cycleLabel };
+		if (item.value === "frames") {
+			const n = state.customFrames.length;
+			return { ...item, description: n === 0 ? "off" : `${n} frames (overrides preset)` };
+		}
+		if (item.value === "frameInterval") return { ...item, description: `${state.customIntervalMs}ms` };
+		if (item.value === "cycleMode") return { ...item, description: state.cycleMode };
+		if (item.value === "pack") return { ...item, description: state.messagePack };
+		if (item.value === "activity") return { ...item, description: state.activityMessages ? "on" : "off" };
+		if (item.value === "thinking") return { ...item, description: state.syncThinkingLabel ? "on" : "off" };
 		return item;
 	});
 
@@ -180,6 +235,7 @@ async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Prom
 					headerLines: [
 						`  preset: ${presetLabel}`,
 						`  messages: ${state.messages.length}  ·  cycle: ${cycleLabel}`,
+						`  custom frames: ${state.customFrames.length || "off"}`,
 					],
 					hint: "↑↓ navigate · enter select · esc close",
 					cancelValue: "close",
@@ -236,6 +292,102 @@ async function editMessages(state: SpinnerConfig, cycler: MessageCycler | null, 
 	state.messages = next;
 	applyPreview(state, cycler, ctx);
 	ctx.ui.notify(`Messages updated: ${next.length} entries`, "info");
+}
+
+async function editCustomFrames(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const prefill = state.customFrames.join("\n");
+	const edited = await ctx.ui.editor("Edit custom frames (one per line; empty clears)", prefill);
+	if (edited === undefined) return;
+
+	const next: string[] = [];
+	for (const line of edited.split(/\r?\n/)) {
+		if (next.length >= LIMITS.MAX_CUSTOM_FRAMES) break;
+		const frame = sanitizeFrame(line);
+		if (frame) next.push(frame);
+	}
+
+	if (next.length === 0) {
+		state.customFrames = [];
+		applyPreview(state, cycler, ctx);
+		ctx.ui.notify("Custom frames cleared; preset is active", "info");
+		return;
+	}
+
+	state.customFrames = next;
+	applyPreview(state, cycler, ctx);
+	ctx.ui.notify(`Custom frames updated: ${next.length} frames`, "info");
+}
+
+async function editFrameInterval(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const raw = await ctx.ui.input("Frame interval (milliseconds)", String(state.customIntervalMs));
+	if (raw === undefined) return;
+
+	const ms = Number.parseInt(raw.trim(), 10);
+	if (!Number.isFinite(ms) || ms <= 0) {
+		ctx.ui.notify("Invalid number", "error");
+		return;
+	}
+
+	if (ms < LIMITS.MIN_FRAME_INTERVAL_MS || ms > LIMITS.MAX_FRAME_INTERVAL_MS) {
+		ctx.ui.notify(
+			`Must be between ${LIMITS.MIN_FRAME_INTERVAL_MS}ms and ${LIMITS.MAX_FRAME_INTERVAL_MS}ms`,
+			"error",
+		);
+		return;
+	}
+
+	state.customIntervalMs = ms;
+	applyPreview(state, cycler, ctx);
+	ctx.ui.notify(`Frame interval: ${state.customIntervalMs}ms`, "info");
+}
+
+async function pickCycleMode(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const items: SelectItem<CycleMode | "__back__">[] = CYCLE_MODES.map((mode) => ({
+		value: mode,
+		label: `${state.cycleMode === mode ? "● " : "  "}${mode}`,
+		description: mode === "random" ? "shuffle, avoid immediate repeat" : "walk the list in order",
+	}));
+	items.push({ value: "__back__", label: "Back", description: "return to main menu" });
+
+	const result = await ctx.ui.custom<CycleMode | "__back__">((tui, theme, _kb, done) =>
+		buildSelectScreen<CycleMode | "__back__">(
+			{ title: "Cycle Order", items, hint: "enter to apply · esc back", cancelValue: "__back__" },
+			tui,
+			theme,
+			done,
+		),
+	);
+
+	if (result && result !== "__back__") {
+		state.cycleMode = result;
+		applyPreview(state, cycler, ctx);
+		ctx.ui.notify(`Cycle order: ${result}`, "info");
+	}
+}
+
+async function pickMessagePack(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const items: SelectItem<MessagePackName | "__back__">[] = MESSAGE_PACK_NAMES.map((name) => ({
+		value: name,
+		label: `${state.messagePack === name ? "● " : "  "}${name}`,
+		description: MESSAGE_PACKS[name][0] ?? name,
+	}));
+	items.push({ value: "__back__", label: "Back", description: "return to main menu" });
+
+	const result = await ctx.ui.custom<MessagePackName | "__back__">((tui, theme, _kb, done) =>
+		buildSelectScreen<MessagePackName | "__back__">(
+			{ title: "Message Pack", items, hint: "enter to apply · esc back", cancelValue: "__back__" },
+			tui,
+			theme,
+			done,
+		),
+	);
+
+	if (result && result !== "__back__") {
+		state.messagePack = result;
+		state.messages = [...MESSAGE_PACKS[result]];
+		applyPreview(state, cycler, ctx);
+		ctx.ui.notify(`Messages replaced with the ${result} pack`, "info");
+	}
 }
 
 async function editInterval(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
@@ -296,9 +448,13 @@ async function pickSaveTarget(state: SpinnerConfig, ctx: ExtensionContext): Prom
 			const partial: UserSpinnerConfig = {
 				preset: state.preset,
 				messages: state.messages,
+				messagePack: state.messagePack,
 				cycleIntervalMs: state.cycleIntervalMs,
+				cycleMode: state.cycleMode,
 				customFrames: state.customFrames,
 				customIntervalMs: state.customIntervalMs,
+				activityMessages: state.activityMessages,
+				syncThinkingLabel: state.syncThinkingLabel,
 			};
 			const { path } = saveConfig(result, partial, ctx.cwd);
 			ctx.ui.notify(`Saved to ${result}: ${path}`, "info");
@@ -323,12 +479,16 @@ async function handleReset(state: SpinnerConfig, cycler: MessageCycler | null, c
 	const d = defaults();
 	state.preset = d.preset;
 	state.messages = [...d.messages];
+	state.messagePack = d.messagePack;
 	state.cycleIntervalMs = d.cycleIntervalMs;
+	state.cycleMode = d.cycleMode;
 	state.customFrames = [...d.customFrames];
 	state.customIntervalMs = d.customIntervalMs;
+	state.activityMessages = d.activityMessages;
+	state.syncThinkingLabel = d.syncThinkingLabel;
 
 	if (cycler) {
-		cycler.update(state.messages, state.cycleIntervalMs);
+		cycler.update(state.messages, state.cycleIntervalMs, state.cycleMode);
 		if (cycler.isRunning) cycler.tickNow();
 	}
 	ctx.ui.notify("Reset to defaults", "info");
@@ -342,7 +502,7 @@ function applyPreview(state: SpinnerConfig, cycler: MessageCycler | null, ctx: E
 	const indicator = buildIndicator(state.preset, state.customFrames, state.customIntervalMs, ctx.ui.theme);
 	ctx.ui.setWorkingIndicator(indicator);
 	if (cycler) {
-		cycler.update(state.messages, state.cycleIntervalMs);
+		cycler.update(state.messages, state.cycleIntervalMs, state.cycleMode);
 		// Force an immediate tick so the new state is visible right away
 		if (cycler.isRunning) cycler.tickNow();
 	}

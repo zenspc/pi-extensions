@@ -6,13 +6,17 @@
  * for calling start() on session_start and stop() on session_shutdown.
  *
  * Behavior:
- *   - On start(): picks a random message, calls setWorkingMessage, then
- *     schedules the next tick.
- *   - On tick(): picks a new message (avoiding immediate repeat when there
- *     are 2+ options), calls setWorkingMessage, schedules the next tick.
+ *   - On start(): picks the first message (sequential) or a random one
+ *     (random, the default), calls setWorkingMessage, then schedules the
+ *     next tick.
+ *   - On tick(): picks the next message. Sequential walks the list and
+ *     wraps. Random avoids an immediate repeat when there are 2+ options.
  *   - On stop(): clears the pending timer and (by default) restores pi's
  *     default "Working..." text. Pass `{ restoreDefault: false }` to skip
  *     the restoration. The cycler is fully re-startable afterwards.
+ *   - When `syncThinkingLabel` is on, every message set above is also pushed
+ *     to `ctx.ui.setHiddenThinkingLabel()` (raw, un-themed), and stop()
+ *     restores pi's default thinking label alongside the working message.
  *
  * Uses setTimeout (chained) rather than setInterval so a long blocking
  * operation does not pile up overlapping ticks. The next tick is scheduled
@@ -20,12 +24,16 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { CycleMode } from "./constants.ts";
 import { themeMessage } from "./presets.ts";
 
 export interface CyclerOptions {
 	messages: readonly string[];
 	intervalMs: number;
 	ctx: ExtensionContext;
+	cycleMode?: CycleMode;
+	/** When true, mirror the current raw message onto pi's hidden-thinking label. */
+	syncThinkingLabel?: boolean;
 }
 
 export interface StopOptions {
@@ -37,20 +45,26 @@ export class MessageCycler {
 	private messages: readonly string[];
 	private intervalMs: number;
 	private ctx: ExtensionContext;
+	private cycleMode: CycleMode;
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private lastIndex = -1;
 	private running = false;
+	private syncThinkingLabel: boolean;
 
 	constructor(opts: CyclerOptions) {
 		this.messages = opts.messages;
 		this.intervalMs = opts.intervalMs;
 		this.ctx = opts.ctx;
+		this.cycleMode = opts.cycleMode ?? "random";
+		this.syncThinkingLabel = opts.syncThinkingLabel ?? false;
 	}
 
 	/** Swap in a new message list and/or interval (e.g. after editing config). */
-	update(messages: readonly string[], intervalMs: number): void {
+	update(messages: readonly string[], intervalMs: number, cycleMode?: CycleMode): void {
 		this.messages = messages;
 		this.intervalMs = intervalMs;
+		if (cycleMode !== undefined) this.cycleMode = cycleMode;
+		this.lastIndex = -1;
 		// If running, the change takes effect on the next scheduled tick.
 	}
 
@@ -76,6 +90,7 @@ export class MessageCycler {
 		}
 		if (opts.restoreDefault !== false) {
 			this.ctx.ui.setWorkingMessage();
+			this.syncThinking();
 		}
 	}
 
@@ -89,13 +104,47 @@ export class MessageCycler {
 		this.tick();
 	}
 
+	/**
+	 * Pause the rotation timer and show `message` without changing
+	 * `running` or `lastIndex`. Works even when the cycler is stopped.
+	 */
+	pauseForOverride(message: string): void {
+		if (this.timer !== undefined) {
+			clearTimeout(this.timer);
+			this.timer = undefined;
+		}
+		this.ctx.ui.setWorkingMessage(themeMessage(message, this.ctx.ui.theme));
+		this.syncThinking(message);
+	}
+
+	/**
+	 * Resume rotation after an override. Schedules the next tick without
+	 * changing the current message, so the override stays up until then.
+	 */
+	resumeAfterOverride(): void {
+		if (!this.running || this.messages.length === 0) return;
+		if (this.timer !== undefined) {
+			clearTimeout(this.timer);
+		}
+		this.timer = setTimeout(() => this.tick(), this.intervalMs);
+	}
+
 	/** True if a tick is currently scheduled. */
 	get isRunning(): boolean {
 		return this.running;
 	}
 
+	/** Mirror the current message onto the hidden-thinking label when enabled. */
+	private syncThinking(label?: string): void {
+		if (!this.syncThinkingLabel) return;
+		this.ctx.ui.setHiddenThinkingLabel(label);
+	}
+
 	private pickIndex(): number {
 		if (this.messages.length === 1) return 0;
+		if (this.cycleMode === "sequential") {
+			return this.lastIndex < 0 ? 0 : (this.lastIndex + 1) % this.messages.length;
+		}
 		// Avoid immediate repeat when 2+ messages exist
 		let idx = Math.floor(Math.random() * this.messages.length);
 		if (idx === this.lastIndex) {
@@ -110,6 +159,7 @@ export class MessageCycler {
 		this.lastIndex = idx;
 		const raw = this.messages[idx] ?? "Working...";
 		this.ctx.ui.setWorkingMessage(themeMessage(raw, this.ctx.ui.theme));
+		this.syncThinking(raw);
 		this.timer = setTimeout(() => this.tick(), this.intervalMs);
 	}
 }

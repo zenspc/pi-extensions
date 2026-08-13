@@ -85,6 +85,22 @@ export const PRESETS: readonly PresetDefinition[] = [
 		intervalMs: 1000,
 		colorKeys: ["muted"],
 	},
+	{
+		name: "dot",
+		label: "Static dot",
+		description: "Single accent dot. No animation.",
+		rawFrames: ["●"],
+		intervalMs: 1000,
+		colorKeys: ["accent"],
+	},
+	{
+		name: "hidden",
+		label: "Hidden",
+		description: "No glyph. Message text still rotates.",
+		rawFrames: [],
+		intervalMs: 1000,
+		colorKeys: ["accent"],
+	},
 ];
 
 /** Find a preset by name. Returns undefined if not found. */
@@ -120,6 +136,7 @@ export function buildIndicator(
 	// silently blank the spinner.
 	const preset = findPreset(presetName) ?? PRESETS[0];
 	if (!preset) return undefined; // no presets shipped - shouldn't happen
+	if (preset.rawFrames.length === 0) return { frames: [] };
 
 	const frames = preset.rawFrames.map((frame, i) => {
 		const key = preset.colorKeys[i % preset.colorKeys.length] ?? "accent";

@@ -32,7 +32,14 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { DEFAULT_MESSAGES, PRESET_NAMES } from "./constants.ts";
+import {
+	CYCLE_MODES,
+	DEFAULT_MESSAGES,
+	MESSAGE_PACK_NAMES,
+	PRESET_NAMES,
+	type CycleMode,
+	type MessagePackName,
+} from "./constants.ts";
 
 /** Same project config dir name pi uses (see pi's CONFIG_DIR_NAME). */
 const PROJECT_CONFIG_DIR = ".pi";
@@ -55,19 +62,29 @@ export function getSpinnerAgentDir(
 export interface UserSpinnerConfig {
 	preset?: string;
 	messages?: string[];
+	messagePack?: MessagePackName;
 	cycleIntervalMs?: number;
+	cycleMode?: CycleMode;
 	customFrames?: string[];
 	customIntervalMs?: number;
+	activityMessages?: boolean;
+	syncThinkingLabel?: boolean;
 }
 
 export interface SpinnerConfig {
 	preset: string;
 	messages: string[];
+	messagePack: MessagePackName;
 	cycleIntervalMs: number;
+	cycleMode: CycleMode;
 	customFrames: string[];
 	customIntervalMs: number;
+	activityMessages: boolean;
+	syncThinkingLabel: boolean;
 	/** True when at least one user config file was found on disk. */
 	customized: boolean;
+	/** True when a user file set something other than activityMessages or syncThinkingLabel. */
+	hasRotationConfig: boolean;
 }
 
 /** Cap untrusted config file size (DoS / parse cost). */
@@ -79,11 +96,13 @@ const MIN_FRAME_INTERVAL_MS = 50;
 const MAX_FRAME_INTERVAL_MS = 2000;
 const MAX_MESSAGES = 50;
 const MAX_MESSAGE_LENGTH = 120;
-const MAX_FRAME_LENGTH = 4;
+const MAX_FRAME_LENGTH = 8;
 const MAX_CUSTOM_FRAMES = 32;
 const MAX_PRESET_LENGTH = 32;
 
 const PRESET_NAME_SET: ReadonlySet<string> = new Set(PRESET_NAMES);
+const CYCLE_MODE_SET: ReadonlySet<string> = new Set(CYCLE_MODES);
+const MESSAGE_PACK_SET: ReadonlySet<string> = new Set(MESSAGE_PACK_NAMES);
 
 /** CSI / OSC ANSI sequences that must never reach the TUI. */
 const ANSI_RE =
@@ -100,10 +119,15 @@ export function defaults(): SpinnerConfig {
 	return {
 		preset: "braille",
 		messages: [...DEFAULT_MESSAGES],
+		messagePack: "default",
 		cycleIntervalMs: 5000,
+		cycleMode: "random",
 		customFrames: [],
 		customIntervalMs: 100,
+		activityMessages: false,
+		syncThinkingLabel: false,
 		customized: false,
+		hasRotationConfig: false,
 	};
 }
 
@@ -145,6 +169,16 @@ export function isKnownPreset(name: unknown): name is string {
 	return typeof name === "string" && PRESET_NAME_SET.has(name);
 }
 
+/** True when the name is a known cycle mode. */
+export function isKnownCycleMode(name: unknown): name is CycleMode {
+	return typeof name === "string" && CYCLE_MODE_SET.has(name);
+}
+
+/** True when the name is a known message pack. */
+export function isKnownMessagePack(name: unknown): name is MessagePackName {
+	return typeof name === "string" && MESSAGE_PACK_SET.has(name);
+}
+
 /**
  * Coerce unknown JSON into a partial user config. Only allowlisted keys and
  * sanitized values survive. Never throws.
@@ -172,8 +206,18 @@ export function parseUserSpinnerConfig(raw: unknown): UserSpinnerConfig {
 		if (messages.length > 0) out.messages = messages;
 	}
 
+	if (typeof src.messagePack === "string") {
+		const pack = src.messagePack.trim().toLowerCase();
+		if (isKnownMessagePack(pack)) out.messagePack = pack;
+	}
+
 	if (typeof src.cycleIntervalMs === "number") {
 		out.cycleIntervalMs = clamp(src.cycleIntervalMs, MIN_INTERVAL_MS, MAX_INTERVAL_MS);
+	}
+
+	if (typeof src.cycleMode === "string") {
+		const mode = src.cycleMode.trim().toLowerCase();
+		if (isKnownCycleMode(mode)) out.cycleMode = mode;
 	}
 
 	if (Array.isArray(src.customFrames)) {
@@ -190,6 +234,14 @@ export function parseUserSpinnerConfig(raw: unknown): UserSpinnerConfig {
 
 	if (typeof src.customIntervalMs === "number") {
 		out.customIntervalMs = clamp(src.customIntervalMs, MIN_FRAME_INTERVAL_MS, MAX_FRAME_INTERVAL_MS);
+	}
+
+	if (typeof src.activityMessages === "boolean") {
+		out.activityMessages = src.activityMessages;
+	}
+
+	if (typeof src.syncThinkingLabel === "boolean") {
+		out.syncThinkingLabel = src.syncThinkingLabel;
 	}
 
 	return out;
@@ -211,9 +263,13 @@ export function mergeSpinnerConfig(base: SpinnerConfig, override: UserSpinnerCon
 	if (override.messages !== undefined && override.messages.length > 0) {
 		next.messages = [...override.messages];
 	}
+	if (override.messagePack !== undefined) next.messagePack = override.messagePack;
 	if (override.cycleIntervalMs !== undefined) next.cycleIntervalMs = override.cycleIntervalMs;
+	if (override.cycleMode !== undefined) next.cycleMode = override.cycleMode;
 	if (override.customFrames !== undefined) next.customFrames = [...override.customFrames];
 	if (override.customIntervalMs !== undefined) next.customIntervalMs = override.customIntervalMs;
+	if (override.activityMessages !== undefined) next.activityMessages = override.activityMessages;
+	if (override.syncThinkingLabel !== undefined) next.syncThinkingLabel = override.syncThinkingLabel;
 	return next;
 }
 
@@ -265,11 +321,15 @@ export function writeConfigFile(path: string, partial: UserSpinnerConfig): { ok:
 	const ordered: Record<string, unknown> = {};
 	if (next.preset !== undefined) ordered.preset = next.preset;
 	if (next.messages !== undefined) ordered.messages = next.messages;
+	if (next.messagePack !== undefined) ordered.messagePack = next.messagePack;
 	if (next.cycleIntervalMs !== undefined) ordered.cycleIntervalMs = next.cycleIntervalMs;
+	if (next.cycleMode !== undefined) ordered.cycleMode = next.cycleMode;
 	if (next.customFrames !== undefined && next.customFrames.length > 0) {
 		ordered.customFrames = next.customFrames;
 	}
 	if (next.customIntervalMs !== undefined) ordered.customIntervalMs = next.customIntervalMs;
+	if (next.activityMessages !== undefined) ordered.activityMessages = next.activityMessages;
+	if (next.syncThinkingLabel !== undefined) ordered.syncThinkingLabel = next.syncThinkingLabel;
 
 	const body = `${JSON.stringify(ordered, null, "\t")}\n`;
 	const dir = dirname(path);
@@ -333,6 +393,11 @@ export function projectConfigPath(cwd: string): string {
  * Load the merged config from explicit paths (defaults < global < project).
  * Used by tests and by loadConfig().
  */
+function hasRotationOverride(raw: UserSpinnerConfig | undefined): boolean {
+	if (!raw) return false;
+	return Object.keys(raw).some((key) => key !== "activityMessages" && key !== "syncThinkingLabel");
+}
+
 export function loadConfigFromPaths(globalPath: string, projectPath: string): SpinnerConfig {
 	const globalRaw = readConfigFile(globalPath);
 	const projectRaw = readConfigFile(projectPath);
@@ -340,6 +405,7 @@ export function loadConfigFromPaths(globalPath: string, projectPath: string): Sp
 	return {
 		...merged,
 		customized: globalRaw !== undefined || projectRaw !== undefined,
+		hasRotationConfig: hasRotationOverride(globalRaw) || hasRotationOverride(projectRaw),
 	};
 }
 
