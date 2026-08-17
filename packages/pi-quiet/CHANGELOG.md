@@ -1,5 +1,11 @@
 # @zenspc/pi-quiet
 
+## 0.4.1
+
+### Patch Changes
+
+- aa70eb0: Pass Pi `shellPath` / `shellCommandPrefix` when Quiet re-registers bash on the fallback path so Windows Git Bash outside Program Files keeps working (gh #37).
+
 ## 0.4.0
 
 ### Minor Changes
