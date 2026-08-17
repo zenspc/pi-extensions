@@ -28,6 +28,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Box, Container, Text, type Component } from "@earendil-works/pi-tui";
 import { homedir } from "node:os";
+import { createQuietBashToolDefinitionFactory } from "./bash-settings.ts";
 import {
 	type QuietOutcome,
 	classifyQuietTool,
@@ -512,7 +513,13 @@ export function registerQuietTools(
 	index: CompactionIndex,
 ): void {
 	wrapBuiltin(pi, isEnabled, index, createReadToolDefinition, "read");
-	wrapBuiltin(pi, isEnabled, index, createBashToolDefinition, "bash");
+	wrapBuiltin(
+		pi,
+		isEnabled,
+		index,
+		createQuietBashToolDefinitionFactory(createBashToolDefinition),
+		"bash",
+	);
 	wrapBuiltin(pi, isEnabled, index, createEditToolDefinition, "edit");
 	wrapBuiltin(pi, isEnabled, index, createWriteToolDefinition, "write");
 	wrapBuiltin(pi, isEnabled, index, createGrepToolDefinition, "grep");
