@@ -4,10 +4,11 @@ Pin Pi's editor row to the bottom of the terminal so it stays put while the tran
 
 ## Compatibility
 
-Validated on Pi / `@earendil-works/pi-tui` **0.80.x**.
+Validated on Pi / `@earendil-works/pi-tui` **0.84.x** regular TUI (`TuiMainScreen`).
+No-op when `tui.mode === "fullscreen"` (native sticky editor).
 This extension patches private TUI internals (`doRender`, `terminal.rows`, mouse/selection hooks, etc.).
 Private-API drift in newer Pi releases may require a package update.
-Peer floor is `>=0.80.0` (raised above the monorepo `*` convention because this package depends on private TUI hooks validated on 0.80.x).
+Peer floor is `>=0.84.0` (raised above the monorepo `*` convention because this package depends on private TUI hooks).
 
 ## Install
 

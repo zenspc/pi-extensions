@@ -28,6 +28,7 @@ interface TuiLike {
   focusedComponent?: Component | null
   requestRender: (force?: boolean) => void
   getShowHardwareCursor?: () => boolean
+  getFocusedComponent?: () => Component | null
 }
 
 interface ContainerMatch {
@@ -120,7 +121,8 @@ function findContainerWithChild(
 }
 
 export function findEditorContainer(tui: TuiLike): ContainerMatch | null {
-  const focusedComponent = Reflect.get(tui, "focusedComponent")
+  const focusedComponent =
+    tui.getFocusedComponent?.() ?? Reflect.get(tui, "focusedComponent")
   if (isRenderable(focusedComponent)) {
     const match = findContainerWithChild(tui, focusedComponent)
     if (match) return match
@@ -230,6 +232,10 @@ export interface InstallFixedEditorOptions {
   onUnsupported?: () => void
 }
 
+function isFullscreenTui(tui: TuiLike): boolean {
+  return Reflect.get(tui, "mode") === "fullscreen"
+}
+
 /**
  * Install the sticky-editor compositor against a live TUI.
  * Returns true when patches were applied.
@@ -237,6 +243,10 @@ export interface InstallFixedEditorOptions {
 export function installFixedEditor(
   options: InstallFixedEditorOptions,
 ): boolean {
+  if (isFullscreenTui(options.tui)) {
+    teardownFixedEditor({ resetExtendedKeyboardModes: true })
+    return false
+  }
   if (isInstalled || compositor) return false
 
   const { tui } = options
