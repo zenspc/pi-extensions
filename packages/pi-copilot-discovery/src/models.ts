@@ -11,7 +11,6 @@
  */
 
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { getGitHubCopilotBaseUrl, normalizeDomain } from "@earendil-works/pi-ai/oauth";
 import { classify } from "./families.ts";
 import {
 	type ContextMode,
@@ -177,6 +176,17 @@ function parseCopilotModels(body: unknown): CopilotModel[] {
 	return out;
 }
 
+function normalizeDomain(input: string): string | null {
+	const trimmed = input.trim();
+	if (!trimmed) return null;
+	try {
+		const url = trimmed.includes("://") ? new URL(trimmed) : new URL(`https://${trimmed}`);
+		return url.hostname;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Resolve the correct Copilot API base URL for a given token.
  *
@@ -189,15 +199,22 @@ function parseCopilotModels(body: unknown): CopilotModel[] {
  * base URL from the live token.
  */
 export function resolveCopilotBaseUrl(token: string, enterpriseUrl?: string): string {
-	const domain = enterpriseUrl ? (normalizeDomain(enterpriseUrl) ?? undefined) : undefined;
-	return getGitHubCopilotBaseUrl(token, domain);
+	const proxyEp = token.match(/proxy-ep=([^;]+)/)?.[1];
+	if (proxyEp) {
+		return `https://${proxyEp.replace(/^proxy\./, "api.")}`;
+	}
+	const domain = enterpriseUrl ? normalizeDomain(enterpriseUrl) : null;
+	if (domain) return `https://copilot-api.${domain}`;
+	return "https://api.individual.githubcopilot.com";
 }
 
 export async function fetchCopilotModels(
 	copilotToken: string,
 	enterpriseUrl?: string,
+	signal?: AbortSignal,
 ): Promise<CopilotModel[]> {
 	const baseUrl = resolveCopilotBaseUrl(copilotToken, enterpriseUrl);
+	const timeout = AbortSignal.timeout(10000);
 	const res = await fetch(`${baseUrl}/models`, {
 		headers: {
 			Authorization: `Bearer ${copilotToken}`,
@@ -205,7 +222,7 @@ export async function fetchCopilotModels(
 			...COPILOT_HEADERS,
 		},
 		// Never let a slow/hung discovery block pi startup indefinitely.
-		signal: AbortSignal.timeout(10000),
+		signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
 	});
 	if (!res.ok) {
 		const body = truncateForError(await res.text().catch(() => ""));
