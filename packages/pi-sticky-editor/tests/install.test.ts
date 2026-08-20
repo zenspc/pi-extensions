@@ -47,6 +47,7 @@ function makeTui(options: {
   terminal: { columns: number; rows: number; write: (data: string) => void }
   children: Component[]
   withRenderHooks?: boolean
+  mode?: "regular" | "fullscreen"
 }) {
   const originalRender = (width: number) =>
     Array.from({ length: 6 }, (_, i) => `root ${i} w=${width}`)
@@ -56,6 +57,7 @@ function makeTui(options: {
   const tui = {
     children: options.children,
     terminal: options.terminal,
+    mode: options.mode,
     focusedComponent: null as Component | null,
     requestRender: () => {
       renderCalls += 1
@@ -173,6 +175,56 @@ test("install without editor calls onUnsupported and does not throw", () => {
     false,
   )
   assert.equal(unsupported, 1)
+})
+
+test("fullscreen install is a silent no-op", () => {
+  teardownFixedEditor()
+  const { terminal } = makeTerminal()
+  const originalWrite = terminal.write
+  const originalRowsDescriptor = Object.getOwnPropertyDescriptor(terminal, "rows")
+  const { children } = layoutWithEditor()
+  const { tui } = makeTui({ terminal, children, mode: "fullscreen" })
+  let unsupported = 0
+
+  assert.equal(
+    installFixedEditor({
+      tui,
+      onUnsupported: () => {
+        unsupported += 1
+      },
+    }),
+    false,
+  )
+  assert.equal(unsupported, 0)
+  assert.equal(terminal.write, originalWrite)
+  assert.deepEqual(
+    Object.getOwnPropertyDescriptor(terminal, "rows"),
+    originalRowsDescriptor,
+  )
+})
+
+test("regular then fullscreen on a shared terminal restores patches", () => {
+  teardownFixedEditor()
+  const { terminal } = makeTerminal()
+  const originalWrite = terminal.write
+  const originalRowsDescriptor = Object.getOwnPropertyDescriptor(terminal, "rows")
+  const { children } = layoutWithEditor()
+
+  try {
+    const regular = makeTui({ terminal, children, mode: "regular" })
+    assert.equal(installFixedEditor({ tui: regular.tui }), true)
+    assert.notEqual(terminal.write, originalWrite)
+
+    const fullscreen = makeTui({ terminal, children, mode: "fullscreen" })
+    assert.equal(installFixedEditor({ tui: fullscreen.tui }), false)
+    assert.equal(terminal.write, originalWrite)
+    assert.deepEqual(
+      Object.getOwnPropertyDescriptor(terminal, "rows"),
+      originalRowsDescriptor,
+    )
+  } finally {
+    teardownFixedEditor({ resetExtendedKeyboardModes: true })
+  }
 })
 
 test("teardown mid-timer clears mouse/clipboard restore timers", () => {

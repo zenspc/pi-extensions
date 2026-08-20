@@ -1,9 +1,7 @@
 # pi-copilot-discovery
 
-A [pi](https://github.com/earendil-works/pi) extension that replaces pi's
-built-in `github-copilot` provider with one that discovers your Copilot
-tenant's full model catalog at runtime instead of using pi-ai's bundled
-static list.
+A [pi](https://github.com/earendil-works/pi) extension that wraps the built-in `github-copilot` provider and serves your Copilot tenant's live `/models` catalog instead of pi-ai's bundled static list.
+Builtin auth and streams stay in place.
 
 ## Why
 
@@ -16,33 +14,19 @@ models pi knows about. That list lags real Copilot tenants in two ways:
 - **New public models need a pi-ai release.** When Copilot exposes a new
   model id, pi can't talk to it until pi-ai cuts a release that adds it.
 
-This extension solves both by calling Copilot's own `/models` endpoint on
-startup and registering every chat-capable model the signed-in account is
-entitled to. Routing to the right pi-ai streamer (`anthropic-messages`,
-`openai-responses`, `openai-completions`) is derived from each model's
-family.
+This extension solves both by calling Copilot's own `/models` endpoint and serving every chat-capable model the signed-in account is entitled to.
+Routing to the right pi-ai streamer (`anthropic-messages`, `openai-responses`, `openai-completions`) is derived from each model's family.
 
 ## What it does
 
-- **Replaces the built-in `github-copilot` provider.** Same provider name, so
-  existing credentials, sessions, and `/login github-copilot` workflows keep
-  working. `pi --list-models` and `/model` simply show a larger, more
-  accurate catalog.
-- **Live discovery on start, login, and command.** Fetches `/models` once on
-  extension load (async), once after successful `/login github-copilot`, and
-  on demand via `/copilot-refresh`.
-- **Re-injects Copilot dynamic headers.** pi-ai's built-in streamers add
-  `X-Initiator`, `Openai-Intent`, and `Copilot-Vision-Request` only when
-  the built-in handler is the one running; this extension installs its own
-  `streamSimple` wrapper that re-adds them, preserving agent-vs-user quota
-  accounting and vision support.
-- **Enables tenant policies post-login.** Runs
-  `POST /models/<id>/policy {state:"enabled"}` against *every* discovered
-  model after `/login github-copilot`, so preview-tier models accept requests
-  on first use. (pi-ai's built-in flow only enables its hardcoded list.)
-- **Supports GitHub Enterprise.** The login flow prompts for an enterprise
-  domain; `enterpriseUrl` is preserved across pi restarts via
-  `OAuthCredentials`'s open-ended index signature.
+- **Native wrap of the built-in `github-copilot` provider.** Same provider name, so existing credentials, sessions, and `/login github-copilot` workflows keep working.
+  Builtin OAuth and streams are unchanged.
+  `pi --list-models` and `/model` show the live catalog, with no `availableModelIds` filter.
+- **Live discovery on start, login, and command.** Pi calls `refreshModels` after load and after `/login github-copilot`.
+  `/copilot-refresh` re-fetches on demand.
+- **Enables unconfigured tenant policies.** After a successful live fetch, runs `POST /models/<id>/policy {state:"enabled"}` only for models whose policy is still `"unconfigured"`.
+- **Supports GitHub Enterprise.** Builtin login still prompts for an enterprise domain.
+  `enterpriseUrl` is preserved across pi restarts.
 
 The personal `github-copilot` credentials, sessions, and behavior stay
 intact — this is a drop-in upgrade of the provider, not a parallel one.
@@ -98,7 +82,7 @@ Restart pi (or run `/reload`) and the live model list takes effect.
 
 | Command                         | What it does                                              |
 | ------------------------------- | --------------------------------------------------------- |
-| `/login github-copilot`         | Device-code login + enable policies on all live models    |
+| `/login github-copilot`         | (Built-in) Device-code login; Pi then calls `refreshModels` |
 | `/copilot-refresh`              | Re-fetch the `/models` catalog without restarting pi      |
 | `/copilot-discovery-refresh`    | Alias of `/copilot-refresh` (back-compat)                 |
 | `/copilot-context` | Cap tiered models at short-context ceilings (`default`) or use full ~1M windows (`long`); also `status` |
@@ -109,23 +93,20 @@ Restart pi (or run `/reload`) and the live model list takes effect.
 ```
 pi starts
   └─ extension factory runs
-       ├─ register provider override immediately (without `models`)
-       │    └─ keeps pi's built-in static github-copilot catalog usable
-       └─ async startup discovery
-            ├─ read ~/.pi/agent/auth.json["github-copilot"]
-            ├─ if credentials present: GET <proxy>/models → ProviderModelConfig[]
-            └─ pi.registerProvider("github-copilot", { models, oauth, streamSimple, ... })
+       ├─ pi.registerProvider(nativeWrap)   // one-arg, replaces builtin github-copilot
+       │    ├─ builtin auth + streams
+       │    ├─ filterModels: undefined       // keep tenant-private / preview ids
+       │    └─ getModels() → last live catalog (static builtin until first refresh)
+       └─ Pi calls refreshModels (refreshed credential + AbortSignal)
+            ├─ GET <token-derived proxy>/models
+            ├─ publish in-memory catalog (not persisted)
+            └─ POST /models/<id>/policy for unconfigured ids
 
 /login github-copilot
-  └─ pi-ai built-in mints fresh creds; extension enables model policies,
-     then triggers one model discovery pass so /model updates immediately
+  └─ builtin OAuth mints creds; Pi calls refreshModels again
 
 /copilot-refresh
-  └─ one manual re-fetch of /models
-
-per request
-  └─ pi resolves apiKey via oauth.getApiKey(creds)
-       └─ pi auth-storage owns token refresh + persistence
+  └─ read auth.json and re-fetch /models, then re-register the wrap
 ```
 
 ### Family → API routing
@@ -147,7 +128,7 @@ uncertain we choose an `api` the model is *usable* under even if not optimal.
 | `/model` shows no Copilot entries before login | No credentials yet. | Run `/login github-copilot`. |
 | `/model` empty *after* login on a fresh pi start | Startup discovery failed (network/auth/tenant outage) before the live catalog could load. | Run `/copilot-refresh`; if that also fails, re-run `/login github-copilot`. |
 | Some model returns 403 the first time you use it | Tenant policy was `"unconfigured"` and post-login policy enable didn't succeed. | Run `/copilot-refresh` (or re-run `/login github-copilot`). |
-| Editor-Version / User-Agent rejected by the work proxy | pi-ai bumped its hardcoded Copilot client strings. | Update `COPILOT_HEADERS` in `models.ts` and `index.ts` to the new values. |
+| Editor-Version / User-Agent rejected by the work proxy | pi-ai bumped its hardcoded Copilot client strings. | Update `COPILOT_HEADERS` in `models.ts` to the new values. |
 | A new family is misrouted to `openai-completions` | Default fallback. | Open an issue with the model id and tenant `capabilities.family`, or send a PR refining `families.ts`. |
 
 ## Session cost estimates
@@ -226,12 +207,13 @@ Caveats:
 ### Credentials
 
 - Reuses pi's existing `github-copilot` OAuth entry under `~/.pi/agent/auth.json` (or `$PI_CODING_AGENT_DIR/auth.json`).
-- Extension load discovery reads that entry **read-only** to seed the model catalog.
+- Startup and post-login discovery use the credential Pi passes into `refreshModels`.
+- Slash commands read that entry **read-only**.
 - Token refresh and credential persistence stay owned by pi auth-storage, not by this package writing `auth.json` itself.
 
 ### Account mutation
 
-- After `/login github-copilot`, the extension may `POST /models/<id>/policy` with `{ "state": "enabled" }` for discovered models.
+- After a successful live `/models` fetch, the extension may `POST /models/<id>/policy` with `{ "state": "enabled" }` for models whose policy is still `"unconfigured"`.
 - That is intentional so preview-tier models accept requests without manual enablement in the Copilot UI.
 
 ### Data leaving the machine
@@ -246,12 +228,8 @@ Caveats:
 
 ## Compatibility
 
-- pi-coding-agent ≥ 0.78.0 (uses the async extension factory, per-model
-  `api` override, OAuth `ProviderConfig`, and the `streamSimple` escape
-  hatch).
-- pi-ai ≥ 0.78.0 (uses `githubCopilotOAuthProvider`,
-  `getGitHubCopilotBaseUrl`, `normalizeDomain`, and the `streamSimple*`
-  family).
+- Validated on Pi / pi-ai / pi-coding-agent **0.84.2**.
+- Uses one-argument `pi.registerProvider(provider)` (native wrap) plus `githubCopilotProvider()` from `@earendil-works/pi-ai/providers/github-copilot`.
 - Node.js ≥ 22.19.0 (matches pi's `engines` requirement).
 
 ## Publishing
@@ -266,15 +244,13 @@ See [docs/publishing.md](../../docs/publishing.md) for monorepo publish steps.
 .
 ├── package.json     pi extension manifest, no runtime npm deps
 ├── src/
-│   ├── index.ts     async factory: registerProvider + /command
-│   ├── oauth.ts     delegates login/refresh to pi-ai built-in; enables policies
-│   ├── models.ts    fetch /models, build ProviderModelConfig[]
+│   ├── index.ts     async factory: native registerProvider wrap + /command
+│   ├── models.ts    fetch /models, resolve base URL, build ProviderModelConfig[]
+│   ├── policies.ts  POST /models/<id>/policy for unconfigured ids
 │   ├── pricing.ts   load/merge static + user pricing tables
 │   ├── pricing.json static USD/1M rates (+ long-context tiers)
 │   ├── context-mode.ts  default|long context preference
-│   ├── families.ts  pure: family/id → { api, reasoning, thinkingLevelMap, compat }
-│   ├── stream.ts    streamSimple wrapper: inject headers, dispatch
-│   └── headers.ts   local re-impl of pi-ai's Copilot dynamic headers
+│   └── families.ts  pure: family/id → { api, reasoning, thinkingLevelMap, compat }
 ├── AGENTS.md        contributor guide for AI agents
 └── README.md
 ```

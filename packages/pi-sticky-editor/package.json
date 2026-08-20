@@ -37,12 +37,12 @@
     "postpack": "ln -sfn ../../LICENSE LICENSE"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.80.0",
-    "@earendil-works/pi-tui": ">=0.80.0"
+    "@earendil-works/pi-coding-agent": ">=0.84.0",
+    "@earendil-works/pi-tui": ">=0.84.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.80.10",
-    "@earendil-works/pi-tui": "0.80.10"
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@earendil-works/pi-tui": "0.84.2"
   },
   "engines": {
     "node": ">=20"
