@@ -38,15 +38,15 @@ One message, one async workflowScript with three parallel children, `runs.all([.
 
 | Lens | `model` | Prompt template |
 |---|---|---|
-| Judgment | your configured reflect-judgment model (default `anthropic/claude-fable-5[high]`) | `references/judgment-reviewer.md` |
-| Tooling | your configured reflect-tooling model (default `openai/gpt-5.6`) | `references/tooling-reviewer.md` |
-| Divergent | your configured reflect-judgment model (default `anthropic/claude-fable-5[high]`) | `references/divergent-reviewer.md` |
+| Judgment | your configured reflect-judgment model (default `inherit-parent`) | `references/judgment-reviewer.md` |
+| Tooling | your configured reflect-tooling model (default `inherit-parent`) | `references/tooling-reviewer.md` |
+| Divergent | your configured reflect-judgment model (default `inherit-parent`) | `references/divergent-reviewer.md` |
 
 Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in their run output.
 
 ### 3. Synthesize
 
-One child run using your configured reflect-judgment model (default `anthropic/claude-fable-5[high]`), agent mode The synthesizer's quality check includes spot-verifying citations, which can require MCP access. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
+One child run using your configured reflect-judgment model (default `inherit-parent`), agent mode The synthesizer's quality check includes spot-verifying citations, which can require MCP access. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
 
 ### 4. Structural enforcement check
 
