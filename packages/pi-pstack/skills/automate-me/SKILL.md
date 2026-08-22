@@ -1,13 +1,13 @@
 ---
 name: automate-me
-description: "Use for \"automate me\", \"create/update/refresh my -mode skill\", \"turn/capture my preferences or working style into a skill\", or wanting agents to follow how the user works. Drafts or revises a personal -mode skill via the writing-for-agents + unslop skills, optionally pulling fresh evidence from recent transcripts."
+description: "Use for \"automate me\", \"create/update/refresh my -mode skill\", \"turn/capture my preferences or working style into a skill\", or wanting agents to follow how the user works. Drafts or revises a personal -mode skill via authoring-a-skill + unslop, optionally pulling fresh evidence from recent transcripts."
 ---
 
 # Automate me
 
 A guided flow for turning the user's working conventions into a skill agents will follow. The output is one `-mode` skill tailored to them (e.g. `jay-mode`, `priya-mode`).
 
-This skill orchestrates three others: an inline mining pass (see step 1), the writing-for-agents skill (authoring), and the **unslop** skill (prose discipline). It sequences them; it doesn't replace them.
+This skill orchestrates three others: an inline mining pass (see step 1), `playbooks/authoring-a-skill.md`, and the **unslop** skill (prose discipline). It sequences them; it doesn't replace them.
 
 ## Flow
 
@@ -69,17 +69,17 @@ The **poteto-mode** skill shows the shape. Read it for granularity. Don't copy i
 
 ### 4. Draft the skill
 
-Author the skill following the writing-for-agents skill. Placement:
+Author the skill following `playbooks/authoring-a-skill.md`. Placement:
 
 - Path: preserve an existing mode skill's category. For a new mode, use `.pi/skills/<handle>/<handle>-mode/SKILL.md` when the repo has an established personal category for that handle; otherwise default to `.pi/skills/<handle>-mode/SKILL.md` in the project (or `~/.pi/skills/<handle>-mode/` if the user prefers a personal skill).
 - Handle: the user's first name or chosen identifier.
 - Frontmatter `description`: trigger on their name + `/<handle>-mode` + "work in their style", not on generic keywords like "write code" or "review PR".
 - Frontmatter formatting: follow the Agent Skills standard YAML rules (pi validates `name` and `description`). Keep `description` as one YAML scalar; quote it or use `description: >-` with indented continuation lines when punctuation or wrapping requires it.
-- Frontmatter `disable-model-invocation: true` by default. Mode skills are heavy and opinionated; they should only apply when the user explicitly invokes them (by name or slash command), not auto-trigger on description matching. Opt out only if the user explicitly wants their mode to apply on every turn.
+- Keep `description` narrow so the skill triggers on the user's handle and `/<handle>-mode`, not on generic phrases like write code.
 
 ### 5. Iterate on prose
 
-Apply the **unslop** skill and the **writing-for-agents** guidelines to every line. Both apply to any agent-read prose, not just skills.
+Apply the **unslop** skill and `playbooks/authoring-a-skill.md` to every line. Both apply to any agent-read prose, not just skills.
 
 Show the draft to the user and take feedback. Expect multiple iterations. Cut ruthlessly; a mode skill is not a manual.
 
@@ -104,11 +104,11 @@ Run a description-optimization loop only if the skill's trigger accuracy turns o
 
 ## When not to use
 
-- User wants a task-specific skill (not working conventions): the **writing-for-agents** skill alone, no mining required.
+- User wants a task-specific skill (not working conventions): `playbooks/authoring-a-skill.md` + **unslop** alone, no mining required.
 - User wants to capture one narrow workflow (e.g. "how I write commit messages"): that's a regular skill, not a mode skill.
 
 ## Reference files
 
 - The **poteto-mode** skill: example of the output shape.
 - The **unslop** skill: prose discipline for every line.
-- The writing-for-agents skill: skill authoring process and writing guidelines.
+- `playbooks/authoring-a-skill.md` + **unslop**: skill authoring process and writing guidelines.
