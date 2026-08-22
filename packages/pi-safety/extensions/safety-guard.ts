@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -30,7 +30,18 @@ function loadConfig(): SafetyConfig {
 
 function saveConfig(config: SafetyConfig) {
 	mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-	writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
+	const tmp = `${CONFIG_PATH}.${process.pid}.${Date.now()}.tmp`;
+	try {
+		writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", "utf8");
+		renameSync(tmp, CONFIG_PATH);
+	} catch (error) {
+		try {
+			unlinkSync(tmp);
+		} catch {
+			// best-effort temp cleanup
+		}
+		throw error;
+	}
 }
 
 function lastUserText(ctx: ExtensionContext): string {

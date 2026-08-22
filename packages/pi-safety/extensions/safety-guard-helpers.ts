@@ -21,11 +21,22 @@ function shellWords(command: string): string[] {
 		.filter(Boolean);
 }
 
+/** Match a git subcommand even when global options sit between git and it. */
+function hasGitSubcommand(words: readonly string[], subcommand: string): boolean {
+	const index = words.indexOf("git");
+	return index >= 0 && words.slice(index + 1).includes(subcommand);
+}
+
+/** Short-flag cluster containing any of the given letters (e.g. -rf, -fr). */
+function hasShortFlagCluster(words: readonly string[], letters: string): boolean {
+	return words.some((word) => /^-[a-z]+$/i.test(word) && [...word.slice(1).toLowerCase()].some((ch) => letters.includes(ch)));
+}
+
 export function classifyBash(command: string): Risk | undefined {
 	const normalized = command.replace(/\\\n/g, " ").replace(/\s+/g, " ").trim();
 	const words = shellWords(normalized);
 
-	if (/\bgit\s+push\b[\s\S]*(--force|-f|--force-with-lease)\b/i.test(normalized)) {
+	if (hasGitSubcommand(words, "push") && /(^|\s)(--force|-f|--force-with-lease)(\s|$)/.test(normalized)) {
 		return {
 			action: "Force push git history",
 			command,
@@ -34,7 +45,7 @@ export function classifyBash(command: string): Risk | undefined {
 		};
 	}
 
-	if (/\bgit\s+commit\b[\s\S]*(--amend)\b/i.test(normalized)) {
+	if (hasGitSubcommand(words, "commit") && words.includes("--amend")) {
 		return {
 			action: "Amend the latest git commit",
 			command,
@@ -43,7 +54,7 @@ export function classifyBash(command: string): Risk | undefined {
 		};
 	}
 
-	if (/\bgit\s+reset\b[\s\S]*(--hard)\b/i.test(normalized)) {
+	if (hasGitSubcommand(words, "reset") && words.includes("--hard")) {
 		return {
 			action: "Hard reset git working tree",
 			command,
@@ -52,7 +63,7 @@ export function classifyBash(command: string): Risk | undefined {
 		};
 	}
 
-	if (/\bgit\s+(rebase|filter-branch)\b/i.test(normalized)) {
+	if (hasGitSubcommand(words, "rebase") || hasGitSubcommand(words, "filter-branch")) {
 		return {
 			action: "Rewrite git history",
 			command,
@@ -61,7 +72,10 @@ export function classifyBash(command: string): Risk | undefined {
 		};
 	}
 
-	if (/\bgit\s+(branch|tag)\b[\s\S]*\s-d\b|\bgit\s+(branch|tag)\b[\s\S]*\s-D\b|\bgit\s+push\b[\s\S]*(:refs\/|--delete)\b/i.test(normalized)) {
+	if (
+		(hasGitSubcommand(words, "branch") || hasGitSubcommand(words, "tag")) &&
+		words.some((word) => word === "-d" || word === "-D")
+	) {
 		return {
 			action: "Delete git branch or tag",
 			command,
@@ -70,7 +84,23 @@ export function classifyBash(command: string): Risk | undefined {
 		};
 	}
 
-	if (/\brm\b[\s\S]*(-r|-R|-f|--recursive|--force)\b/i.test(normalized) || /\bfind\b[\s\S]*\s-delete\b/i.test(normalized)) {
+	if (hasGitSubcommand(words, "push") && /(:refs\/|--delete)/.test(normalized)) {
+		return {
+			action: "Delete git branch or tag",
+			command,
+			reason: "Deleting refs can remove useful recovery points.",
+			severity: "destructive",
+		};
+	}
+
+	const rmIndex = words.lastIndexOf("rm");
+	if (
+		(rmIndex >= 0 &&
+			words
+				.slice(rmIndex + 1)
+				.some((word) => /^(--recursive|--force)$/.test(word) || /^-[a-z]*[rRf]/i.test(word))) ||
+		/\bfind\b[\s\S]*\s-delete\b/i.test(normalized)
+	) {
 		return {
 			action: "Delete files or directories",
 			command,
@@ -119,10 +149,17 @@ export function classifyBash(command: string): Risk | undefined {
 }
 
 export function classifyFileTool(toolName: string, input: Record<string, unknown>, inGitRepo: boolean): Risk | undefined {
-	const path = typeof input.path === "string" ? input.path : undefined;
-	if (!path) return undefined;
+	const rawPath = typeof input.path === "string" ? input.path : undefined;
+	if (!rawPath) return undefined;
+	const path = rawPath.replace(/\\/g, "/");
 
-	if (/(^|\/)\.env($|\.)|(^|\/)\.git(\/|$)|(^|\/)node_modules(\/|$)/.test(path)) {
+	if (
+		/(^|\/)\.env(rc)?($|\.)/.test(path) ||
+		/(^|\/)\.git(\/|$)/.test(path) ||
+		/(^|\/)node_modules(\/|$)/.test(path) ||
+		/(^|\/)\.(ssh|aws|gnupg|kube)(\/|$)/.test(path) ||
+		/(^|\/)\.config\/(gcloud|gh)(\/|$)/.test(path)
+	) {
 		return {
 			action: `Modify protected path ${path}`,
 			reason: "Protected paths often contain secrets, git internals, or dependency artifacts.",
@@ -154,25 +191,20 @@ export function classifyFileTool(toolName: string, input: Record<string, unknown
 	return undefined;
 }
 
+/**
+ * Destructive risks always go through UI confirmation - pasted logs, fetched
+ * pages, or injected text in the user message must never auto-allow them.
+ * Only risky-severity system changes can be pre-approved by explicit wording.
+ */
 export function userExplicitlyRequestedRisk(userText: string, risk: Risk): boolean {
+	if (risk.severity === "destructive") return false;
 	const text = userText.toLowerCase();
 	if (!text) return false;
 
-	const explicitDestructiveVerb = /\b(delete|remove|erase|wipe|purge|destroy|overwrite|replace|reset hard|hard reset|amend|rebase|force push|force-push|drop|truncate|shred|uninstall|disable|stop|restart)\b/i.test(text);
-	if (!explicitDestructiveVerb) return false;
+	const explicitSystemVerb = /\b(sudo|system|service|package|uninstall|disable|stop|restart)\b/i.test(text);
+	if (!explicitSystemVerb) return false;
 
-	if (risk.command && text.includes(risk.command.toLowerCase())) return true;
-
-	const action = risk.action.toLowerCase();
-	return (
-		(action.includes("delete") && /\b(delete|remove|erase|wipe|purge)\b/i.test(text)) ||
-		(action.includes("overwrite") && /\b(overwrite|replace)\b/i.test(text)) ||
-		(action.includes("force push") && /\b(force push|force-push)\b/i.test(text)) ||
-		(action.includes("amend") && /\bamend\b/i.test(text)) ||
-		(action.includes("reset") && /\b(reset hard|hard reset)\b/i.test(text)) ||
-		(action.includes("history") && /\b(rebase|rewrite history|amend)\b/i.test(text)) ||
-		(action.includes("system") && /\b(sudo|system|service|package|uninstall|remove)\b/i.test(text))
-	);
+	return risk.action.toLowerCase().includes("system");
 }
 
 /** Short system-prompt block appended when Safety Guard is enabled. */

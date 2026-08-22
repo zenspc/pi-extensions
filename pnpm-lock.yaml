@@ -18,6 +18,8 @@ importers:
 
   packages/pi-preferred-thinking: {}
 
+  packages/pi-pstack: {}
+
   packages/pi-quiet: {}
 
   packages/pi-safety: {}
