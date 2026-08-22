@@ -1,5 +1,8 @@
 # pi-copilot-discovery
 
+> **No longer maintained.** This functionality is now officially supported by Pi.
+> The package stays installable, but issues and PRs here will not be acted on.
+
 A [pi](https://github.com/earendil-works/pi) extension that replaces pi's
 built-in `github-copilot` provider with one that discovers your Copilot
 tenant's full model catalog at runtime instead of using pi-ai's bundled

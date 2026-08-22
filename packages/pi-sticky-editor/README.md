@@ -1,5 +1,8 @@
 # @zenspc/pi-sticky-editor
 
+> **No longer maintained.** This functionality is now officially supported by Pi.
+> The package stays installable, but issues and PRs here will not be acted on.
+
 Pin Pi's editor row to the bottom of the terminal so it stays put while the transcript scrolls above it.
 
 ## Compatibility
