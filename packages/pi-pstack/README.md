@@ -41,7 +41,7 @@ Per-role model choices live in `~/.pi/agent/pstack/models.json`. Run `/setup-pst
 - Skills follow the Agent Skills standard directly; no `disable-model-invocation` or Cursor-only frontmatter.
 - Slash commands are `/skill:<name>` instead of `/name`.
 - Subagent delegation uses pi-subagents (`subagent({ agent, task })`) instead of Cursor's Task tool. This package does not ship a replacement `subagent` tool.
-- Session transcripts live under `~/.pi/agent/sessions/` instead of `~/.cursor/projects/`.
+- Session transcripts live under `~/.pi/agent/sessions/` instead of `~/.cursor/projects/`. The active file is `$PI_SESSION_FILE`. Files are grouped by cwd slug (`--<cwd>--`, absolute cwd with `/` replaced by `-`).
 - The benny automation pack is not ported; it depends on Cursor automations. Model roles live in `~/.pi/agent/pstack/models.json`, written by `/setup-pstack` and injected every turn by the extension.
 
 ## License
