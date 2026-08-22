@@ -1,0 +1,51 @@
+{
+	"name": "@zenspc/pi-pstack",
+	"version": "0.0.0",
+	"description": "pstack for Pi: rigorous agent workflows you can parallelize with confidence - poteto-mode playbooks, engineering principles, multi-model review panels, and subagents.",
+	"type": "module",
+	"license": "MIT",
+	"author": "dhairyaar",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/zenspc/pi-extensions.git",
+		"directory": "packages/pi-pstack"
+	},
+	"bugs": {
+		"url": "https://github.com/zenspc/pi-extensions/issues"
+	},
+	"homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-pstack#readme",
+	"publishConfig": {
+		"access": "public"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"skills",
+		"workflow",
+		"principles",
+		"poteto-mode",
+		"subagents",
+		"unslop"
+	],
+	"files": [
+		"extensions/",
+		"!extensions/**/*.test.ts",
+		"skills/",
+		"agents/",
+		"README.md",
+		"LICENSE"
+	],
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"pi": {
+		"extensions": ["./extensions/pstack/index.ts"],
+		"skills": ["./skills"],
+		"subagents": {
+			"agents": ["./agents"]
+		}
+	},
+	"scripts": {
+		"test": "node --experimental-strip-types --test extensions/pstack/*.test.ts"
+	}
+}

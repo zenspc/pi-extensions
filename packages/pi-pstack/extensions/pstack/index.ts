@@ -1,0 +1,211 @@
+import { existsSync } from "node:fs";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	LIST_ROLES,
+	ROLE_NAMES,
+	type RoleName,
+	type RoleValue,
+	configPath,
+	defaultConfig,
+	formatRoleTable,
+	isSafeModelSelector,
+	loadConfig,
+	migrateLegacyMarkdownIfNeeded,
+	saveConfig,
+} from "./config.ts";
+
+const POTETO_SKILL = "/skill:poteto-mode";
+const POTETO_PROMPT =
+	"Pstack Poteto Mode is on for this session. Follow skills/poteto-mode/SKILL.md: match a playbook, copy its steps, delegate through pi-subagents, verify real behavior, name only principles that changed a decision. /poteto-mode off disables it.";
+
+type ModeEntry = {
+	type?: string;
+	customType?: string;
+	data?: { enabled?: unknown };
+};
+
+function sessionEntries(ctx: ExtensionContext): ModeEntry[] {
+	const sm = ctx.sessionManager as {
+		getBranch?: () => ModeEntry[];
+		getEntries: () => ModeEntry[];
+	};
+	return typeof sm.getBranch === "function" ? sm.getBranch() : sm.getEntries();
+}
+
+function lastPotetoEnabled(entries: ModeEntry[]): boolean {
+	let enabled = false;
+	for (const entry of entries) {
+		if (entry.type === "custom" && entry.customType === "pstack-mode") {
+			enabled = Boolean(entry.data?.enabled);
+		}
+	}
+	return enabled;
+}
+
+function stripCurrentMark(choice: string): string {
+	return choice.endsWith(" (current)") ? choice.slice(0, -" (current)".length) : choice;
+}
+
+function labeledChoices(choices: string[], current: RoleValue | undefined): string[] {
+	const currents = new Set(Array.isArray(current) ? current : current ? [current] : []);
+	return choices.map((choice) => (currents.has(choice) ? `${choice} (current)` : choice));
+}
+
+function modelChoices(ctx: ExtensionCommandContext): string[] {
+	const models =
+		ctx.scopedModels.length > 0
+			? ctx.scopedModels.map((entry) => entry.model)
+			: ctx.modelRegistry.getAvailable();
+	const ids: string[] = [];
+	const seen = new Set<string>();
+	for (const model of models) {
+		const key = `${model.provider}/${model.id}`;
+		if (!isSafeModelSelector(key) || seen.has(key)) continue;
+		seen.add(key);
+		ids.push(key);
+	}
+	return ["inherit-parent", "auto", ...ids];
+}
+
+function isInheritSelector(value: string): boolean {
+	return value === "inherit-parent" || value === "auto";
+}
+
+export default function pstackExtension(pi: ExtensionAPI): void {
+	let potetoMode = false;
+
+	function setStatus(ctx: ExtensionContext): void {
+		if (ctx.mode !== "tui") return;
+		ctx.ui.setStatus("pstack-mode", potetoMode ? "pstack: poteto mode" : undefined);
+	}
+
+	function persistMode(enabled: boolean, ctx?: ExtensionContext): void {
+		potetoMode = enabled;
+		pi.appendEntry("pstack-mode", { enabled });
+		if (ctx) setStatus(ctx);
+	}
+
+	pi.on("session_start", async (_event, ctx) => {
+		potetoMode = false;
+		potetoMode = lastPotetoEnabled(sessionEntries(ctx));
+		setStatus(ctx);
+		try {
+			migrateLegacyMarkdownIfNeeded();
+		} catch {
+			// ignore migration errors
+		}
+	});
+
+	pi.on("input", async (event, ctx) => {
+		if (/^\/skill:poteto-mode(?:\s|$)/.test(event.text)) {
+			persistMode(true, ctx);
+		}
+		return { action: "continue" as const };
+	});
+
+	pi.on("before_agent_start", async (event) => {
+		const parts = [formatRoleTable(loadConfig())];
+		if (potetoMode) parts.push(POTETO_PROMPT);
+		return {
+			systemPrompt: `${event.systemPrompt}\n\n${parts.join("\n\n")}`,
+		};
+	});
+
+	pi.registerCommand("poteto-mode", {
+		description: "Enable or disable sticky pstack Poteto Mode. Usage: /poteto-mode [task] | /poteto-mode off",
+		getArgumentCompletions: (prefix) => {
+			const token = prefix.trim().toLowerCase();
+			if (!token || "off".startsWith(token)) {
+				return [{ value: "off", label: "off" }];
+			}
+			return null;
+		},
+		handler: async (args, ctx) => {
+			const raw = args.trim();
+			const token = raw.split(/\s+/)[0]?.toLowerCase() ?? "";
+			if (token === "off" || token === "disable" || token === "stop") {
+				persistMode(false, ctx);
+				ctx.ui.notify("Poteto Mode off.", "info");
+				return;
+			}
+			persistMode(true, ctx);
+			ctx.ui.notify("Poteto Mode on. Stays on until /poteto-mode off.", "info");
+			const payload = `${POTETO_SKILL}${raw ? ` ${raw}` : ""}`;
+			pi.sendUserMessage(
+				payload,
+				ctx.isIdle()
+					? { expandPromptTemplates: true }
+					: { expandPromptTemplates: true, deliverAs: "followUp" },
+			);
+		},
+	});
+
+	pi.registerCommand("setup-pstack", {
+		description: "Map pstack delegation roles to models available in this Pi session.",
+		handler: async (_args, ctx) => {
+			try {
+				migrateLegacyMarkdownIfNeeded();
+			} catch {
+				// ignore
+			}
+			const path = configPath();
+			const config = loadConfig();
+			if (!ctx.hasUI) {
+				if (!existsSync(path) && !saveConfig(defaultConfig(), path)) {
+					ctx.ui.notify(`Failed to write ${path}`, "error");
+					return;
+				}
+				ctx.ui.notify(`Wrote ${path}`, "info");
+				return;
+			}
+
+			const choices = modelChoices(ctx);
+			for (const role of ROLE_NAMES) {
+				const next = LIST_ROLES.has(role)
+					? await pickListRole(ctx, role, choices, config.roles[role])
+					: await pickScalarRole(ctx, role, choices, config.roles[role]);
+				if (next === undefined) break;
+				config.roles[role] = next;
+			}
+
+			if (!saveConfig(config, path)) {
+				ctx.ui.notify(`Failed to write ${path}`, "error");
+				return;
+			}
+			ctx.ui.notify(`Wrote ${path}`, "info");
+		},
+	});
+}
+
+async function pickScalarRole(
+	ctx: ExtensionCommandContext,
+	role: RoleName,
+	choices: string[],
+	current: RoleValue | undefined,
+): Promise<RoleValue | undefined> {
+	const choice = await ctx.ui.select(`Model for ${role}`, labeledChoices(choices, current));
+	if (!choice) return undefined;
+	return stripCurrentMark(choice);
+}
+
+async function pickListRole(
+	ctx: ExtensionCommandContext,
+	role: RoleName,
+	choices: string[],
+	current: RoleValue | undefined,
+): Promise<RoleValue | undefined> {
+	const first = await ctx.ui.select(`Model for ${role}`, labeledChoices(choices, current));
+	if (!first) return undefined;
+	const selected = stripCurrentMark(first);
+	if (isInheritSelector(selected)) return selected;
+
+	const picked = [selected];
+	while (true) {
+		const next = await ctx.ui.select("Add another model for this role?", ["done", ...choices]);
+		if (!next) return undefined;
+		if (next === "done") return picked;
+		const value = stripCurrentMark(next);
+		if (isInheritSelector(value)) return value;
+		picked.push(value);
+	}
+}

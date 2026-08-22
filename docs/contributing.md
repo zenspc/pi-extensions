@@ -14,6 +14,7 @@ packages/
   pi-spinner/
   pi-quiet/
   pi-sticky-editor/
+  pi-pstack/
 ```
 
 ## Local development
