@@ -1,0 +1,5 @@
+---
+"@zenspc/pi-pstack": minor
+---
+
+New package: pstack for Pi. Ports the Cursor pstack plugin as 44 Agent Skills standard skills (poteto-mode with 22 playbooks, workflow skills, 21 principle skills) plus two pi-subagents agent definitions (poteto-agent, comment-sicko).
