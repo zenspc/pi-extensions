@@ -21,9 +21,12 @@ Intercepts risky tool calls and asks for confirmation before allowing them.
 
 Examples of guarded actions:
 
-- `rm -rf` and other destructive shell deletes
-- force push / hard reset / commit amend style git history rewrites
+- `rm -rf` and other destructive shell deletes, including short flag clusters like `rm -fr`
+- force push / hard reset / commit amend style git history rewrites, even with global options like `git -C path push --force`
+- file tool writes to protected paths: `.env*`, `.git/`, `node_modules/`, `.ssh/`, `.aws/`, `.gnupg/`, `.kube/`, `.config/gcloud/`, `.config/gh/`
 - other high-risk bash patterns classified by the extension
+
+Destructive-severity actions always require explicit confirmation. They are never auto-approved based on user message wording; only risky system changes can be pre-approved that way.
 
 ## Commands / config
 
