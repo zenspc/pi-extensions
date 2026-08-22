@@ -1,6 +1,6 @@
 {
 	"name": "@zenspc/pi-pstack",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "pstack for Pi: rigorous agent workflows you can parallelize with confidence - poteto-mode playbooks, engineering principles, multi-model review panels, and subagents.",
 	"type": "module",
 	"license": "MIT",
@@ -39,10 +39,16 @@
 		"@earendil-works/pi-coding-agent": "*"
 	},
 	"pi": {
-		"extensions": ["./extensions/pstack/index.ts"],
-		"skills": ["./skills"],
+		"extensions": [
+			"./extensions/pstack/index.ts"
+		],
+		"skills": [
+			"./skills"
+		],
 		"subagents": {
-			"agents": ["./agents"]
+			"agents": [
+				"./agents"
+			]
 		}
 	},
 	"scripts": {
