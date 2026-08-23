@@ -96,6 +96,7 @@ In the overview, name which poteto-mode non-negotiables the implementer must app
 
 - the **how** skill over each unfamiliar subsystem before changing it.
 - the **interrogate** skill for adversarial review on contested designs before shipping.
+- the **deslop** skill over the branch diff before commit.
 - The **unslop** skill over each diff's prose surface before commit.
 - the **show-me-your-work** skill to keep a decision trail when the plan is large enough to need an auditable record.
 - The **Babysit** playbook after opening the PR.
