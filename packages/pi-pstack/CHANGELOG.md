@@ -1,5 +1,13 @@
 # @zenspc/pi-pstack
 
+## 0.2.0
+
+### Minor Changes
+
+- eaec816: Add the deslop skill for AI code-slop cleanup.
+
+  Point poteto-mode's before-commit trigger at `/skill:deslop`. Keep `/skill:unslop` on prose.
+
 ## 0.1.0
 
 ### Minor Changes
