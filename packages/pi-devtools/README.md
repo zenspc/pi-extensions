@@ -87,6 +87,32 @@ Security note:
 
 `/context help` repeats the same warnings.
 
+### `/preview`
+
+Render a markdown file inside a scrollable overlay using Pi's own markdown renderer and the active theme.
+What you see matches how Pi renders assistant output.
+
+```text
+/preview <path>
+```
+
+- `<path>` may be relative to the cwd, absolute, or start with `~`.
+- If the final path segment has no extension, `.md` is appended (`/preview CONTRIBUTING` finds `CONTRIBUTING.md`).
+
+Key bindings:
+
+- `↑` / `↓`, `j` / `k` - line scroll
+- `PgUp` / `PgDn` - page scroll
+- `g` / `Home`, `G` / `End` - jump top/bottom
+- `r` - reload the file from disk
+- `Esc` / `q` - close
+
+Limits:
+
+- Files over 512 KiB are rejected.
+- TUI mode only.
+- Read-only; overlay content is never added to the model context.
+
 ### Custom footer
 
 Richer footer status for the active session, including response timing and cache-freshness heuristics.
