@@ -1,5 +1,11 @@
 # @zenspc/pi-devtools
 
+## 0.3.0
+
+### Minor Changes
+
+- 40bfbec: Add /preview command: render a markdown file in a TUI overlay using Pi's own markdown renderer and active theme.
+
 ## 0.2.3
 
 ### Patch Changes
