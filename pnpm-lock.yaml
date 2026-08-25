@@ -12,6 +12,19 @@ importers:
         specifier: ^2.29.5
         version: 2.31.1(@types/node@26.1.1)
 
+  packages/pi-browser:
+    dependencies:
+      playwright-core:
+        specifier: ^1.62.1
+        version: 1.62.1
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.80.10
+        version: 0.80.10(ws@8.21.1)(zod@4.4.3)
+      typebox:
+        specifier: 1.1.38
+        version: 1.1.38
+
   packages/pi-copilot-discovery: {}
 
   packages/pi-devtools: {}
@@ -790,6 +803,11 @@ packages:
   pify@4.0.1:
     resolution: {integrity: sha512-uB80kBFb/tfd68bVleG9T5GGsGPjJrLAUpR5PZIrhBnIaRTQRjqdJSsIKkOP6OAIFbj7GOrcudc5pNjZ+geV2g==}
     engines: {node: '>=6'}
+
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   prettier@2.8.8:
     resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
@@ -1906,6 +1924,8 @@ snapshots:
   picomatch@2.3.2: {}
 
   pify@4.0.1: {}
+
+  playwright-core@1.62.1: {}
 
   prettier@2.8.8: {}
 
