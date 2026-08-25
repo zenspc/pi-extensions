@@ -18,6 +18,7 @@ Two steps:
 
 1. Run `/setup-pstack` once to pick which models each role uses (optional; every role inherits the parent session model otherwise).
 2. Use `/poteto-mode` for sticky Poteto Mode. It stays on until `/poteto-mode off`. `/skill:poteto-mode` also enables it.
+3. Run `/pstack on|off|status` to hide the ~40 pstack skill descriptions from the system prompt and save context. Off persists in `~/.pi/agent/pstack/models.json`. `/skill:<name>` keeps working while off.
 
 That is it. The other skills are situational; the mode skill uses them as needed.
 
