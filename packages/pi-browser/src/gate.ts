@@ -11,7 +11,7 @@ export type Verdict = "pass" | "ask";
 
 export type PromptOutcome = "once" | "permanent" | "deny";
 
-export type UrlExtractor = (input: Record<string, unknown>) => string;
+export type UrlExtractor = (input: Record<string, unknown>) => string | Promise<string>;
 
 export type DomainGateOptions = {
 	allowlistPath?: string;
@@ -57,7 +57,7 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 		const extract = urlExtractors.get(event.toolName);
 		if (!extract) return undefined;
 
-		const rawUrl = extract(event.input as unknown as Record<string, unknown>);
+		const rawUrl = await extract(event.input as unknown as Record<string, unknown>);
 		let url: URL;
 		try {
 			url = new URL(rawUrl);

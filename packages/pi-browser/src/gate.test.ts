@@ -233,3 +233,108 @@ describe("installDomainGate", () => {
 		assert.match(result.reason ?? "", /UI exploded/);
 	});
 });
+
+function actionEvent(toolName: string): ToolCallEvent {
+	return {
+		type: "tool_call",
+		toolCallId: `call-${Math.random()}`,
+		toolName,
+		input: { ref: "e1", text: "hello" },
+	} as ToolCallEvent;
+}
+
+describe("gated action tools", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pi-browser-actions-"));
+	const allowlistPath = join(dir, "allowlist.json");
+	after(() => rmSync(dir, { recursive: true, force: true }));
+
+	function setup(selectResponse?: string) {
+		const { pi, callGate, registered } = fakePi();
+		installDomainGate(pi, { allowlistPath });
+		for (const name of ["browser_click", "browser_type"]) {
+			browserTool(pi, {
+				name,
+				label: name,
+				description: "test tool",
+				parameters: Type.Object({ ref: Type.String() }),
+				urlFrom: async () => `https://${name}.example/action`,
+				async execute() {
+					return { content: [], details: undefined };
+				},
+			});
+		}
+		const prompt = selectSpy(selectResponse ?? "Approve once");
+		return { callGate, registered, spy: prompt.spy, select: prompt.select };
+	}
+
+	it("registers browser_click and browser_type behind the gate", async () => {
+		const gate = setup();
+		assert.deepEqual(gate.registered.map((def) => def.name), [
+			"browser_click",
+			"browser_type",
+		]);
+
+		const result = await gate.callGate(
+			actionEvent("browser_click"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(result, undefined);
+		assert.equal(gate.spy.calls.length, 1);
+		assert.match(gate.spy.calls[0].title, /browser_click\.example/);
+	});
+
+	it("resolves the async extractor per tool before prompting", async () => {
+		const gate = setup("Approve once");
+		await gate.callGate(actionEvent("browser_type"), fakeCtx({ select: gate.select }));
+		assert.match(gate.spy.calls[0].title, /browser_type\.example/);
+
+		const again = await gate.callGate(
+			actionEvent("browser_type"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(again, undefined);
+		assert.equal(gate.spy.calls.length, 1);
+	});
+
+	it("blocks unapproved action tools without UI after resolving their URL", async () => {
+		const gate = setup();
+		const result = await gate.callGate(
+			actionEvent("browser_click"),
+			fakeCtx({ hasUI: false, select: gate.select }),
+		);
+		assert.ok(result?.block);
+		assert.match(result.reason ?? "", /browser_click\.example/);
+		assert.match(result.reason ?? "", new RegExp(allowlistPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.equal(gate.spy.calls.length, 0);
+	});
+
+	it("blocks fail-safe when an async extractor rejects", async () => {
+		const { pi, callGate } = fakePi();
+		installDomainGate(pi, { allowlistPath });
+		const prompt = selectSpy("Approve once");
+		browserTool(pi, {
+			name: "browser_explode",
+			label: "Browser Explode",
+			description: "test tool",
+			parameters: Type.Object({}),
+			urlFrom: async () => {
+				throw new Error("tab vanished");
+			},
+			async execute() {
+				return { content: [], details: undefined };
+			},
+		});
+		const result = await callGate(
+			{
+				type: "tool_call",
+				toolCallId: "call-1",
+				toolName: "browser_explode",
+				input: {},
+			} as ToolCallEvent,
+			fakeCtx({ select: prompt.select }),
+		);
+		assert.ok(result?.block);
+		assert.match(result.reason ?? "", /domain gate failed/);
+		assert.match(result.reason ?? "", /tab vanished/);
+	});
+});
