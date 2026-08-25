@@ -36,6 +36,7 @@ export type RoleValue = string | string[];
 export interface PstackConfig {
 	version: 1;
 	roles: Record<string, RoleValue>;
+	skillsEnabled: boolean;
 }
 
 export const LIST_ROLES: ReadonlySet<RoleName> = new Set([
@@ -72,7 +73,7 @@ export function defaultConfig(): PstackConfig {
 	for (const role of ROLE_NAMES) {
 		roles[role] = "inherit-parent";
 	}
-	return { version: 1, roles };
+	return { version: 1, roles, skillsEnabled: true };
 }
 
 export function isSafeModelSelector(value: unknown): value is string {
@@ -123,7 +124,15 @@ export function parseConfig(raw: unknown): PstackConfig {
 		if (parsed === undefined) continue;
 		roles[key] = parsed;
 	}
-	return { version: 1, roles };
+	const storedSkillsEnabled = (raw as { skillsEnabled?: unknown }).skillsEnabled;
+	return {
+		version: 1,
+		roles,
+		skillsEnabled:
+			storedSkillsEnabled === true || storedSkillsEnabled === false
+				? storedSkillsEnabled
+				: fallback.skillsEnabled,
+	};
 }
 
 export function loadConfig(path: string = configPath()): PstackConfig {
@@ -142,7 +151,7 @@ export function loadConfig(path: string = configPath()): PstackConfig {
 
 export function saveConfig(config: PstackConfig, path: string = configPath()): boolean {
 	const clean = parseConfig(config);
-	const body = `${JSON.stringify({ version: 1, roles: clean.roles }, null, 2)}\n`;
+	const body = `${JSON.stringify({ version: 1, roles: clean.roles, skillsEnabled: clean.skillsEnabled }, null, 2)}\n`;
 	const dir = dirname(path);
 	const tmp = join(dir, `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
 	try {

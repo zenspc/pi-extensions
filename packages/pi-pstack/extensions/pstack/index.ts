@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	LIST_ROLES,
@@ -13,6 +15,9 @@ import {
 	migrateLegacyMarkdownIfNeeded,
 	saveConfig,
 } from "./config.ts";
+import { stripSkillsByLocationPrefix } from "./skill-strip.ts";
+
+const SKILLS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "skills");
 
 const POTETO_SKILL = "/skill:poteto-mode";
 const POTETO_PROMPT =
@@ -104,10 +109,14 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("before_agent_start", async (event) => {
-		const parts = [formatRoleTable(loadConfig())];
+		const config = loadConfig();
+		const base = config.skillsEnabled
+			? event.systemPrompt
+			: stripSkillsByLocationPrefix(event.systemPrompt, SKILLS_DIR).prompt;
+		const parts = [formatRoleTable(config)];
 		if (potetoMode) parts.push(POTETO_PROMPT);
 		return {
-			systemPrompt: `${event.systemPrompt}\n\n${parts.join("\n\n")}`,
+			systemPrompt: `${base}\n\n${parts.join("\n\n")}`,
 		};
 	});
 
@@ -173,6 +182,42 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 				return;
 			}
 			ctx.ui.notify(`Wrote ${path}`, "info");
+		},
+	});
+
+	pi.registerCommand("pstack", {
+		description: "Show or toggle whether pstack skills are listed in the system prompt. Usage: /pstack [on|off|status]",
+		getArgumentCompletions: (prefix) => {
+			const token = prefix.trim().toLowerCase();
+			const options = ["on", "off", "status"].filter((value) => value.startsWith(token));
+			if (options.length === 0) return null;
+			return options.map((value) => ({ value, label: value }));
+		},
+		handler: async (args, ctx) => {
+			const token = args.trim().toLowerCase();
+			const config = loadConfig();
+			if (token === "" || token === "status") {
+				const state = config.skillsEnabled ? "on" : "off";
+				const hint = config.skillsEnabled ? "" : " Skills are hidden from the model; /skill:<name> still works.";
+				ctx.ui.notify(`pstack is ${state}.${hint}`, "info");
+				return;
+			}
+			const enabled = token === "on" || token === "enable";
+			if (!enabled && token !== "off" && token !== "disable") {
+				ctx.ui.notify("Usage: /pstack [on|off|status]", "error");
+				return;
+			}
+			if (enabled !== config.skillsEnabled) {
+				config.skillsEnabled = enabled;
+				if (!saveConfig(config)) {
+					ctx.ui.notify(`Failed to write ${configPath()}`, "error");
+					return;
+				}
+			}
+			ctx.ui.notify(
+				enabled ? "pstack skills on." : "pstack skills off. Hidden from the model; /skill:<name> still works.",
+				"info",
+			);
 		},
 	});
 }
