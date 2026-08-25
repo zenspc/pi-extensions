@@ -5,13 +5,27 @@ import { browserTool } from "./browser-tool.ts";
 import { installDomainGate } from "./gate.ts";
 import { refLocator, takeSnapshot } from "./snapshot.ts";
 
-const attachment = createAttachment();
+const defaultAttachment = createAttachment();
 
-function currentUrl(): Promise<string> {
-	return attachment.withTab(async (tab) => tab.url());
+function serializeEvaluateResult(result: unknown): string {
+	if (result === undefined) return "undefined";
+	try {
+		return JSON.stringify(result, null, 2);
+	} catch {
+		return String(result);
+	}
 }
 
-export default function (pi: ExtensionAPI) {
+export default function (
+	pi: ExtensionAPI,
+	options?: { attachment?: typeof defaultAttachment },
+) {
+	const attachment = options?.attachment ?? defaultAttachment;
+
+	function currentUrl(): Promise<string> {
+		return attachment.withTab(async (tab) => tab.url());
+	}
+
 	installDomainGate(pi);
 	browserTool(pi, {
 		name: "browser_navigate",
@@ -94,6 +108,63 @@ export default function (pi: ExtensionAPI) {
 			return {
 				content: [{ type: "text", text: `Filled [ref=${params.ref}]` }],
 				details: { ref: params.ref, length: params.text.length },
+			};
+		},
+	});
+	browserTool(pi, {
+		name: "browser_screenshot",
+		label: "Browser Screenshot",
+		description:
+			"Capture a full-viewport PNG screenshot of the Automation Tab. Returns the image plus its pixel dimensions.",
+		parameters: Type.Object({}),
+		urlFrom: () => currentUrl(),
+		async execute(_toolCallId) {
+			const result = await attachment.withTab(async (tab) => {
+				const buffer = await tab.screenshot({ type: "png" });
+				return {
+					buffer,
+					width: buffer.readUInt32BE(16),
+					height: buffer.readUInt32BE(20),
+				};
+			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Screenshot captured (${result.width}x${result.height} px)`,
+					},
+					{
+						type: "image",
+						data: result.buffer.toString("base64"),
+						mimeType: "image/png",
+					},
+				],
+				details: { width: result.width, height: result.height },
+			};
+		},
+	});
+	browserTool(pi, {
+		name: "browser_evaluate",
+		label: "Browser Evaluate",
+		description:
+			"Evaluate a JavaScript expression in the Automation Tab's page context and return the serialized result. Throws with the page error text when evaluation fails.",
+		parameters: Type.Object({
+			expression: Type.String({
+				description: "JavaScript expression to evaluate in the page context and return",
+			}),
+		}),
+		urlFrom: () => currentUrl(),
+		async execute(_toolCallId, params) {
+			let result: unknown;
+			try {
+				result = await attachment.withTab((tab) => tab.evaluate(params.expression));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				throw new Error(`browser_evaluate failed: ${message}`);
+			}
+			return {
+				content: [{ type: "text", text: serializeEvaluateResult(result) }],
+				details: { expression: params.expression, result },
 			};
 		},
 	});
