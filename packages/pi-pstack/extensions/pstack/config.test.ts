@@ -41,6 +41,10 @@ describe("defaultConfig", () => {
 			assert.equal(cfg.roles[role], "inherit-parent");
 		}
 	});
+
+	it("enables skills by default", () => {
+		assert.equal(defaultConfig().skillsEnabled, true);
+	});
 });
 
 describe("parseConfig", () => {
@@ -64,6 +68,17 @@ describe("parseConfig", () => {
 			roles: { "bug-fix": "anthropic/claude-opus-4-6" },
 		});
 		assert.deepEqual(wrongVersion, defaultConfig());
+	});
+
+	it("keeps skillsEnabled false from stored JSON", () => {
+		assert.equal(parseConfig({ version: 1, roles: {}, skillsEnabled: false }).skillsEnabled, false);
+	});
+
+	it("defaults skillsEnabled to true for missing, non-boolean, and wrong-version input", () => {
+		assert.equal(parseConfig({ version: 1, roles: {} }).skillsEnabled, true);
+		assert.equal(parseConfig({ version: 1, roles: {}, skillsEnabled: "off" }).skillsEnabled, true);
+		assert.equal(parseConfig({ version: 2, roles: {}, skillsEnabled: false }).skillsEnabled, true);
+		assert.equal(parseConfig(null).skillsEnabled, true);
 	});
 });
 
@@ -172,6 +187,19 @@ describe("loadConfig / saveConfig", () => {
 			if (process.platform !== "win32") {
 				assert.equal(lstatSync(path).mode & 0o777, 0o600);
 			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("round-trips skillsEnabled false through save and load", () => {
+		const dir = tempDir("pstack-skills-flag-");
+		const path = join(dir, "pstack", "models.json");
+		try {
+			const cfg = { ...defaultConfig(), skillsEnabled: false };
+			assert.equal(saveConfig(cfg, path), true);
+			assert.equal(loadConfig(path).skillsEnabled, false);
+			assert.equal(JSON.parse(readFileSync(path, "utf8")).skillsEnabled, false);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
