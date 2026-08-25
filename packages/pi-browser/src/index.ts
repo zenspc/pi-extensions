@@ -1,11 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createAttachment } from "./attachment.ts";
+import { browserTool } from "./browser-tool.ts";
+import { installDomainGate } from "./gate.ts";
 
 const attachment = createAttachment();
 
 export default function (pi: ExtensionAPI) {
-	pi.registerTool({
+	installDomainGate(pi);
+	browserTool(pi, {
 		name: "browser_navigate",
 		label: "Browser Navigate",
 		description:
