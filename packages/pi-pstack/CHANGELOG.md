@@ -1,5 +1,11 @@
 # @zenspc/pi-pstack
 
+## 0.3.0
+
+### Minor Changes
+
+- 0ad52fa: Add `/pstack on|off|status` to hide pstack skill descriptions from the system prompt and persist the choice.
+
 ## 0.2.0
 
 ### Minor Changes
