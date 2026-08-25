@@ -1,0 +1,58 @@
+{
+	"name": "@zenspc/pi-browser",
+	"version": "0.0.0",
+	"description": "Drive the user's running Chrome over CDP with full automation, gated by per-domain approval",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"browser",
+		"chrome",
+		"cdp",
+		"automation"
+	],
+	"license": "MIT",
+	"author": "dhairyaar",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/zenspc/pi-extensions.git",
+		"directory": "packages/pi-browser"
+	},
+	"bugs": {
+		"url": "https://github.com/zenspc/pi-extensions/issues"
+	},
+	"homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-browser#readme",
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src/",
+		"!src/**/*.test.ts",
+		"README.md",
+		"LICENSE"
+	],
+	"type": "module",
+	"scripts": {
+		"test": "node --experimental-strip-types --test src/*.test.ts",
+		"prepack": "cp --remove-destination ../../LICENSE LICENSE",
+		"postpack": "ln -sfn ../../LICENSE LICENSE"
+	},
+	"dependencies": {
+		"playwright-core": "^1.62.1"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"typebox": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.80.10",
+		"typebox": "1.1.38"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	}
+}
