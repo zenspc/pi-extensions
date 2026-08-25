@@ -5,7 +5,7 @@ import { registerExtractor } from "./gate.ts";
 
 export type BrowserToolDef<TParams extends TSchema, TDetails = unknown> =
 	ToolDefinition<TParams, TDetails> & {
-		urlFrom?: (input: Record<string, unknown>) => string;
+		urlFrom?: (input: Record<string, unknown>) => string | Promise<string>;
 	};
 
 export function browserTool<TParams extends TSchema, TDetails = unknown>(
