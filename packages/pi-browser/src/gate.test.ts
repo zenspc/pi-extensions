@@ -51,7 +51,7 @@ function fakeCtx(options?: {
 	} as unknown as ExtensionContext;
 }
 
-function selectSpy(respondWith: string): { spy: SelectSpy; select: () => Promise<string> } {
+function selectSpy(respondWith: string): { spy: SelectSpy; select: (title: string) => Promise<string> } {
 	const spy: SelectSpy = { calls: [], respondWith: [respondWith] };
 	return {
 		spy,

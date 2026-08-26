@@ -84,6 +84,10 @@ describe("screenshot and evaluate integration", () => {
 	let appServer: Server | undefined;
 	let tools: Map<string, AnyTool>;
 
+	function run(name: string, params: Record<string, unknown> = {}): Promise<any> {
+		return tools.get(name)!.execute("test", params, undefined, undefined, undefined as never);
+	}
+
 	before(async () => {
 		const { server, port } = await startApp();
 		appServer = server;
@@ -130,7 +134,7 @@ describe("screenshot and evaluate integration", () => {
 
 	it("captures a valid PNG with plausible dimensions", async () => {
 		await goto("/");
-		const result = await tools.get("browser_screenshot")!.execute("test", {});
+		const result = await run("browser_screenshot");
 
 		const note = result.content.find(
 			(item: { type: string }) => item.type === "text",
@@ -153,16 +157,14 @@ describe("screenshot and evaluate integration", () => {
 
 	it("serializes a number from the page context", async () => {
 		await goto("/");
-		const result = await tools
-			.get("browser_evaluate")!
-			.execute("test", { expression: "6 * 7" });
+		const result = await run("browser_evaluate", { expression: "6 * 7" });
 		assert.equal(result.content[0].text, "42");
 		assert.equal(result.details.result, 42);
 	});
 
 	it("serializes an object from the page context", async () => {
 		await goto("/");
-		const result = await tools.get("browser_evaluate")!.execute("test", {
+		const result = await run("browser_evaluate", {
 			expression: `(() => ({ label: document.getElementById("label").textContent, n: 3 }))()`,
 		});
 		assert.deepEqual(result.details.result, { label: "Ready", n: 3 });
@@ -171,9 +173,7 @@ describe("screenshot and evaluate integration", () => {
 
 	it("serializes a string from the page context", async () => {
 		await goto("/");
-		const result = await tools
-			.get("browser_evaluate")!
-			.execute("test", { expression: `"hello".toUpperCase()` });
+		const result = await run("browser_evaluate", { expression: `"hello".toUpperCase()` });
 		assert.equal(result.content[0].text, '"HELLO"');
 		assert.equal(result.details.result, "HELLO");
 	});
@@ -181,9 +181,7 @@ describe("screenshot and evaluate integration", () => {
 	it("rejects with the page error text on thrown errors", async () => {
 		await goto("/");
 		await assert.rejects(
-			tools
-				.get("browser_evaluate")!
-				.execute("test", { expression: `(() => { throw new Error("boom") })()` }),
+			run("browser_evaluate", { expression: `(() => { throw new Error("boom") })()` }),
 			/boom/,
 		);
 	});
@@ -191,7 +189,7 @@ describe("screenshot and evaluate integration", () => {
 	it("rejects on a syntax error in the expression", async () => {
 		await goto("/");
 		await assert.rejects(
-			tools.get("browser_evaluate")!.execute("test", { expression: "(() => {" }),
+			run("browser_evaluate", { expression: "(() => {" }),
 			/browser_evaluate failed.*(Syntax|syntax)/i,
 		);
 	});
