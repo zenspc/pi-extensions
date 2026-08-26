@@ -6,6 +6,12 @@ import {
 	type LaunchSpec,
 	type SpawnChrome,
 } from "./launch.ts";
+import {
+	clearStaleLock,
+	inspectOccupancy,
+	LiveChromeWithoutDebugError,
+	type DirOccupancy,
+} from "./occupancy.ts";
 import { resolveChromeBinary, resolveUserDataDir } from "./resolve.ts";
 
 type Attached = { kind: "connected"; browser: Browser; tab: Page };
@@ -22,6 +28,8 @@ export type CreateAttachmentOptions = {
 	launchChrome?: (spec: LaunchSpec) => void;
 	waitForPort?: (userDataDir: string) => Promise<number>;
 	spawnChrome?: SpawnChrome;
+	inspectOccupancy?: (userDataDir: string) => Promise<DirOccupancy>;
+	clearStaleLock?: (userDataDir: string) => void;
 };
 
 async function defaultConnectOverCDP(endpointURL: string): Promise<Browser> {
@@ -72,17 +80,47 @@ export function createAttachment(options?: CreateAttachmentOptions) {
 		});
 	const waitForPort =
 		options?.waitForPort ?? ((userDataDir: string) => waitForDebugPort(userDataDir));
+	const inspect =
+		options?.inspectOccupancy ??
+		((userDataDir: string) =>
+			inspectOccupancy(
+				userDataDir,
+				options?.waitForPort ? { waitForPort: options.waitForPort } : {},
+			));
+	const clearLock = options?.clearStaleLock ?? clearStaleLock;
 	let state: AttachmentState = { kind: "disconnected" };
 
 	async function attach(): Promise<Attached> {
 		const userDataDir = options?.userDataDir ?? resolveUserDataDir();
 		const chromeBin = options?.chromeBin ?? resolveChromeBinary();
-		launchChrome({
-			chromeBin,
-			userDataDir,
-			extraArgs: options?.extraArgs,
-		});
-		const port = await waitForPort(userDataDir);
+		const occupancy = await inspect(userDataDir);
+		const launchFresh = async (): Promise<number> => {
+			launchChrome({
+				chromeBin,
+				userDataDir,
+				extraArgs: options?.extraArgs,
+			});
+			return waitForPort(userDataDir);
+		};
+		let port: number;
+		switch (occupancy.kind) {
+			case "live-with-debug":
+				port = occupancy.port;
+				break;
+			case "live-without-debug":
+				throw new LiveChromeWithoutDebugError(userDataDir);
+			case "stale-lock":
+				clearLock(userDataDir);
+				port = await launchFresh();
+				break;
+			case "empty":
+				port = await launchFresh();
+				break;
+			default: {
+				const _exhaustive: never = occupancy;
+				throw new Error(`unreachable occupancy ${String(_exhaustive)}`);
+			}
+		}
 		const browser = await connectOverCDP(`http://127.0.0.1:${port}`);
 		const tab = await openAutomationTab(browser);
 		state = { kind: "connected", browser, tab };

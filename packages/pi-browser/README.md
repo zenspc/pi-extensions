@@ -20,6 +20,7 @@ The window stays up when Pi exits.
 
 2. Call any browser tool.
 	Chrome launches on first use.
+	If that Chrome is already running, a later Pi session attaches to it and reuses the Automation Tab.
 
 Override the User Data Dir with `PI_BROWSER_USER_DATA_DIR` (absolute after `~` expansion).
 Override the Chrome binary with `PI_BROWSER_CHROME_BIN`.
