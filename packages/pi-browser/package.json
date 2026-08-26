@@ -1,6 +1,6 @@
 {
 	"name": "@zenspc/pi-browser",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "Drive a dedicated Chrome with full automation, gated by per-domain approval",
 	"keywords": [
 		"pi-package",
