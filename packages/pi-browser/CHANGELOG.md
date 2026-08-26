@@ -1,5 +1,11 @@
 # @zenspc/pi-browser
 
+## 0.3.0
+
+### Minor Changes
+
+- 9e5bb24: Attach to a leftover dedicated Chrome instead of launching a second window. Delete a stale User Data Dir lock, and fail with a quit-window error when a live Chrome has no Debug Port.
+
 ## 0.2.0
 
 ### Minor Changes
