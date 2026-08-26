@@ -1,7 +1,7 @@
 {
 	"name": "@zenspc/pi-browser",
 	"version": "0.1.0",
-	"description": "Drive the user's running Chrome over CDP with full automation, gated by per-domain approval",
+	"description": "Drive a dedicated Chrome with full automation, gated by per-domain approval",
 	"keywords": [
 		"pi-package",
 		"pi-extension",

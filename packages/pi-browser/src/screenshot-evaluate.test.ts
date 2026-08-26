@@ -109,7 +109,11 @@ describe("screenshot and evaluate integration", () => {
 		);
 		await waitForDebugEndpoint(cdpPort);
 
-		attachment = createAttachment({ port: cdpPort });
+		attachment = createAttachment({
+			userDataDir,
+			launchChrome: () => {},
+			waitForPort: async () => cdpPort,
+		});
 		tools = loadTools(attachment);
 	});
 

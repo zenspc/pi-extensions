@@ -31,7 +31,7 @@ export default function (
 		name: "browser_navigate",
 		label: "Browser Navigate",
 		description:
-			"Navigate the Automation Tab to a URL and report the resulting page title. Attaches over CDP to the user's running Chrome; fails with the exact relaunch command if Chrome lacks its remote debugging port.",
+			"Navigate the Automation Tab to a URL and report the resulting page title. Launches the dedicated Chrome on first use.",
 		parameters: Type.Object({
 			url: Type.String({
 				description: "Absolute URL to navigate to",

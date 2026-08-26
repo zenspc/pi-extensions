@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { createServer, type Server } from "node:http";
-import { after, describe, it } from "node:test";
 import type { AddressInfo } from "node:net";
+import { after, describe, it } from "node:test";
 import type { Browser, Page } from "playwright-core";
-import {
-	CDP_PORT,
-	CHROME_START_COMMAND,
-	createAttachment,
-} from "./attachment.ts";
+import { createAttachment } from "./attachment.ts";
+import { chromeLaunchArgs } from "./launch.ts";
+import { resolveChromeBinary, resolveUserDataDir } from "./resolve.ts";
 
 type FakePage = {
 	gotos: string[];
@@ -59,6 +59,7 @@ function fakePage(): FakePage {
 function fakeConnector(existingPages: FakePage[] = []) {
 	const endpoints: string[] = [];
 	const createdPages: FakePage[] = [];
+	let closed = 0;
 	const context = {
 		pages: () => existingPages,
 		newPage: async (): Promise<FakePage> => {
@@ -68,7 +69,12 @@ function fakeConnector(existingPages: FakePage[] = []) {
 			return page;
 		},
 	};
-	const browser = { contexts: () => [context] };
+	const browser = {
+		contexts: () => [context],
+		async close() {
+			closed++;
+		},
+	};
 	const connectOverCDP = async (endpointURL: string): Promise<Browser> => {
 		endpoints.push(endpointURL);
 		return browser as unknown as Browser;
@@ -77,10 +83,11 @@ function fakeConnector(existingPages: FakePage[] = []) {
 		connectOverCDP,
 		endpoints,
 		createdPages,
+		get closed() {
+			return closed;
+		},
 		get ownedTab(): Page | undefined {
-			return (existingPages.find((p) => p.owned) ?? undefined) as
-				| Page
-				| undefined;
+			return (existingPages.find((p) => p.owned) ?? undefined) as Page | undefined;
 		},
 	};
 }
@@ -97,61 +104,28 @@ function closeServer(server: Server): Promise<void> {
 	);
 }
 
+function jsonVersionServer(): Server {
+	return createServer((_req, res) => {
+		res.setHeader("content-type", "application/json");
+		res.end(JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1/x" }));
+	});
+}
+
 describe("createAttachment", () => {
-	it("exposes the default CDP port and relaunch command", () => {
-		assert.equal(CDP_PORT, 9222);
-		assert.equal(
-			CHROME_START_COMMAND,
-			"google-chrome --remote-debugging-port=9222",
-		);
-	});
-
-	it("rejects with the relaunch command when nothing listens on the port", async () => {
-		const probe = createServer((_req, res) => res.end());
-		const port = await listen(probe);
-		await closeServer(probe);
-
-		const attachment = createAttachment({ port });
-		await assert.rejects(attachment.withTab(async () => undefined), (error: Error) => {
-			assert.match(error.message, /google-chrome --remote-debugging-port=9222/);
-			assert.match(error.message, /remote debugging port/i);
-			return true;
-		});
-		assert.equal(attachment.isAttached, false);
-	});
-
-	it("rejects with the relaunch command when the endpoint answers non-200", async () => {
-		const server = createServer((_req, res) => {
-			res.statusCode = 404;
-			res.end("nope");
-		});
+	it("launches against the User Data Dir and attaches to the discovered Debug Port", async () => {
+		const server = jsonVersionServer();
 		const port = await listen(server);
 		after(() => closeServer(server));
 
-		const attachment = createAttachment({ port });
-		await assert.rejects(attachment.withTab(async () => undefined), (error: Error) => {
-			assert.match(error.message, /google-chrome --remote-debugging-port=9222/);
-			assert.match(String((error as { cause?: unknown }).cause), /404/);
-			return true;
-		});
-		assert.equal(attachment.isAttached, false);
-	});
-
-	it("attaches lazily, marks a fresh Automation Tab, and reuses it", async () => {
-		const server = createServer((_req, res) => {
-			res.setHeader("content-type", "application/json");
-			res.end(
-				JSON.stringify({
-					webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/browser/fake-id`,
-				}),
-			);
-		});
-		const port = await listen(server);
-		after(() => closeServer(server));
-
+		const launches: { chromeBin: string; userDataDir: string }[] = [];
 		const connector = fakeConnector();
 		const attachment = createAttachment({
-			port,
+			userDataDir: "/tmp/pi-chrome-test",
+			chromeBin: "/opt/chrome",
+			launchChrome: (spec) => {
+				launches.push(spec);
+			},
+			waitForPort: async () => port,
 			connectOverCDP: connector.connectOverCDP,
 		});
 
@@ -159,33 +133,96 @@ describe("createAttachment", () => {
 			await tab.goto("https://example.test/a");
 			return tab;
 		});
+		assert.equal(launches.length, 1);
+		assert.equal(launches[0].chromeBin, "/opt/chrome");
+		assert.equal(launches[0].userDataDir, "/tmp/pi-chrome-test");
 		assert.deepEqual(connector.endpoints, [`http://127.0.0.1:${port}`]);
+		assert.notEqual(port, 9222);
 		assert.equal(connector.createdPages.length, 1);
 		assert.equal(connector.createdPages[0].initScripts, 1);
 		assert.equal(connector.createdPages[0].owned, true);
-		assert.deepEqual(connector.createdPages[0].gotos, [
-			"https://example.test/a",
-		]);
+		assert.deepEqual(connector.createdPages[0].gotos, ["https://example.test/a"]);
 		assert.equal(connector.ownedTab, firstTab);
 		assert.equal(attachment.isAttached, true);
 
 		const secondTab = await attachment.withTab(async (tab) => tab);
 		assert.equal(secondTab, firstTab);
 		assert.equal(connector.createdPages.length, 1);
+		assert.equal(launches.length, 1);
 		assert.deepEqual(connector.endpoints, [`http://127.0.0.1:${port}`]);
 	});
 
-	it("resets to detached on connection-closed failure and re-attaches on next call", async () => {
-		const server = createServer((_req, res) => {
+	it("does not attach to a Chrome listening on 9222 that is not this User Data Dir", async () => {
+		const decoyHits: string[] = [];
+		const decoy = createServer((req, res) => {
+			decoyHits.push(req.url ?? "");
+			res.statusCode = 200;
 			res.setHeader("content-type", "application/json");
-			res.end(JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1/x" }));
+			res.end(JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1:9222/decoy" }));
 		});
-		const port = await listen(server);
-		after(() => closeServer(server));
+		const decoyBound = await new Promise<boolean>((resolve) => {
+			decoy.on("error", () => resolve(false));
+			decoy.listen(9222, "127.0.0.1", () => resolve(true));
+		});
+		if (decoyBound) after(() => closeServer(decoy));
+		else decoy.close();
+
+		const ours = jsonVersionServer();
+		const port = await listen(ours);
+		after(() => closeServer(ours));
 
 		const connector = fakeConnector();
 		const attachment = createAttachment({
-			port,
+			userDataDir: "/tmp/owned-dir",
+			chromeBin: "/opt/chrome",
+			launchChrome: () => {},
+			waitForPort: async () => port,
+			connectOverCDP: connector.connectOverCDP,
+		});
+
+		await attachment.withTab(async () => undefined);
+		assert.deepEqual(connector.endpoints, [`http://127.0.0.1:${port}`]);
+		assert.notEqual(port, 9222);
+		if (decoyBound) {
+			assert.equal(
+				decoyHits.some((url) => url.includes("/json/version")),
+				false,
+			);
+		}
+	});
+
+	it("errors without a 9222 start command when the Debug Port never appears", async () => {
+		const attachment = createAttachment({
+			userDataDir: "/tmp/dead-dir",
+			chromeBin: "/opt/chrome",
+			launchChrome: () => {},
+			waitForPort: async () => {
+				throw new Error("No Debug Port found in the User Data Dir at /tmp/dead-dir.");
+			},
+		});
+		await assert.rejects(attachment.withTab(async () => undefined), (error: Error) => {
+			assert.match(error.message, /User Data Dir/);
+			assert.doesNotMatch(error.message, /9222/);
+			assert.doesNotMatch(error.message, /remote-debugging-port/);
+			return true;
+		});
+		assert.equal(attachment.isAttached, false);
+	});
+
+	it("resets to detached on connection-closed failure and re-attaches on next call", async () => {
+		const server = jsonVersionServer();
+		const port = await listen(server);
+		after(() => closeServer(server));
+
+		const launches: number[] = [];
+		const connector = fakeConnector();
+		const attachment = createAttachment({
+			userDataDir: "/tmp/reconnect",
+			chromeBin: "/opt/chrome",
+			launchChrome: () => {
+				launches.push(1);
+			},
+			waitForPort: async () => port,
 			connectOverCDP: connector.connectOverCDP,
 		});
 
@@ -207,6 +244,79 @@ describe("createAttachment", () => {
 			`http://127.0.0.1:${port}`,
 			`http://127.0.0.1:${port}`,
 		]);
+		assert.equal(launches.length, 2);
 		assert.equal(thirdTab, firstTab);
+	});
+
+	it("disconnects Playwright on close and does not need a Chrome child to kill", async () => {
+		const server = jsonVersionServer();
+		const port = await listen(server);
+		after(() => closeServer(server));
+
+		const connector = fakeConnector();
+		const attachment = createAttachment({
+			userDataDir: "/tmp/stay-up",
+			chromeBin: "/opt/chrome",
+			launchChrome: () => {},
+			waitForPort: async () => port,
+			connectOverCDP: connector.connectOverCDP,
+		});
+		await attachment.withTab(async () => undefined);
+		await attachment.close();
+		assert.equal(attachment.isAttached, false);
+		assert.equal(connector.closed, 1);
+	});
+
+	it("resolves User Data Dir and Chrome binary when they are not injected", async () => {
+		const server = jsonVersionServer();
+		const port = await listen(server);
+		after(() => closeServer(server));
+
+		const launches: { chromeBin: string; userDataDir: string }[] = [];
+		const attachment = createAttachment({
+			launchChrome: (spec) => {
+				launches.push(spec);
+			},
+			waitForPort: async () => port,
+			connectOverCDP: fakeConnector().connectOverCDP,
+		});
+
+		await attachment.withTab(async () => undefined);
+		assert.equal(launches.length, 1);
+		assert.equal(launches[0].userDataDir, resolveUserDataDir());
+		assert.equal(launches[0].chromeBin, resolveChromeBinary());
+	});
+
+	it("default launch wrapper spawns headed Chrome detached on the User Data Dir", async () => {
+		const server = jsonVersionServer();
+		const port = await listen(server);
+		after(() => closeServer(server));
+
+		const calls: { bin: string; args: string[]; options: SpawnOptions }[] = [];
+		let unrefed = false;
+		const child = new EventEmitter() as ChildProcess;
+		child.unref = () => {
+			unrefed = true;
+			return child;
+		};
+
+		const attachment = createAttachment({
+			userDataDir: "/tmp/default-launch",
+			chromeBin: "/opt/chrome",
+			spawnChrome: (bin, args, options) => {
+				calls.push({ bin, args, options });
+				return child;
+			},
+			waitForPort: async () => port,
+			connectOverCDP: fakeConnector().connectOverCDP,
+		});
+
+		await attachment.withTab(async () => undefined);
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0].bin, "/opt/chrome");
+		assert.deepEqual(calls[0].args, chromeLaunchArgs("/tmp/default-launch"));
+		assert.equal(calls[0].options.detached, true);
+		assert.equal(calls[0].options.stdio, "ignore");
+		assert.equal(unrefed, true);
 	});
 });

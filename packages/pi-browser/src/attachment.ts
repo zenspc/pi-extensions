@@ -1,26 +1,28 @@
 import { chromium } from "playwright-core";
 import type { Browser, Page } from "playwright-core";
-
-export const CDP_PORT = 9222;
-export const CHROME_START_COMMAND = "google-chrome --remote-debugging-port=9222";
-
-const PROBE_TIMEOUT_MS = 2000;
-
-export class MissingDebugPortError extends Error {
-	constructor(port: number, cause?: unknown) {
-		super(
-			`No Chrome debug port found at http://127.0.0.1:${port}. Start Chrome with its remote debugging port: ${CHROME_START_COMMAND}`,
-		);
-		this.name = "MissingDebugPortError";
-		this.cause = cause;
-	}
-}
+import {
+	launchDedicatedChrome,
+	waitForDebugPort,
+	type LaunchSpec,
+	type SpawnChrome,
+} from "./launch.ts";
+import { resolveChromeBinary, resolveUserDataDir } from "./resolve.ts";
 
 type Attached = { kind: "connected"; browser: Browser; tab: Page };
 type Detached = { kind: "disconnected"; reason?: unknown };
 type AttachmentState = Detached | Attached;
 
 export type ConnectOverCDP = (endpointURL: string) => Promise<Browser>;
+
+export type CreateAttachmentOptions = {
+	userDataDir?: string;
+	chromeBin?: string;
+	extraArgs?: readonly string[];
+	connectOverCDP?: ConnectOverCDP;
+	launchChrome?: (spec: LaunchSpec) => void;
+	waitForPort?: (userDataDir: string) => Promise<number>;
+	spawnChrome?: SpawnChrome;
+};
 
 async function defaultConnectOverCDP(endpointURL: string): Promise<Browser> {
 	return chromium.connectOverCDP(endpointURL);
@@ -30,20 +32,6 @@ function isConnectionClosed(error: unknown): boolean {
 	return /closed|disconnected|connection/i.test(
 		error instanceof Error ? error.message : String(error),
 	);
-}
-
-async function probeDebugEndpoint(port: number): Promise<void> {
-	let response: Response;
-	try {
-		response = await fetch(`http://127.0.0.1:${port}/json/version`, {
-			signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-		});
-	} catch (error) {
-		throw new MissingDebugPortError(port, error);
-	}
-	if (!response.ok) {
-		throw new MissingDebugPortError(port, new Error(`HTTP ${response.status}`));
-	}
 }
 
 async function findOwnedTab(browser: Browser): Promise<Page | undefined> {
@@ -75,16 +63,26 @@ async function openAutomationTab(browser: Browser): Promise<Page> {
 	return tab;
 }
 
-export function createAttachment(options?: {
-	port?: number;
-	connectOverCDP?: ConnectOverCDP;
-}) {
-	const port = options?.port ?? CDP_PORT;
+export function createAttachment(options?: CreateAttachmentOptions) {
 	const connectOverCDP = options?.connectOverCDP ?? defaultConnectOverCDP;
+	const launchChrome =
+		options?.launchChrome ??
+		((spec: LaunchSpec) => {
+			launchDedicatedChrome(spec, options?.spawnChrome);
+		});
+	const waitForPort =
+		options?.waitForPort ?? ((userDataDir: string) => waitForDebugPort(userDataDir));
 	let state: AttachmentState = { kind: "disconnected" };
 
 	async function attach(): Promise<Attached> {
-		await probeDebugEndpoint(port);
+		const userDataDir = options?.userDataDir ?? resolveUserDataDir();
+		const chromeBin = options?.chromeBin ?? resolveChromeBinary();
+		launchChrome({
+			chromeBin,
+			userDataDir,
+			extraArgs: options?.extraArgs,
+		});
+		const port = await waitForPort(userDataDir);
 		const browser = await connectOverCDP(`http://127.0.0.1:${port}`);
 		const tab = await openAutomationTab(browser);
 		state = { kind: "connected", browser, tab };
