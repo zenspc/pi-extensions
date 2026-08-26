@@ -27,7 +27,7 @@ export interface TerminalLike {
   write(data: string): void
 }
 
-interface TuiLike {
+export interface TuiLike {
   children: Component[]
   requestRender?: (force?: boolean) => void
   doRender?: () => void
