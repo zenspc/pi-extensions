@@ -1,16 +1,16 @@
 # pi-browser
 
-A Pi extension that lets the agent drive the user's running Chrome with full automation, gated by per-domain user approval.
+A Pi extension that lets the agent drive a dedicated Chrome with full automation, gated by per-domain user approval.
 
 ## Language
 
 **Attachment**:
-The live connection from the extension to Chrome over the DevTools Protocol port.
+The live connection from the extension to the dedicated Chrome over the DevTools Protocol.
 _Avoid_: Connect, link, bridge
 
 **Debug Port**:
-The remote debugging port (9222) that Chrome must be started with for the Attachment to connect.
-_Avoid_: CDP endpoint, devtools socket
+The remote debugging port the dedicated Chrome opened for this User Data Dir. Discovered from the dir, not a fixed number.
+_Avoid_: CDP endpoint, devtools socket, 9222
 
 **Automation Tab**:
 The single browser tab owned by the extension and reused for all agent activity. User tabs are never touched.
@@ -31,3 +31,7 @@ _Avoid_: Permission, consent
 **Allowlist**:
 The persisted set of domains holding an Approve Permanently grant.
 _Avoid_: Trusted sites, whitelist
+
+**User Data Dir**:
+The Chrome data folder the extension owns and reuses. It is not the user's daily Chrome data.
+_Avoid_: Profile, chrome profile, persistent profile
