@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -186,6 +186,84 @@ describe("installDomainGate", () => {
 		assert.ok(result?.block);
 		assert.match(result.reason ?? "", /headless\.com/);
 		assert.match(result.reason ?? "", new RegExp(allowlistPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+	});
+
+	it("allows about:blank without a Domain Approval prompt", async () => {
+		const gate = setup();
+		const result = await gate.callGate(
+			navigateEvent("about:blank"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(result, undefined);
+		assert.equal(gate.spy.calls.length, 0);
+	});
+
+	it("blocks other about URLs and non-http(s) schemes before prompting", async () => {
+		const gate = setup();
+		for (const url of [
+			"about:srcdoc",
+			"file:///tmp/x",
+			"data:text/html,hi",
+			"javascript:alert(1)",
+			"blob:https://example.com/uuid",
+			"chrome://settings",
+		]) {
+			const result = await gate.callGate(navigateEvent(url), fakeCtx({ select: gate.select }));
+			assert.ok(result?.block, url);
+			assert.match(result.reason ?? "", /not an allowed site/, url);
+		}
+		assert.equal(gate.spy.calls.length, 0);
+	});
+
+	it("fails closed for a public suffix and ignores that row on the Allowlist", async () => {
+		const isolated = join(dir, "psl-allowlist.json");
+		writeFileSync(isolated, `${JSON.stringify({ version: 1, domains: ["github.io"] })}\n`);
+		const { pi, callGate } = fakePi();
+		installDomainGate(pi, { allowlistPath: isolated });
+		const prompt = selectSpy("Approve once");
+		browserTool(pi, {
+			name: "browser_navigate",
+			label: "Browser Navigate",
+			description: "test tool",
+			parameters: Type.Object({ url: Type.String() }),
+			async execute() {
+				return { content: [], details: undefined };
+			},
+		});
+
+		const suffix = await callGate(
+			navigateEvent("https://github.io/"),
+			fakeCtx({ select: prompt.select }),
+		);
+		assert.ok(suffix?.block);
+		assert.equal(prompt.spy.calls.length, 0);
+		assert.deepEqual(JSON.parse(readFileSync(isolated, "utf8")), {
+			version: 1,
+			domains: ["github.io"],
+		});
+
+		const tenant = await callGate(
+			navigateEvent("https://foo.github.io/"),
+			fakeCtx({ select: prompt.select }),
+		);
+		assert.equal(tenant, undefined);
+		assert.equal(prompt.spy.calls.length, 1);
+		assert.match(prompt.spy.calls[0].title, /foo\.github\.io/);
+	});
+
+	it("does not split a grant by scheme or port", async () => {
+		const gate = setup("Approve once");
+		await gate.callGate(
+			navigateEvent("https://sharedport.com:8443/a"),
+			fakeCtx({ select: gate.select }),
+		);
+		const again = await gate.callGate(
+			navigateEvent("http://sharedport.com:8080/b"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(again, undefined);
+		assert.equal(gate.spy.calls.length, 1);
+		assert.match(gate.spy.calls[0].title, /sharedport\.com/);
 	});
 
 	it("blocks malformed URLs instead of guessing a domain", async () => {

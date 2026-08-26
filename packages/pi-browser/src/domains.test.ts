@@ -1,38 +1,99 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { registrableDomain } from "./domains.ts";
+import { classifyUrl, registrableDomain } from "./domains.ts";
 
 describe("registrableDomain", () => {
-	it("reduces hosts to their last two labels by default", () => {
+	it("computes Registrable Domain from the Public Suffix List", () => {
 		assert.equal(registrableDomain("example.com"), "example.com");
 		assert.equal(registrableDomain("a.b.example.com"), "example.com");
 		assert.equal(registrableDomain("deep.sub.example.dev"), "example.dev");
-	});
-
-	it("keeps three labels for known two-part suffixes", () => {
 		assert.equal(registrableDomain("example.co.uk"), "example.co.uk");
 		assert.equal(registrableDomain("app.example.co.uk"), "example.co.uk");
-		assert.equal(registrableDomain("www.example.com.au"), "example.com.au");
-		assert.equal(registrableDomain("shop.example.co.jp"), "example.co.jp");
-		assert.equal(registrableDomain("lists.org.uk"), "lists.org.uk");
+		assert.equal(registrableDomain("foo.github.io"), "foo.github.io");
 	});
 
-	it("strips a leading www label before reducing", () => {
+	it("gives no domain for a public suffix", () => {
+		assert.equal(registrableDomain("github.io"), undefined);
+		assert.equal(registrableDomain("co.uk"), undefined);
+	});
+
+	it("strips www via the PSL, not a leading-label rule", () => {
 		assert.equal(registrableDomain("www.example.com"), "example.com");
 		assert.equal(registrableDomain("www.app.example.com"), "example.com");
+		assert.equal(registrableDomain("www.gov.uk"), "www.gov.uk");
+		assert.equal(registrableDomain("www.com"), "www.com");
 	});
 
 	it("normalizes case and trailing dots", () => {
 		assert.equal(registrableDomain("EXAMPLE.Com."), "example.com");
 		assert.equal(registrableDomain("WWW.EXAMPLE.CO.UK"), "example.co.uk");
+		assert.equal(registrableDomain("FOO.GITHUB.IO."), "foo.github.io");
 	});
 
-	it("passes through single and two-label hosts", () => {
+	it("uses the hostname for IPs and single-label hosts", () => {
 		assert.equal(registrableDomain("localhost"), "localhost");
+		assert.equal(registrableDomain("127.0.0.1"), "127.0.0.1");
+		assert.equal(registrableDomain("::1"), "::1");
+		assert.equal(registrableDomain("[::1]"), "::1");
 		assert.equal(registrableDomain("example.localhost"), "example.localhost");
 	});
 
-	it("returns empty for empty input", () => {
-		assert.equal(registrableDomain(""), "");
+	it("returns undefined for empty input", () => {
+		assert.equal(registrableDomain(""), undefined);
+	});
+});
+
+describe("classifyUrl", () => {
+	it("classifies http(s) sites by Registrable Domain", () => {
+		assert.deepEqual(classifyUrl(new URL("https://a.b.example.com/x")), {
+			kind: "site",
+			domain: "example.com",
+		});
+		assert.deepEqual(classifyUrl(new URL("http://foo.github.io/")), {
+			kind: "site",
+			domain: "foo.github.io",
+		});
+		assert.deepEqual(classifyUrl(new URL("http://127.0.0.1:8080/")), {
+			kind: "site",
+			domain: "127.0.0.1",
+		});
+		assert.deepEqual(classifyUrl(new URL("http://localhost/")), {
+			kind: "site",
+			domain: "localhost",
+		});
+		assert.deepEqual(classifyUrl(new URL("https://www.example.com/")), {
+			kind: "site",
+			domain: "example.com",
+		});
+	});
+
+	it("does not split a site by scheme or port", () => {
+		assert.deepEqual(classifyUrl(new URL("https://example.com:8443/a")), {
+			kind: "site",
+			domain: "example.com",
+		});
+		assert.deepEqual(classifyUrl(new URL("http://example.com:8080/b")), {
+			kind: "site",
+			domain: "example.com",
+		});
+	});
+
+	it("allows about:blank and blocks other about URLs", () => {
+		assert.deepEqual(classifyUrl(new URL("about:blank")), { kind: "blank" });
+		assert.deepEqual(classifyUrl(new URL("about:blank#keep")), { kind: "blank" });
+		assert.deepEqual(classifyUrl(new URL("about:srcdoc")), { kind: "blocked" });
+	});
+
+	it("blocks non-http(s) schemes and public suffixes", () => {
+		for (const href of [
+			"file:///tmp/x",
+			"data:text/html,hi",
+			"javascript:alert(1)",
+			"blob:https://example.com/uuid",
+			"chrome://settings",
+			"https://github.io/",
+		]) {
+			assert.equal(classifyUrl(new URL(href)).kind, "blocked", href);
+		}
 	});
 });

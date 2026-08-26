@@ -5,7 +5,7 @@ import type {
 	ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
 import { addToAllowlist, getAllowlistPath, loadAllowlist } from "./allowlist.ts";
-import { registrableDomain } from "./domains.ts";
+import { classifyUrl } from "./domains.ts";
 
 export type Verdict = "pass" | "ask";
 
@@ -65,7 +65,12 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 			return block(`pi-browser blocked "${event.toolName}": "${rawUrl}" is not a valid URL.`);
 		}
 
-		const domain = registrableDomain(url.hostname);
+		const classified = classifyUrl(url);
+		if (classified.kind === "blank") return undefined;
+		if (classified.kind === "blocked") {
+			return block(`pi-browser blocked "${event.toolName}": "${rawUrl}" is not an allowed site.`);
+		}
+		const domain = classified.domain;
 		ensureAllowlistLoaded();
 		if (decide(domain, sessionAllowed) === "pass") return undefined;
 
