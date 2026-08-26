@@ -72,10 +72,12 @@ function navigateEvent(url: string): ToolCallEvent {
 }
 
 describe("decide", () => {
-	it("asks for unknown domains and passes approved ones", () => {
+	it("asks for unknown domains, passes approved ones, and returns deny for a Session Deny", () => {
 		const allowed = new Set(["example.com"]);
-		assert.equal(decide("example.com", allowed), "pass");
-		assert.equal(decide("other.com", allowed), "ask");
+		const denied = new Set(["blocked.com"]);
+		assert.equal(decide("example.com", allowed, denied), "pass");
+		assert.equal(decide("blocked.com", allowed, denied), "deny");
+		assert.equal(decide("other.com", allowed, denied), "ask");
 	});
 });
 
@@ -161,7 +163,8 @@ describe("installDomainGate", () => {
 		assert.equal(second.spy.calls.length, 0);
 	});
 
-	it("deny blocks with a clear message and re-prompts on the next call", async () => {
+	it("Session Deny blocks later calls to that Registrable Domain without prompting", async () => {
+		const before = existsSync(allowlistPath) ? readFileSync(allowlistPath, "utf8") : "";
 		const denied = setup("Deny");
 		const result = await denied.callGate(
 			navigateEvent("https://denied.com/page"),
@@ -170,11 +173,48 @@ describe("installDomainGate", () => {
 		assert.deepEqual(result, { block: true, reason: "User denied browser access to denied.com." });
 
 		const next = await denied.callGate(
-			navigateEvent("https://denied.com/page"),
+			navigateEvent("https://sub.denied.com/other"),
 			fakeCtx({ select: denied.select }),
 		);
 		assert.deepEqual(next, { block: true, reason: "User denied browser access to denied.com." });
+		assert.equal(denied.spy.calls.length, 1);
+
+		const after = existsSync(allowlistPath) ? readFileSync(allowlistPath, "utf8") : "";
+		assert.equal(after, before);
+		assert.ok(!after.includes("denied.com"));
+	});
+
+	it("Session Deny of one Registrable Domain does not affect another", async () => {
+		const denied = setup("Deny");
+		await denied.callGate(
+			navigateEvent("https://denied.com/page"),
+			fakeCtx({ select: denied.select }),
+		);
+
+		denied.spy.respondWith[0] = "Approve once";
+		const other = await denied.callGate(
+			navigateEvent("https://other.net/"),
+			fakeCtx({ select: denied.select }),
+		);
+		assert.equal(other, undefined);
 		assert.equal(denied.spy.calls.length, 2);
+		assert.match(denied.spy.calls[1].title, /other\.net/);
+	});
+
+	it("Session Deny does not persist across a fresh gate", async () => {
+		const first = setup("Deny");
+		await first.callGate(
+			navigateEvent("https://ephemeral.com/page"),
+			fakeCtx({ select: first.select }),
+		);
+
+		const second = setup("Approve once");
+		const again = await second.callGate(
+			navigateEvent("https://ephemeral.com/page"),
+			fakeCtx({ select: second.select }),
+		);
+		assert.equal(again, undefined);
+		assert.equal(second.spy.calls.length, 1);
 	});
 
 	it("blocks headless calls while naming the allowlist path and never prompts", async () => {
@@ -186,6 +226,21 @@ describe("installDomainGate", () => {
 		assert.ok(result?.block);
 		assert.match(result.reason ?? "", /headless\.com/);
 		assert.match(result.reason ?? "", new RegExp(allowlistPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.doesNotMatch(result.reason ?? "", /User denied/);
+
+		const again = await gate.callGate(
+			navigateEvent("https://headless.com/page"),
+			fakeCtx({ hasUI: false, select: gate.select }),
+		);
+		assert.ok(again?.block);
+		assert.match(again.reason ?? "", new RegExp(allowlistPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+		const withUi = await gate.callGate(
+			navigateEvent("https://headless.com/page"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(withUi, undefined);
+		assert.equal(gate.spy.calls.length, 1);
 	});
 
 	it("allows about:blank without a Domain Approval prompt", async () => {

@@ -7,7 +7,7 @@ import type {
 import { addToAllowlist, getAllowlistPath, loadAllowlist } from "./allowlist.ts";
 import { classifyUrl } from "./domains.ts";
 
-export type Verdict = "pass" | "ask";
+export type Verdict = "pass" | "ask" | "deny";
 
 export type PromptOutcome = "once" | "permanent" | "deny";
 
@@ -25,8 +25,10 @@ export function registerExtractor(name: string, extract: UrlExtractor): void {
 	urlExtractors.set(name, extract);
 }
 
-export function decide(domain: string, allowed: Set<string>): Verdict {
-	return allowed.has(domain) ? "pass" : "ask";
+export function decide(domain: string, allowed: Set<string>, denied: Set<string>): Verdict {
+	if (allowed.has(domain)) return "pass";
+	if (denied.has(domain)) return "deny";
+	return "ask";
 }
 
 export function promptOutcome(choice: string | undefined): PromptOutcome {
@@ -38,6 +40,7 @@ export function promptOutcome(choice: string | undefined): PromptOutcome {
 export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions): void {
 	const allowlistPath = options?.allowlistPath ?? getAllowlistPath();
 	const sessionAllowed = new Set<string>();
+	const sessionDenied = new Set<string>();
 	let allowlistLoaded = false;
 
 	function ensureAllowlistLoaded(): void {
@@ -72,7 +75,11 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 		}
 		const domain = classified.domain;
 		ensureAllowlistLoaded();
-		if (decide(domain, sessionAllowed) === "pass") return undefined;
+		const verdict = decide(domain, sessionAllowed, sessionDenied);
+		if (verdict === "pass") return undefined;
+		if (verdict === "deny") {
+			return block(`User denied browser access to ${domain}.`);
+		}
 
 		if (!ctx.hasUI) {
 			return block(
@@ -82,6 +89,7 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 
 		const outcome = promptOutcome(await ctx.ui.select(`Allow access to ${domain}?`, PROMPT_CHOICES));
 		if (outcome === "deny") {
+			sessionDenied.add(domain);
 			return block(`User denied browser access to ${domain}.`);
 		}
 		if (outcome === "permanent") addToAllowlist(domain, allowlistPath);
