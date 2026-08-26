@@ -123,7 +123,11 @@ describe("snapshot integration", () => {
 		);
 		await waitForDebugEndpoint(cdpPort);
 
-		attachment = createAttachment({ port: cdpPort });
+		attachment = createAttachment({
+			userDataDir,
+			launchChrome: () => {},
+			waitForPort: async () => cdpPort,
+		});
 	});
 
 	after(async () => {
