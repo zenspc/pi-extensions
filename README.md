@@ -17,6 +17,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-quiet`](./packages/pi-quiet) | `pi install npm:@zenspc/pi-quiet` | Quiet Display - dense built-in tool rows |
 | [`@zenspc/pi-sticky-editor`](./packages/pi-sticky-editor) | `pi install npm:@zenspc/pi-sticky-editor` | Keep the editor and footer fixed while the transcript scrolls (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-pstack`](./packages/pi-pstack) | `pi install npm:@zenspc/pi-pstack` | pstack skills + subagents: poteto-mode playbooks, engineering principles, multi-model review panels |
+| [`@zenspc/pi-browser`](./packages/pi-browser) | `pi install npm:@zenspc/pi-browser` | Drive your running Chrome over CDP with per-domain approval |
 
 Pre-1.0 APIs may change.
 
@@ -30,6 +31,7 @@ Pre-1.0 APIs may change.
 - **pi-quiet**: presentation-only override of built-in tool rendering. Config is untrusted input (size caps, symlink refusal). Does not change tool execution.
 - **pi-sticky-editor**: presentation-only TUI layout change (fixed editor region). Patches private Pi TUI internals; no network, credentials, or tool-execution changes. Unmaintained; functionality is now officially supported by Pi.
 - **pi-pstack**: markdown skills and agent definitions only. No executable extension code; bundled scripts run under bun when a playbook calls them. Skills instruct the model to spawn subagents and run project commands; review before installing.
+- **pi-browser**: attaches to Chrome started with a remote debugging port and acts on approved domains with your logged-in sessions. `browser_evaluate` runs arbitrary page JavaScript; snapshots and screenshots can capture sensitive page content.
 
 See each package README and [SECURITY.md](./SECURITY.md) for details.
 
@@ -48,6 +50,7 @@ pi -e ./packages/pi-spinner
 pi -e ./packages/pi-quiet
 pi -e ./packages/pi-sticky-editor
 pi -e ./packages/pi-pstack
+pi -e ./packages/pi-browser
 
 # install from path into user settings
 pi install ./packages/pi-safety
@@ -59,6 +62,7 @@ pi install ./packages/pi-spinner
 pi install ./packages/pi-quiet
 pi install ./packages/pi-sticky-editor
 pi install ./packages/pi-pstack
+pi install ./packages/pi-browser
 ```
 
 ## Pick pieces from a package

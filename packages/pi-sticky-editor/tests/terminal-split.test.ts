@@ -9,6 +9,7 @@ import {
   setScrollRegion,
   TerminalSplitCompositor,
   type TerminalLike,
+  type TuiLike,
 } from "../src/terminal-split.ts"
 
 test("renders terminal scroll region escape sequences", () => {
@@ -77,7 +78,7 @@ test("scrolls synchronously and deletes Kitty images that leave the viewport", (
   const tui = new TUI(terminal)
   tui.addChild(root)
   const compositor = new TerminalSplitCompositor({
-    tui,
+    tui: tui as unknown as TuiLike,
     terminal,
     renderCluster: () => ({ lines: ["editor", "footer"], cursor: null }),
   })
@@ -109,9 +110,9 @@ test("scrolls synchronously and deletes Kitty images that leave the viewport", (
 })
 
 test("plain enter scrolls the transcript back to the bottom", () => {
-  let inputListener:
-    | ((data: string) => { consume?: boolean } | undefined)
-    | null = null
+  const inputListeners: Array<
+    (data: string) => { consume?: boolean } | undefined
+  > = []
   let renderRequests = 0
   const rootLines = Array.from({ length: 10 }, (_, index) => `line ${index}`)
   const terminal: TerminalLike = {
@@ -128,9 +129,9 @@ test("plain enter scrolls the transcript back to the bottom", () => {
     addInputListener: (
       listener: (data: string) => { consume?: boolean } | undefined,
     ) => {
-      inputListener = listener
+      inputListeners.push(listener)
       return () => {
-        inputListener = null
+        inputListeners.pop()
       }
     },
     hasOverlay: () => false,
@@ -143,6 +144,7 @@ test("plain enter scrolls the transcript back to the bottom", () => {
 
   compositor.install()
   try {
+    const [inputListener] = inputListeners
     assert.ok(inputListener)
     assert.equal(inputListener("\x1b[5~")?.consume, true)
     assert.deepEqual(tui.render(), ["line 0", "line 1", "line 2", "line 3"])
@@ -247,9 +249,9 @@ test("right-click copy schedules at most one delayed clipboard restore", () => {
   mock.timers.enable({ apis: ["setTimeout"], now: 0 })
   try {
     const copies: string[] = []
-    let inputListener:
-      | ((data: string) => { consume?: boolean } | undefined)
-      | null = null
+    const inputListeners: Array<
+      (data: string) => { consume?: boolean } | undefined
+    > = []
     const rootLines = ["alpha beta gamma"]
     const terminal: TerminalLike = {
       columns: 40,
@@ -263,9 +265,9 @@ test("right-click copy schedules at most one delayed clipboard restore", () => {
       addInputListener: (
         listener: (data: string) => { consume?: boolean } | undefined,
       ) => {
-        inputListener = listener
+        inputListeners.push(listener)
         return () => {
-          inputListener = null
+          inputListeners.pop()
         }
       },
       hasOverlay: () => false,
@@ -281,9 +283,10 @@ test("right-click copy schedules at most one delayed clipboard restore", () => {
 
     compositor.install()
     try {
+      const [inputListener] = inputListeners
       assert.ok(inputListener)
       // Force a root-window so selection line 0 exists.
-      tui.render(40)
+      tui.render()
 
       // Double-click line to select whole line, then right-click inside it.
       inputListener("\x1b[<0;1;1M")

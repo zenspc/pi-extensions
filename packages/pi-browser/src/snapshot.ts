@@ -108,7 +108,9 @@ export async function takeSnapshot(tab: Page): Promise<SnapshotResult> {
 		function refTag(el: Element): string {
 			let ref = el.getAttribute("data-pi-browser-ref");
 			if (!ref) {
-				ref = `e${w.__piBrowserNextRef++}`;
+				const next = w.__piBrowserNextRef ?? 1;
+				w.__piBrowserNextRef = next + 1;
+				ref = `e${next}`;
 				el.setAttribute("data-pi-browser-ref", ref);
 			}
 			return ref;
