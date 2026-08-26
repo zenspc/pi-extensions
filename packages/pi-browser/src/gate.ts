@@ -37,7 +37,10 @@ export function promptOutcome(choice: string | undefined): PromptOutcome {
 	return "deny";
 }
 
-export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions): void {
+export function installDomainGate(
+	pi: ExtensionAPI,
+	options?: DomainGateOptions,
+): { allowed: Set<string> } {
 	const allowlistPath = options?.allowlistPath ?? getAllowlistPath();
 	const sessionAllowed = new Set<string>();
 	const sessionDenied = new Set<string>();
@@ -48,6 +51,8 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 		allowlistLoaded = true;
 		for (const domain of loadAllowlist(allowlistPath)) sessionAllowed.add(domain);
 	}
+
+	ensureAllowlistLoaded();
 
 	function block(reason: string): ToolCallEventResult {
 		return { block: true, reason };
@@ -108,4 +113,6 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 			);
 		}
 	});
+
+	return { allowed: sessionAllowed };
 }

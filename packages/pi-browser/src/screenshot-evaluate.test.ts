@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
@@ -21,13 +21,16 @@ const PAGE_HTML = `<!doctype html>
 
 type AnyTool = ToolDefinition<any, any>;
 
-function loadTools(attachment: ReturnType<typeof createAttachment>): Map<string, AnyTool> {
+function loadTools(
+	attachment: ReturnType<typeof createAttachment>,
+	allowlistPath: string,
+): Map<string, AnyTool> {
 	const tools = new Map<string, AnyTool>();
 	const pi = {
 		registerTool: (def: AnyTool) => tools.set(def.name, def),
 		on: () => {},
 	};
-	extension(pi as unknown as ExtensionAPI, { attachment });
+	extension(pi as unknown as ExtensionAPI, { attachment, allowlistPath });
 	return tools;
 }
 
@@ -95,6 +98,8 @@ describe("screenshot and evaluate integration", () => {
 
 		cdpPort = await freePort();
 		userDataDir = mkdtempSync(join(tmpdir(), "pi-browser-chrome-"));
+		const allowlistPath = join(userDataDir, "allowlist.json");
+		writeFileSync(allowlistPath, `${JSON.stringify({ version: 1, domains: ["127.0.0.1"] })}\n`);
 		chrome = spawn(
 			CHROME_BIN,
 			[
@@ -114,7 +119,7 @@ describe("screenshot and evaluate integration", () => {
 			launchChrome: () => {},
 			waitForPort: async () => cdpPort,
 		});
-		tools = loadTools(attachment);
+		tools = loadTools(attachment, allowlistPath);
 	});
 
 	after(async () => {

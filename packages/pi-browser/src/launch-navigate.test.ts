@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
@@ -18,13 +18,16 @@ const PAGE_HTML = `<!doctype html>
 
 type AnyTool = ToolDefinition<any, any>;
 
-function loadTools(attachment: ReturnType<typeof createAttachment>): Map<string, AnyTool> {
+function loadTools(
+	attachment: ReturnType<typeof createAttachment>,
+	allowlistPath: string,
+): Map<string, AnyTool> {
 	const tools = new Map<string, AnyTool>();
 	const pi = {
 		registerTool: (def: AnyTool) => tools.set(def.name, def),
 		on: () => {},
 	};
-	extension(pi as unknown as ExtensionAPI, { attachment });
+	extension(pi as unknown as ExtensionAPI, { attachment, allowlistPath });
 	return tools;
 }
 
@@ -77,6 +80,8 @@ describe("launch path", () => {
 
 		const userDataDir = mkdtempSync(join(tmpdir(), "pi-browser-launch-"));
 		after(() => rmSync(userDataDir, { recursive: true, force: true, maxRetries: 3 }));
+		const allowlistPath = join(userDataDir, "allowlist.json");
+		writeFileSync(allowlistPath, `${JSON.stringify({ version: 1, domains: ["127.0.0.1"] })}\n`);
 
 		const chromeBin = resolveChromeBinary();
 		let chrome: ChildProcess | undefined;
@@ -104,7 +109,7 @@ describe("launch path", () => {
 			},
 		});
 
-		const tools = loadTools(attachment);
+		const tools = loadTools(attachment, allowlistPath);
 		const navigate = tools.get("browser_navigate");
 		assert.ok(navigate, "browser_navigate registered");
 
