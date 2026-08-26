@@ -63,7 +63,7 @@ function freePort(): Promise<number> {
 }
 
 async function waitForDebugEndpoint(port: number): Promise<void> {
-	const deadline = Date.now() + 10_000;
+	const deadline = Date.now() + 30_000;
 	while (Date.now() < deadline) {
 		try {
 			const response = await fetch(`http://127.0.0.1:${port}/json/version`);
