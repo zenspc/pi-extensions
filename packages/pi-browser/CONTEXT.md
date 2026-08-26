@@ -8,6 +8,10 @@ A Pi extension that lets the agent drive the user's running Chrome with full aut
 The live connection from the extension to Chrome over the DevTools Protocol port.
 _Avoid_: Connect, link, bridge
 
+**Debug Port**:
+The remote debugging port (9222) that Chrome must be started with for the Attachment to connect.
+_Avoid_: CDP endpoint, devtools socket
+
 **Automation Tab**:
 The single browser tab owned by the extension and reused for all agent activity. User tabs are never touched.
 _Avoid_: Working tab, agent tab, target page
@@ -21,7 +25,7 @@ The accessibility-tree listing of the Automation Tab that the agent reads instea
 _Avoid_: DOM dump, page state
 
 **Domain Approval**:
-The user's grant for the agent to act on one site. Offered as Approve Once (this Pi session) or Approve Permanently.
+The user's grant for the agent to act on one site. Offered as Approve once (this Pi session) or Approve permanently (persisted).
 _Avoid_: Permission, consent
 
 **Allowlist**:
