@@ -7,6 +7,7 @@ import { after, describe, it } from "node:test";
 import type { Browser, Page } from "playwright-core";
 import { createAttachment } from "./attachment.ts";
 import { chromeLaunchArgs } from "./launch.ts";
+import { LiveChromeWithoutDebugError } from "./occupancy.ts";
 import { resolveChromeBinary, resolveUserDataDir } from "./resolve.ts";
 
 type FakePage = {
@@ -285,6 +286,93 @@ describe("createAttachment", () => {
 		assert.equal(launches.length, 1);
 		assert.equal(launches[0].userDataDir, resolveUserDataDir());
 		assert.equal(launches[0].chromeBin, resolveChromeBinary());
+	});
+
+	it("attaches to a live dedicated Chrome and does not launch or clear the lock", async () => {
+		const existing = fakePage();
+		existing.owned = true;
+		const connector = fakeConnector([existing]);
+		const launches: unknown[] = [];
+		const clears: string[] = [];
+		const attachment = createAttachment({
+			userDataDir: "/tmp/already-live",
+			chromeBin: "/opt/chrome",
+			inspectOccupancy: async () => ({ kind: "live-with-debug", port: 45000 }),
+			clearStaleLock: (dir) => {
+				clears.push(dir);
+			},
+			launchChrome: (spec) => {
+				launches.push(spec);
+			},
+			waitForPort: async () => {
+				throw new Error("should not wait for a new Debug Port");
+			},
+			connectOverCDP: connector.connectOverCDP,
+		});
+
+		const tab = await attachment.withTab(async (page) => page);
+		assert.equal(tab, existing);
+		assert.equal(connector.createdPages.length, 0);
+		assert.deepEqual(connector.endpoints, ["http://127.0.0.1:45000"]);
+		assert.equal(launches.length, 0);
+		assert.deepEqual(clears, []);
+	});
+
+	it("fails when live Chrome has no Debug Port and does not delete the lock", async () => {
+		const launches: unknown[] = [];
+		const clears: string[] = [];
+		const attachment = createAttachment({
+			userDataDir: "/tmp/live-no-debug",
+			chromeBin: "/opt/chrome",
+			inspectOccupancy: async () => ({ kind: "live-without-debug" }),
+			clearStaleLock: (dir) => {
+				clears.push(dir);
+			},
+			launchChrome: (spec) => {
+				launches.push(spec);
+			},
+			connectOverCDP: async () => {
+				throw new Error("should not connect");
+			},
+		});
+
+		await assert.rejects(
+			attachment.withTab(async () => undefined),
+			(error: unknown) =>
+				error instanceof LiveChromeWithoutDebugError &&
+				error.message.includes("/tmp/live-no-debug") &&
+				/quit that window/i.test(error.message) &&
+				!/9222/.test(error.message),
+		);
+		assert.equal(attachment.isAttached, false);
+		assert.equal(launches.length, 0);
+		assert.deepEqual(clears, []);
+	});
+
+	it("deletes a stale lock then launches", async () => {
+		const connector = fakeConnector();
+		const launches: { userDataDir: string }[] = [];
+		const clears: string[] = [];
+		const attachment = createAttachment({
+			userDataDir: "/tmp/stale-lock",
+			chromeBin: "/opt/chrome",
+			inspectOccupancy: async () => ({ kind: "stale-lock" }),
+			clearStaleLock: (dir) => {
+				clears.push(dir);
+			},
+			launchChrome: (spec) => {
+				launches.push(spec);
+			},
+			waitForPort: async () => 45001,
+			connectOverCDP: connector.connectOverCDP,
+		});
+
+		await attachment.withTab(async () => undefined);
+		assert.deepEqual(clears, ["/tmp/stale-lock"]);
+		assert.equal(launches.length, 1);
+		assert.equal(launches[0].userDataDir, "/tmp/stale-lock");
+		assert.deepEqual(connector.endpoints, ["http://127.0.0.1:45001"]);
+		assert.equal(connector.createdPages.length, 1);
 	});
 
 	it("default launch wrapper spawns headed Chrome detached on the User Data Dir", async () => {
