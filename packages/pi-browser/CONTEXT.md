@@ -13,7 +13,7 @@ The remote debugging port the dedicated Chrome opened for this User Data Dir. Di
 _Avoid_: CDP endpoint, devtools socket, 9222
 
 **Automation Tab**:
-The single browser tab owned by the extension and reused for all agent activity. User tabs are never touched.
+The single browser tab owned by the extension and reused for all agent activity. Its rest state is an empty document, not a site. User tabs are never touched.
 _Avoid_: Working tab, agent tab, target page
 
 **Element Ref**:
@@ -24,13 +24,21 @@ _Avoid_: Selector, locator, ref id
 The accessibility-tree listing of the Automation Tab that the agent reads instead of raw HTML.
 _Avoid_: DOM dump, page state
 
+**Registrable Domain**:
+The site-root hostname a Domain Approval covers, including all subdomains of that root.
+_Avoid_: Origin, hostname, eTLD+1
+
 **Domain Approval**:
-The user's grant for the agent to act on one site. Offered as Approve once (this Pi session) or Approve permanently (persisted).
-_Avoid_: Permission, consent
+The user's grant that the agent may act as the user on one Registrable Domain, for this Pi session or persisted on the Allowlist. It is not a sandbox.
+_Avoid_: Permission, consent, sandbox
 
 **Allowlist**:
-The persisted set of domains holding an Approve Permanently grant.
+The persisted set of Registrable Domains holding an Approve Permanently grant.
 _Avoid_: Trusted sites, whitelist
+
+**Session Deny**:
+A Domain Approval refusal remembered for the rest of this Pi session and not written to the Allowlist.
+_Avoid_: Ban, blocklist, permanent deny
 
 **User Data Dir**:
 The Chrome data folder the extension owns and reuses. It is not the user's daily Chrome data.

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -72,10 +72,12 @@ function navigateEvent(url: string): ToolCallEvent {
 }
 
 describe("decide", () => {
-	it("asks for unknown domains and passes approved ones", () => {
+	it("asks for unknown domains, passes approved ones, and returns deny for a Session Deny", () => {
 		const allowed = new Set(["example.com"]);
-		assert.equal(decide("example.com", allowed), "pass");
-		assert.equal(decide("other.com", allowed), "ask");
+		const denied = new Set(["blocked.com"]);
+		assert.equal(decide("example.com", allowed, denied), "pass");
+		assert.equal(decide("blocked.com", allowed, denied), "deny");
+		assert.equal(decide("other.com", allowed, denied), "ask");
 	});
 });
 
@@ -161,7 +163,8 @@ describe("installDomainGate", () => {
 		assert.equal(second.spy.calls.length, 0);
 	});
 
-	it("deny blocks with a clear message and re-prompts on the next call", async () => {
+	it("Session Deny blocks later calls to that Registrable Domain without prompting", async () => {
+		const before = existsSync(allowlistPath) ? readFileSync(allowlistPath, "utf8") : "";
 		const denied = setup("Deny");
 		const result = await denied.callGate(
 			navigateEvent("https://denied.com/page"),
@@ -170,11 +173,48 @@ describe("installDomainGate", () => {
 		assert.deepEqual(result, { block: true, reason: "User denied browser access to denied.com." });
 
 		const next = await denied.callGate(
-			navigateEvent("https://denied.com/page"),
+			navigateEvent("https://sub.denied.com/other"),
 			fakeCtx({ select: denied.select }),
 		);
 		assert.deepEqual(next, { block: true, reason: "User denied browser access to denied.com." });
+		assert.equal(denied.spy.calls.length, 1);
+
+		const after = existsSync(allowlistPath) ? readFileSync(allowlistPath, "utf8") : "";
+		assert.equal(after, before);
+		assert.ok(!after.includes("denied.com"));
+	});
+
+	it("Session Deny of one Registrable Domain does not affect another", async () => {
+		const denied = setup("Deny");
+		await denied.callGate(
+			navigateEvent("https://denied.com/page"),
+			fakeCtx({ select: denied.select }),
+		);
+
+		denied.spy.respondWith[0] = "Approve once";
+		const other = await denied.callGate(
+			navigateEvent("https://other.net/"),
+			fakeCtx({ select: denied.select }),
+		);
+		assert.equal(other, undefined);
 		assert.equal(denied.spy.calls.length, 2);
+		assert.match(denied.spy.calls[1].title, /other\.net/);
+	});
+
+	it("Session Deny does not persist across a fresh gate", async () => {
+		const first = setup("Deny");
+		await first.callGate(
+			navigateEvent("https://ephemeral.com/page"),
+			fakeCtx({ select: first.select }),
+		);
+
+		const second = setup("Approve once");
+		const again = await second.callGate(
+			navigateEvent("https://ephemeral.com/page"),
+			fakeCtx({ select: second.select }),
+		);
+		assert.equal(again, undefined);
+		assert.equal(second.spy.calls.length, 1);
 	});
 
 	it("blocks headless calls while naming the allowlist path and never prompts", async () => {
@@ -186,6 +226,99 @@ describe("installDomainGate", () => {
 		assert.ok(result?.block);
 		assert.match(result.reason ?? "", /headless\.com/);
 		assert.match(result.reason ?? "", new RegExp(allowlistPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.doesNotMatch(result.reason ?? "", /User denied/);
+
+		const again = await gate.callGate(
+			navigateEvent("https://headless.com/page"),
+			fakeCtx({ hasUI: false, select: gate.select }),
+		);
+		assert.ok(again?.block);
+		assert.match(again.reason ?? "", new RegExp(allowlistPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+		const withUi = await gate.callGate(
+			navigateEvent("https://headless.com/page"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(withUi, undefined);
+		assert.equal(gate.spy.calls.length, 1);
+	});
+
+	it("allows about:blank without a Domain Approval prompt", async () => {
+		const gate = setup();
+		const result = await gate.callGate(
+			navigateEvent("about:blank"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(result, undefined);
+		assert.equal(gate.spy.calls.length, 0);
+	});
+
+	it("blocks other about URLs and non-http(s) schemes before prompting", async () => {
+		const gate = setup();
+		for (const url of [
+			"about:srcdoc",
+			"file:///tmp/x",
+			"data:text/html,hi",
+			"javascript:alert(1)",
+			"blob:https://example.com/uuid",
+			"chrome://settings",
+		]) {
+			const result = await gate.callGate(navigateEvent(url), fakeCtx({ select: gate.select }));
+			assert.ok(result?.block, url);
+			assert.match(result.reason ?? "", /not an allowed site/, url);
+		}
+		assert.equal(gate.spy.calls.length, 0);
+	});
+
+	it("fails closed for a public suffix and ignores that row on the Allowlist", async () => {
+		const isolated = join(dir, "psl-allowlist.json");
+		writeFileSync(isolated, `${JSON.stringify({ version: 1, domains: ["github.io"] })}\n`);
+		const { pi, callGate } = fakePi();
+		installDomainGate(pi, { allowlistPath: isolated });
+		const prompt = selectSpy("Approve once");
+		browserTool(pi, {
+			name: "browser_navigate",
+			label: "Browser Navigate",
+			description: "test tool",
+			parameters: Type.Object({ url: Type.String() }),
+			async execute() {
+				return { content: [], details: undefined };
+			},
+		});
+
+		const suffix = await callGate(
+			navigateEvent("https://github.io/"),
+			fakeCtx({ select: prompt.select }),
+		);
+		assert.ok(suffix?.block);
+		assert.equal(prompt.spy.calls.length, 0);
+		assert.deepEqual(JSON.parse(readFileSync(isolated, "utf8")), {
+			version: 1,
+			domains: ["github.io"],
+		});
+
+		const tenant = await callGate(
+			navigateEvent("https://foo.github.io/"),
+			fakeCtx({ select: prompt.select }),
+		);
+		assert.equal(tenant, undefined);
+		assert.equal(prompt.spy.calls.length, 1);
+		assert.match(prompt.spy.calls[0].title, /foo\.github\.io/);
+	});
+
+	it("does not split a grant by scheme or port", async () => {
+		const gate = setup("Approve once");
+		await gate.callGate(
+			navigateEvent("https://sharedport.com:8443/a"),
+			fakeCtx({ select: gate.select }),
+		);
+		const again = await gate.callGate(
+			navigateEvent("http://sharedport.com:8080/b"),
+			fakeCtx({ select: gate.select }),
+		);
+		assert.equal(again, undefined);
+		assert.equal(gate.spy.calls.length, 1);
+		assert.match(gate.spy.calls[0].title, /sharedport\.com/);
 	});
 
 	it("blocks malformed URLs instead of guessing a domain", async () => {

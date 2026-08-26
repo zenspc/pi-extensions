@@ -1,8 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Page } from "playwright-core";
 import { Type } from "typebox";
 import { createAttachment } from "./attachment.ts";
 import { browserTool } from "./browser-tool.ts";
 import { installDomainGate } from "./gate.ts";
+import { createNavigationGuard } from "./navigation.ts";
 import { refLocator, takeSnapshot } from "./snapshot.ts";
 
 const defaultAttachment = createAttachment();
@@ -18,15 +20,36 @@ function serializeEvaluateResult(result: unknown): string {
 
 export default function (
 	pi: ExtensionAPI,
-	options?: { attachment?: typeof defaultAttachment },
+	options?: { attachment?: typeof defaultAttachment; allowlistPath?: string },
 ) {
 	const attachment = options?.attachment ?? defaultAttachment;
+	const { allowed } = installDomainGate(pi, { allowlistPath: options?.allowlistPath });
+	const nav = createNavigationGuard(allowed);
 
-	function currentUrl(): Promise<string> {
-		return attachment.withTab(async (tab) => tab.url());
+	async function withAutomationTab<T>(fn: (tab: Page) => Promise<T>): Promise<T> {
+		return attachment.withTab(async (tab) => {
+			await nav.ensureInstalled(tab);
+			return fn(tab);
+		});
 	}
 
-	installDomainGate(pi);
+	function currentUrl(): Promise<string> {
+		return withAutomationTab(async (tab) => tab.url());
+	}
+
+	async function runTool<T>(fn: (tab: Page) => Promise<T>): Promise<T> {
+		return withAutomationTab(async (tab) => {
+			nav.begin(tab.url());
+			try {
+				const result = await fn(tab);
+				await nav.finish(tab);
+				return result;
+			} catch (error) {
+				await nav.finish(tab);
+				throw error;
+			}
+		});
+	}
 	browserTool(pi, {
 		name: "browser_navigate",
 		label: "Browser Navigate",
@@ -38,7 +61,7 @@ export default function (
 			}),
 		}),
 		async execute(_toolCallId, params) {
-			const result = await attachment.withTab(async (tab) => {
+			const result = await runTool(async (tab) => {
 				await tab.goto(params.url, { waitUntil: "load" });
 				return { url: tab.url(), title: await tab.title() };
 			});
@@ -58,7 +81,7 @@ export default function (
 		parameters: Type.Object({}),
 		urlFrom: () => currentUrl(),
 		async execute(_toolCallId) {
-			const result = await attachment.withTab((tab) => takeSnapshot(tab));
+			const result = await runTool((tab) => takeSnapshot(tab));
 			return {
 				content: [
 					{
@@ -80,7 +103,7 @@ export default function (
 		}),
 		urlFrom: () => currentUrl(),
 		async execute(_toolCallId, params) {
-			await attachment.withTab(async (tab) => {
+			await runTool(async (tab) => {
 				const locator = await refLocator(tab, params.ref);
 				await locator.click();
 			});
@@ -101,7 +124,7 @@ export default function (
 		}),
 		urlFrom: () => currentUrl(),
 		async execute(_toolCallId, params) {
-			await attachment.withTab(async (tab) => {
+			await runTool(async (tab) => {
 				const locator = await refLocator(tab, params.ref);
 				await locator.fill(params.text);
 			});
@@ -119,7 +142,7 @@ export default function (
 		parameters: Type.Object({}),
 		urlFrom: () => currentUrl(),
 		async execute(_toolCallId) {
-			const result = await attachment.withTab(async (tab) => {
+			const result = await runTool(async (tab) => {
 				const buffer = await tab.screenshot({ type: "png" });
 				return {
 					buffer,
@@ -155,13 +178,14 @@ export default function (
 		}),
 		urlFrom: () => currentUrl(),
 		async execute(_toolCallId, params) {
-			let result: unknown;
-			try {
-				result = await attachment.withTab((tab) => tab.evaluate(params.expression));
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				throw new Error(`browser_evaluate failed: ${message}`);
-			}
+			const result = await runTool(async (tab) => {
+				try {
+					return await tab.evaluate(params.expression);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`browser_evaluate failed: ${message}`);
+				}
+			});
 			return {
 				content: [{ type: "text", text: serializeEvaluateResult(result) }],
 				details: { expression: params.expression, result },

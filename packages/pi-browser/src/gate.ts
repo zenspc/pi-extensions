@@ -5,9 +5,9 @@ import type {
 	ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
 import { addToAllowlist, getAllowlistPath, loadAllowlist } from "./allowlist.ts";
-import { registrableDomain } from "./domains.ts";
+import { classifyUrl } from "./domains.ts";
 
-export type Verdict = "pass" | "ask";
+export type Verdict = "pass" | "ask" | "deny";
 
 export type PromptOutcome = "once" | "permanent" | "deny";
 
@@ -25,8 +25,10 @@ export function registerExtractor(name: string, extract: UrlExtractor): void {
 	urlExtractors.set(name, extract);
 }
 
-export function decide(domain: string, allowed: Set<string>): Verdict {
-	return allowed.has(domain) ? "pass" : "ask";
+export function decide(domain: string, allowed: Set<string>, denied: Set<string>): Verdict {
+	if (allowed.has(domain)) return "pass";
+	if (denied.has(domain)) return "deny";
+	return "ask";
 }
 
 export function promptOutcome(choice: string | undefined): PromptOutcome {
@@ -35,9 +37,13 @@ export function promptOutcome(choice: string | undefined): PromptOutcome {
 	return "deny";
 }
 
-export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions): void {
+export function installDomainGate(
+	pi: ExtensionAPI,
+	options?: DomainGateOptions,
+): { allowed: Set<string> } {
 	const allowlistPath = options?.allowlistPath ?? getAllowlistPath();
 	const sessionAllowed = new Set<string>();
+	const sessionDenied = new Set<string>();
 	let allowlistLoaded = false;
 
 	function ensureAllowlistLoaded(): void {
@@ -45,6 +51,8 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 		allowlistLoaded = true;
 		for (const domain of loadAllowlist(allowlistPath)) sessionAllowed.add(domain);
 	}
+
+	ensureAllowlistLoaded();
 
 	function block(reason: string): ToolCallEventResult {
 		return { block: true, reason };
@@ -65,9 +73,18 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 			return block(`pi-browser blocked "${event.toolName}": "${rawUrl}" is not a valid URL.`);
 		}
 
-		const domain = registrableDomain(url.hostname);
+		const classified = classifyUrl(url);
+		if (classified.kind === "blank") return undefined;
+		if (classified.kind === "blocked") {
+			return block(`pi-browser blocked "${event.toolName}": "${rawUrl}" is not an allowed site.`);
+		}
+		const domain = classified.domain;
 		ensureAllowlistLoaded();
-		if (decide(domain, sessionAllowed) === "pass") return undefined;
+		const verdict = decide(domain, sessionAllowed, sessionDenied);
+		if (verdict === "pass") return undefined;
+		if (verdict === "deny") {
+			return block(`User denied browser access to ${domain}.`);
+		}
 
 		if (!ctx.hasUI) {
 			return block(
@@ -77,6 +94,7 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 
 		const outcome = promptOutcome(await ctx.ui.select(`Allow access to ${domain}?`, PROMPT_CHOICES));
 		if (outcome === "deny") {
+			sessionDenied.add(domain);
 			return block(`User denied browser access to ${domain}.`);
 		}
 		if (outcome === "permanent") addToAllowlist(domain, allowlistPath);
@@ -95,4 +113,6 @@ export function installDomainGate(pi: ExtensionAPI, options?: DomainGateOptions)
 			);
 		}
 	});
+
+	return { allowed: sessionAllowed };
 }
