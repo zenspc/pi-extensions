@@ -135,7 +135,6 @@ describe("reuse leftover Chrome", () => {
 				spawns++;
 				return spawn(bin, args, options);
 			},
-			waitForPort: (dir) => waitForDebugPort(dir, { timeoutMs: 1_000 }),
 		});
 
 		await assert.rejects(

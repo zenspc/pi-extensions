@@ -1,7 +1,9 @@
 import { readlinkSync, unlinkSync } from "node:fs";
 import { hostname as osHostname } from "node:os";
 import { join } from "node:path";
-import { DEVTOOLS_ACTIVE_PORT_FILE } from "./launch.ts";
+import { DEVTOOLS_ACTIVE_PORT_FILE, waitForDebugPort } from "./launch.ts";
+
+export const LIVE_DEBUG_PORT_TIMEOUT_MS = 2_000;
 
 export const SINGLETON_LOCK_FILE = "SingletonLock";
 export const SINGLETON_SOCKET_FILE = "SingletonSocket";
@@ -78,7 +80,7 @@ export function readChromeLock(userDataDir: string, io: OccupancyIo = {}): Chrom
 
 export async function inspectOccupancy(
 	userDataDir: string,
-	options: OccupancyIo & { waitForPort: (userDataDir: string) => Promise<number> },
+	options: OccupancyIo & { waitForPort?: (userDataDir: string) => Promise<number> } = {},
 ): Promise<DirOccupancy> {
 	const lock = readChromeLock(userDataDir, options);
 	switch (lock.kind) {
@@ -87,8 +89,11 @@ export async function inspectOccupancy(
 		case "stale":
 			return { kind: "stale-lock" };
 		case "live": {
+			const wait =
+				options.waitForPort ??
+				((dir) => waitForDebugPort(dir, { timeoutMs: LIVE_DEBUG_PORT_TIMEOUT_MS }));
 			try {
-				const port = await options.waitForPort(userDataDir);
+				const port = await wait(userDataDir);
 				return { kind: "live-with-debug", port };
 			} catch {
 				return { kind: "live-without-debug" };

@@ -82,7 +82,11 @@ export function createAttachment(options?: CreateAttachmentOptions) {
 		options?.waitForPort ?? ((userDataDir: string) => waitForDebugPort(userDataDir));
 	const inspect =
 		options?.inspectOccupancy ??
-		((userDataDir: string) => inspectOccupancy(userDataDir, { waitForPort }));
+		((userDataDir: string) =>
+			inspectOccupancy(
+				userDataDir,
+				options?.waitForPort ? { waitForPort: options.waitForPort } : {},
+			));
 	const clearLock = options?.clearStaleLock ?? clearStaleLock;
 	let state: AttachmentState = { kind: "disconnected" };
 
