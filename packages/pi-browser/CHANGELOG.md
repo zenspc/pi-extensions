@@ -1,5 +1,11 @@
 # @zenspc/pi-browser
 
+## 0.5.0
+
+### Minor Changes
+
+- 2eaac4c: Add `/browser` to switch sticky Tool Availability. Off hides Browser Tools from the model without touching Chrome, the Attachment, or Domain Approval.
+
 ## 0.4.0
 
 ### Minor Changes
