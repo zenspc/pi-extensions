@@ -25,9 +25,14 @@ function loadTools(
 	const tools = new Map<string, AnyTool>();
 	const pi = {
 		registerTool: (def: AnyTool) => tools.set(def.name, def),
+		registerCommand: () => {},
 		on: () => {},
 	};
-	extension(pi as unknown as ExtensionAPI, { attachment, allowlistPath });
+	extension(pi as unknown as ExtensionAPI, {
+		attachment,
+		allowlistPath,
+		availabilityPath: `${allowlistPath}.availability`,
+	});
 	return tools;
 }
 

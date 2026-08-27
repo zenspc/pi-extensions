@@ -4,6 +4,14 @@ A Pi extension that lets the agent drive a dedicated Chrome with full automation
 
 ## Language
 
+**Browser Tools**:
+The agent-facing tools that drive the Automation Tab.
+_Avoid_: browser extension, browser commands, browser API
+
+**Tool Availability**:
+The sticky choice that the agent is offered Browser Tools. Absent means on. It is not a Domain Approval.
+_Avoid_: session toggle, extension enabled, armed
+
 **Attachment**:
 The live connection from the extension to the dedicated Chrome over the DevTools Protocol.
 _Avoid_: Connect, link, bridge
