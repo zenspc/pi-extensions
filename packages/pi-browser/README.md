@@ -44,6 +44,31 @@ Acting on a stale or unknown Ref returns an error that says so.
 
 Every tool targets the Automation Tab and every tool passes through the Domain Approval gate below.
 
+## Commands
+
+`/browser on|off|status|help` switches Tool Availability.
+Bare `/browser` is status.
+`enable` and `disable` alias `on` and `off`.
+
+| Command | Description |
+|---|---|
+| `/browser` | Show Tool Availability |
+| `/browser status` | Show Tool Availability |
+| `/browser on` | Offer Browser Tools |
+| `/browser off` | Hide Browser Tools |
+| `/browser help` | Usage |
+
+Off hides Browser Tools from the model only.
+Chrome, the Attachment, and Domain Approval stay as they are.
+On restores Browser Tools.
+A missing sticky file means on.
+The file is `$PI_CODING_AGENT_DIR/extensions/pi-browser.json`, by default `~/.pi/agent/extensions/pi-browser.json`.
+
+`/browser` does not load or unload the package.
+Use `pi config` to unload it.
+
+See [ADR-0013](../../docs/adr/0013-sticky-off-hides-browser-tools-only.md).
+
 ## Domain Approval
 
 The agent cannot touch a site until you approve it.
