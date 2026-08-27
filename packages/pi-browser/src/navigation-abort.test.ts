@@ -220,11 +220,16 @@ function loadApp(attachment: ReturnType<typeof createAttachment>, allowlistPath:
 	const prompts: string[] = [];
 	const pi = {
 		registerTool: (def: AnyTool) => tools.set(def.name, def),
-		on(_event: string, handler: typeof toolCallHandler) {
-			toolCallHandler = handler;
+		registerCommand: () => {},
+		on(event: string, handler: typeof toolCallHandler) {
+			if (event === "tool_call") toolCallHandler = handler;
 		},
 	};
-	extension(pi as unknown as ExtensionAPI, { attachment, allowlistPath });
+	extension(pi as unknown as ExtensionAPI, {
+		attachment,
+		allowlistPath,
+		availabilityPath: `${allowlistPath}.availability`,
+	});
 
 	async function call(
 		name: string,

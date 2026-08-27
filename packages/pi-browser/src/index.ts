@@ -1,8 +1,24 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import type { Page } from "playwright-core";
-import { Type } from "typebox";
+import { Type, type TSchema } from "typebox";
 import { createAttachment } from "./attachment.ts";
-import { browserTool } from "./browser-tool.ts";
+import {
+	applyToolAvailability,
+	getAvailabilityPath,
+	loadToolAvailability,
+	saveToolAvailability,
+} from "./availability.ts";
+import { browserTool, type BrowserToolDef } from "./browser-tool.ts";
+import {
+	applyBrowserCommand,
+	formatBrowserHelp,
+	formatBrowserStatus,
+	parseBrowserCommand,
+} from "./command.ts";
 import { installDomainGate } from "./gate.ts";
 import { createNavigationGuard } from "./navigation.ts";
 import { refLocator, takeSnapshot } from "./snapshot.ts";
@@ -18,13 +34,35 @@ function serializeEvaluateResult(result: unknown): string {
 	}
 }
 
+function notify(
+	ctx: ExtensionCommandContext | ExtensionContext,
+	message: string,
+	level: "info" | "warning" | "error" = "info",
+): void {
+	if (ctx.hasUI) ctx.ui.notify(message, level);
+}
+
 export default function (
 	pi: ExtensionAPI,
-	options?: { attachment?: typeof defaultAttachment; allowlistPath?: string },
+	options?: {
+		attachment?: typeof defaultAttachment;
+		allowlistPath?: string;
+		availabilityPath?: string;
+	},
 ) {
 	const attachment = options?.attachment ?? defaultAttachment;
+	const availabilityPath = options?.availabilityPath ?? getAvailabilityPath();
+	let available = loadToolAvailability(availabilityPath).available;
+	const browserTools: string[] = [];
 	const { allowed } = installDomainGate(pi, { allowlistPath: options?.allowlistPath });
 	const nav = createNavigationGuard(allowed);
+
+	function register<TParams extends TSchema, TDetails = unknown>(
+		def: BrowserToolDef<TParams, TDetails>,
+	): void {
+		browserTools.push(def.name);
+		browserTool(pi, def);
+	}
 
 	async function withAutomationTab<T>(fn: (tab: Page) => Promise<T>): Promise<T> {
 		return attachment.withTab(async (tab) => {
@@ -50,7 +88,7 @@ export default function (
 			}
 		});
 	}
-	browserTool(pi, {
+	register({
 		name: "browser_navigate",
 		label: "Browser Navigate",
 		description:
@@ -73,7 +111,7 @@ export default function (
 			};
 		},
 	});
-	browserTool(pi, {
+	register({
 		name: "browser_snapshot",
 		label: "Browser Snapshot",
 		description:
@@ -93,7 +131,7 @@ export default function (
 			};
 		},
 	});
-	browserTool(pi, {
+	register({
 		name: "browser_click",
 		label: "Browser Click",
 		description:
@@ -113,7 +151,7 @@ export default function (
 			};
 		},
 	});
-	browserTool(pi, {
+	register({
 		name: "browser_type",
 		label: "Browser Type",
 		description:
@@ -134,7 +172,7 @@ export default function (
 			};
 		},
 	});
-	browserTool(pi, {
+	register({
 		name: "browser_screenshot",
 		label: "Browser Screenshot",
 		description:
@@ -166,7 +204,7 @@ export default function (
 			};
 		},
 	});
-	browserTool(pi, {
+	register({
 		name: "browser_evaluate",
 		label: "Browser Evaluate",
 		description:
@@ -190,6 +228,40 @@ export default function (
 				content: [{ type: "text", text: serializeEvaluateResult(result) }],
 				details: { expression: params.expression, result },
 			};
+		},
+	});
+
+	pi.on("session_start", async () => {
+		available = loadToolAvailability(availabilityPath).available;
+		applyToolAvailability(pi, available, browserTools);
+	});
+
+	pi.registerCommand("browser", {
+		description: "Show or switch Tool Availability for Browser Tools",
+		handler: async (args, ctx) => {
+			const cmd = parseBrowserCommand(args);
+			const result = applyBrowserCommand(cmd, available);
+
+			if (result.kind === "help") {
+				notify(ctx, formatBrowserHelp(), cmd.action === "unknown" ? "warning" : "info");
+				return;
+			}
+
+			if (result.kind === "status") {
+				notify(ctx, formatBrowserStatus(available));
+				return;
+			}
+
+			if (result.changed) {
+				if (!saveToolAvailability({ available: result.available }, availabilityPath)) {
+					notify(ctx, `Failed to save Tool Availability to ${availabilityPath}`, "error");
+					return;
+				}
+				available = result.available;
+				applyToolAvailability(pi, available, browserTools);
+			}
+
+			notify(ctx, formatBrowserStatus(available));
 		},
 	});
 }
