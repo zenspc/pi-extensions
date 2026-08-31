@@ -1,5 +1,11 @@
 # @zenspc/pi-devtools
 
+## 0.4.0
+
+### Minor Changes
+
+- 4902a90: Add a custom TUI welcome header and the Dracula theme.
+
 ## 0.3.0
 
 ### Minor Changes
