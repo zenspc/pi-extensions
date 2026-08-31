@@ -1,6 +1,6 @@
 {
   "name": "@zenspc/pi-devtools",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Context usage report, cwd switching (/cd), markdown preview (/preview), richer session footer, welcome header, and Dracula theme for Pi",
   "keywords": [
     "pi-package",
