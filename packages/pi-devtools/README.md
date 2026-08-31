@@ -1,6 +1,6 @@
 # @zenspc/pi-devtools
 
-Context usage report, working-directory switching, and richer session footer for Pi.
+Context usage report, working-directory switching, markdown preview, richer session footer, custom welcome header, and Dracula theme for Pi.
 
 ## Install
 
@@ -119,6 +119,27 @@ Richer footer status for the active session, including response timing and cache
 
 `PI_CACHE_RETENTION=long` switches the cache TTL heuristic to the longer retention window.
 
+### Welcome header
+
+Replaces the stock TUI header with the pi logo, key tips, the active model, and loaded resources (context, skills, prompts, extensions, themes).
+Stock resource-panel sections are hidden so they are not listed twice.
+
+TUI mode only.
+Use the expand-tools binding (`ctrl+o` by default) to show the full resource lists.
+
+### Dracula theme
+
+Ships the `dracula` theme.
+Select it with `/settings` or in settings:
+
+```json
+{
+  "theme": "dracula"
+}
+```
+
+If you already have a local `dracula` theme, remove or rename that file so the package copy is the one pi loads.
+
 ## Install only one extension
 
 ```json
@@ -156,6 +177,31 @@ Or:
 }
 ```
 
+```json
+{
+  "packages": [
+    {
+      "source": "npm:@zenspc/pi-devtools",
+      "extensions": ["extensions/welcome-header.ts"]
+    }
+  ]
+}
+```
+
+Theme only:
+
+```json
+{
+  "packages": [
+    {
+      "source": "npm:@zenspc/pi-devtools",
+      "extensions": [],
+      "themes": ["themes/dracula.json"]
+    }
+  ]
+}
+```
+
 ## Source
 
 ```text
@@ -164,4 +210,8 @@ extensions/cd-helpers.mjs
 extensions/context-command.ts
 extensions/context-scroll.mjs
 extensions/custom-footer.ts
+extensions/preview-command.ts
+extensions/welcome-header.ts
+extensions/welcome-header-helpers.mjs
+themes/dracula.json
 ```
