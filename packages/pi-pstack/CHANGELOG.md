@@ -1,5 +1,15 @@
 # @zenspc/pi-pstack
 
+## 0.4.0
+
+### Minor Changes
+
+- 818fef3: Hide 41 Pstack skills from the Skill catalog. `/pstack on` restores `how`, `why`, `unslop`, and `typescript-best-practices` only.
+
+### Patch Changes
+
+- 818fef3: Inject Cursor's Poteto Mode one-liner instead of the Skill body mandate. Skip the role table when every role inherits.
+
 ## 0.3.0
 
 ### Minor Changes
