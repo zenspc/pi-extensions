@@ -253,15 +253,9 @@ describe("migrateLegacyMarkdownIfNeeded", () => {
 });
 
 describe("formatRoleTable", () => {
-	it("collapses the all-default case to the one-line sentence", () => {
-		assert.equal(
-			formatRoleTable(defaultConfig()),
-			"Pstack model roles: all inherit the parent session model.",
-		);
-		assert.equal(
-			formatRoleTable(parseConfig({ version: 1, roles: { "bug-fix": "auto" } })),
-			"Pstack model roles: all inherit the parent session model.",
-		);
+	it("injects nothing when every role inherits", () => {
+		assert.equal(formatRoleTable(defaultConfig()), "");
+		assert.equal(formatRoleTable(parseConfig({ version: 1, roles: { "bug-fix": "auto" } })), "");
 	});
 
 	it("lists only non-default roles", () => {
