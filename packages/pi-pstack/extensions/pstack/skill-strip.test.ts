@@ -69,6 +69,20 @@ describe("stripSkillsByLocationPrefix", () => {
 		assert.equal(result.prompt, fixture(kept));
 	});
 
+	it("removes even the four Discoverable pstack skills", () => {
+		const echo = skill("echo", "Echo text back.", "/tmp/other/skills/echo/SKILL.md");
+		const prompt = fixture(
+			skill("how", "How.", `${PSTACK_PREFIX}/how/SKILL.md`) +
+				skill("why", "Why.", `${PSTACK_PREFIX}/why/SKILL.md`) +
+				skill("unslop", "Unslop.", `${PSTACK_PREFIX}/unslop/SKILL.md`) +
+				skill("typescript-best-practices", "TS.", `${PSTACK_PREFIX}/typescript-best-practices/SKILL.md`) +
+				echo,
+		);
+		const result = stripSkillsByLocationPrefix(prompt, PSTACK_PREFIX);
+		assert.equal(result.removed, 4);
+		assert.equal(result.prompt, fixture(echo));
+	});
+
 	it("returns input unchanged for an empty prefix", () => {
 		const prompt = fixture(skill("architect", "Design.", `${PSTACK_PREFIX}/architect/SKILL.md`));
 		const result = stripSkillsByLocationPrefix(prompt, "");
