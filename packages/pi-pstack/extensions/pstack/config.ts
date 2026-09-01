@@ -230,8 +230,5 @@ export function formatRoleTable(config: PstackConfig): string {
 		if (models.length === 0) continue;
 		lines.push(`${role}: ${models.join(", ")}`);
 	}
-	if (lines.length === 0) {
-		return "Pstack model roles: all inherit the parent session model.";
-	}
 	return lines.join("\n");
 }

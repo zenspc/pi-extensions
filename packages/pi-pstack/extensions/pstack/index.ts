@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import {
 	LIST_ROLES,
 	ROLE_NAMES,
+	type PstackConfig,
 	type RoleName,
 	type RoleValue,
 	configPath,
@@ -21,7 +22,15 @@ const SKILLS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "sk
 
 const POTETO_SKILL = "/skill:poteto-mode";
 const POTETO_PROMPT =
-	"Pstack Poteto Mode is on for this session. Follow skills/poteto-mode/SKILL.md: match a playbook, copy its steps, delegate through pi-subagents, verify real behavior, name only principles that changed a decision. /poteto-mode off disables it.";
+	"New task? Playbook match or rigor needed -> apply /poteto-mode. Casual turn or user opts out -> don't.";
+
+export function systemPromptInjection(config: PstackConfig, potetoMode: boolean): string {
+	const parts: string[] = [];
+	const table = formatRoleTable(config);
+	if (table) parts.push(table);
+	if (potetoMode) parts.push(POTETO_PROMPT);
+	return parts.join("\n\n");
+}
 
 type ModeEntry = {
 	type?: string;
@@ -113,10 +122,9 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 		const base = config.skillsEnabled
 			? event.systemPrompt
 			: stripSkillsByLocationPrefix(event.systemPrompt, SKILLS_DIR).prompt;
-		const parts = [formatRoleTable(config)];
-		if (potetoMode) parts.push(POTETO_PROMPT);
+		const extra = systemPromptInjection(config, potetoMode);
 		return {
-			systemPrompt: `${base}\n\n${parts.join("\n\n")}`,
+			systemPrompt: extra ? `${base}\n\n${extra}` : base,
 		};
 	});
 

@@ -14,13 +14,15 @@ Requires [`pi-subagents`](https://www.npmjs.com/package/pi-subagents) for the `p
 
 ## Get started
 
-Two steps:
-
 1. Run `/setup-pstack` once to pick which models each role uses (optional; every role inherits the parent session model otherwise).
 2. Use `/poteto-mode` for sticky Poteto Mode. It stays on until `/poteto-mode off`. `/skill:poteto-mode` also enables it.
-3. Run `/pstack on|off|status` to hide the ~40 pstack skill descriptions from the system prompt and save context. Off persists in `~/.pi/agent/pstack/models.json`. `/skill:<name>` keeps working while off.
+3. Run `/pstack off` to hide even the four Discoverable skills (`how`, `why`, `unslop`, `typescript-best-practices`) from the Skill catalog.
+   Off persists in `~/.pi/agent/pstack/models.json`.
+   `/skill:<name>` keeps working.
+   `/pstack on` restores those four, not all 45.
 
-That is it. The other skills are situational; the mode skill uses them as needed.
+That is it.
+The other skills are Hidden; the mode skill uses them as needed.
 
 ## What you get
 
@@ -35,15 +37,17 @@ That is it. The other skills are situational; the mode skill uses them as needed
 
 ## Model roles
 
-Per-role model choices live in `~/.pi/agent/pstack/models.json`. Run `/setup-pstack` to write it. The extension injects the role table every turn. `inherit-parent` or `auto` runs on the parent session model.
+Per-role model choices live in `~/.pi/agent/pstack/models.json`. Run `/setup-pstack` to write it. The extension injects the role table only when a role has a real model slug. Default inherit-all injects nothing. `inherit-parent` or `auto` runs on the parent session model.
 
 ## Differences from the Cursor plugin
 
-- Skills follow the Agent Skills standard directly; no `disable-model-invocation` or Cursor-only frontmatter.
+- Hidden skills set `disable-model-invocation: true`, so they stay out of the Skill catalog.
+  `/skill:name` still loads the Skill body.
+  The four Discoverable skills are `how`, `why`, `unslop`, and `typescript-best-practices`.
 - Slash commands are `/skill:<name>` instead of `/name`.
 - Subagent delegation uses pi-subagents (`subagent({ agent, task })`) instead of Cursor's Task tool. This package does not ship a replacement `subagent` tool.
 - Session transcripts live under `~/.pi/agent/sessions/` instead of `~/.cursor/projects/`. The active file is `$PI_SESSION_FILE`. Files are grouped by cwd slug (`--<cwd>--`, absolute cwd with `/` replaced by `-`).
-- The benny automation pack is not ported; it depends on Cursor automations. Model roles live in `~/.pi/agent/pstack/models.json`, written by `/setup-pstack` and injected every turn by the extension.
+- The benny automation pack is not ported; it depends on Cursor automations. Model roles live in `~/.pi/agent/pstack/models.json`, written by `/setup-pstack` and injected only when a role has a real model slug.
 
 ## License
 

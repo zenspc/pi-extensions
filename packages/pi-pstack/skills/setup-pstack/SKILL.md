@@ -1,6 +1,7 @@
 ---
 name: setup-pstack
 description: Configure which models pstack uses per role. Use for /setup-pstack, /skill:setup-pstack, or changing pstack's model choices.
+disable-model-invocation: true
 ---
 
 # Setup pstack

@@ -1,6 +1,7 @@
 ---
 name: poteto-mode
 description: poteto's agent style for concise, detailed responses, deliberate subagents, unslopped prose, simple code, and verified work. Use for poteto, /skill:poteto-mode, or requests to work in this style.
+disable-model-invocation: true
 ---
 
 # Poteto mode
@@ -8,7 +9,7 @@ description: poteto's agent style for concise, detailed responses, deliberate su
 `/poteto-mode` enables this mode for the rest of the session.
 `/poteto-mode off` disables it.
 `/skill:poteto-mode` also enables it.
-The role table is injected every turn from `~/.pi/agent/pstack/models.json`.
+The role table is injected from `~/.pi/agent/pstack/models.json` only when a role has a real model slug.
 
 ## Non-negotiables
 
