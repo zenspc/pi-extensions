@@ -1,5 +1,11 @@
 # @zenspc/pi-pstack
 
+## 0.5.0
+
+### Minor Changes
+
+- 512f93b: Port Cursor pstack's forge-neutral PR playbooks, the verified multi-phase plan checklist, and TypeScript schema-at-boundary guidance.
+
 ## 0.4.0
 
 ### Minor Changes
