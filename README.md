@@ -2,7 +2,7 @@
 
 Installable packages for the [Pi coding agent](https://pi.dev), published under `@zenspc`.
 
-> **Unmaintained:** `pi-copilot-discovery` and `pi-sticky-editor` are now officially supported by Pi itself. They remain installable but are no longer maintained in this monorepo.
+> **Unmaintained:** `pi-copilot-discovery`, `pi-sticky-editor`, and `pi-preferred-thinking` are now officially supported by Pi itself. They remain installable but are no longer maintained in this monorepo.
 
 ## Packages
 
@@ -11,7 +11,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-safety`](./packages/pi-safety) | `pi install npm:@zenspc/pi-safety` | Confirm destructive bash/git actions |
 | [`@zenspc/pi-workflow`](./packages/pi-workflow) | `pi install npm:@zenspc/pi-workflow` | Plan mode + tracked execution |
 | [`@zenspc/pi-devtools`](./packages/pi-devtools) | `pi install npm:@zenspc/pi-devtools` | `/context` report + richer footer |
-| [`@zenspc/pi-preferred-thinking`](./packages/pi-preferred-thinking) | `pi install npm:@zenspc/pi-preferred-thinking` | Per-model thinking level preferences |
+| [`@zenspc/pi-preferred-thinking`](./packages/pi-preferred-thinking) | `pi install npm:@zenspc/pi-preferred-thinking` | Per-model thinking level preferences (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-copilot-discovery`](./packages/pi-copilot-discovery) | `pi install npm:@zenspc/pi-copilot-discovery` | Live GitHub Copilot model discovery (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-spinner`](./packages/pi-spinner) | `pi install npm:@zenspc/pi-spinner` | Customize the spinner animation and rotate the loader message |
 | [`@zenspc/pi-quiet`](./packages/pi-quiet) | `pi install npm:@zenspc/pi-quiet` | Quiet Display - dense built-in tool rows |

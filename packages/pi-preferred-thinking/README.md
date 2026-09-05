@@ -1,8 +1,10 @@
 # @zenspc/pi-preferred-thinking
 
+> **No longer maintained.** This functionality is now officially supported by Pi.
+> The package stays installable, but issues and PRs here will not be acted on.
+
 Model-specific thinking level preferences for the [Pi coding agent](https://pi.dev).
 
-Pi's built-in `defaultThinkingLevel` is global.
 This extension lets each model keep its own preferred level.
 Invalid or missing values are ignored.
 
