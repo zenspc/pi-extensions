@@ -5,11 +5,6 @@
  * SelectList; each action delegates to a sub-UI (SelectList, editor, or
  * input dialog) and then we loop back to the main screen. This avoids a
  * full state machine while still giving the user a multi-step experience.
- *
- * Live preview: every committed state mutation calls applyPreview(), which
- * updates the working indicator. The animation picker also ticks a local
- * preview of the highlighted preset. That preview never calls
- * setWorkingIndicator until Enter, because the picker replaces the editor.
  */
 
 import { DynamicBorder, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -282,6 +277,7 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 		PRESETS.findIndex((p) => p.name === state.preset),
 	);
 
+	let stopPreview = (): void => {};
 	const result = await ctx.ui.custom<string>((tui, theme, _kb, done) => {
 		let preview: PresetPreview | null = createPresetPreview(state.preset, theme);
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -291,6 +287,7 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 			clearTimeout(timer);
 			timer = undefined;
 		};
+		stopPreview = stop;
 
 		const schedule = (): void => {
 			stop();
@@ -332,6 +329,8 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 			theme,
 			finish,
 		);
+	}).finally(() => {
+		stopPreview();
 	});
 
 	if (result && result !== "__back__") {

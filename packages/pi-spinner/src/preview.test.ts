@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import { PRESETS } from "./presets.ts";
 import {
 	advancePreview,
 	createPresetPreview,
@@ -32,6 +33,12 @@ describe("createPresetPreview", () => {
 		assert.equal(preview.frames.length, 4);
 		assert.equal(preview.index, 0);
 		assert.match(preview.frames[0] ?? "", /·/);
+	});
+
+	it("keeps rainbow colors distinct so a static first frame would be a lie", () => {
+		const preview = createPresetPreview("rainbow", theme);
+		assert.ok(preview);
+		assert.ok(new Set(preview.frames).size > 1);
 	});
 });
 
@@ -72,5 +79,13 @@ describe("formatPreviewHeader", () => {
 		const preview = createPresetPreview("hidden", theme);
 		assert.ok(preview);
 		assert.equal(formatPreviewHeader(preview, theme), "[muted]  preview  Hidden");
+	});
+
+	it("formats a header for every shipped preset", () => {
+		for (const preset of PRESETS) {
+			const preview = createPresetPreview(preset.name, theme);
+			assert.ok(preview, preset.name);
+			assert.ok(formatPreviewHeader(preview, theme).includes(preset.label), preset.name);
+		}
 	});
 });
