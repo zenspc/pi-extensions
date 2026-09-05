@@ -18,7 +18,10 @@ pi install ./packages/pi-spinner
 ## Quick start
 
 1. Run `/spinner` inside pi to open the customization TUI.
-2. Pick an animation preset, edit your message list, set the cycle interval, and save (to global or project).
+2. Open Animation preset and arrow through the list.
+   The highlighted spinner plays at the top of the picker before you press enter.
+   Enter applies it. Escape keeps the previous preset.
+   Then edit your message list, set the cycle interval, and save (to global or project).
    You can also edit custom frames and the frame interval from the same menu.
    An empty frames editor clears the override so the preset shows again.
    Cycle order can be random or sequential.
@@ -197,6 +200,7 @@ src/index.ts
 src/command.ts
 src/constants.ts
 src/presets.ts
+src/preview.ts
 src/config.ts
 src/activity.ts
 src/cycler.ts

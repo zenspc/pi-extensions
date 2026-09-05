@@ -5,10 +5,6 @@
  * SelectList; each action delegates to a sub-UI (SelectList, editor, or
  * input dialog) and then we loop back to the main screen. This avoids a
  * full state machine while still giving the user a multi-step experience.
- *
- * Live preview: every state mutation calls applyPreview() which updates
- * the working indicator and tickles the message cycler so the change is
- * visible immediately.
  */
 
 import { DynamicBorder, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -42,6 +38,13 @@ import {
 } from "./constants.ts";
 import type { MessageCycler } from "./cycler.ts";
 import { PRESETS, findPreset, buildIndicator } from "./presets.ts";
+import {
+	advancePreview,
+	createPresetPreview,
+	formatPreviewHeader,
+	previewTickMs,
+	type PresetPreview,
+} from "./preview.ts";
 
 type MainAction =
 	| "animation"
@@ -144,9 +147,12 @@ interface SelectScreenOptions<T> {
 	title: string;
 	items: SelectItem<T>[];
 	headerLines?: readonly string[];
+	liveHeaderLines?: () => readonly string[];
 	hint: string;
 	cancelValue: T;
 	maxVisible?: number;
+	selectedIndex?: number;
+	onSelectionChange?: (item: SelectItem<T>) => void;
 }
 
 /**
@@ -160,7 +166,7 @@ function buildSelectScreen<T>(
 	theme: Theme,
 	done: (v: T) => void,
 ): Component {
-	const { title, items, headerLines, hint, cancelValue, maxVisible = 10 } = opts;
+	const { title, items, headerLines, liveHeaderLines, hint, cancelValue, maxVisible = 10 } = opts;
 
 	const container = new Container();
 	container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
@@ -174,6 +180,11 @@ function buildSelectScreen<T>(
 		container.addChild(new Text("", 1, 0));
 	}
 
+	if (liveHeaderLines) {
+		container.addChild(liveLines(liveHeaderLines));
+		container.addChild(new Text("", 1, 0));
+	}
+
 	const selectList = new SelectList<T>(items, Math.min(items.length + 2, maxVisible), {
 		selectedPrefix: (t) => theme.fg("accent", t),
 		selectedText: (t) => theme.fg("accent", t),
@@ -181,8 +192,14 @@ function buildSelectScreen<T>(
 		scrollInfo: (t) => theme.fg("dim", t),
 		noMatch: (t) => theme.fg("warning", t),
 	});
+	if (opts.selectedIndex !== undefined) {
+		selectList.setSelectedIndex(opts.selectedIndex);
+	}
 	selectList.onSelect = (item) => done(item.value);
 	selectList.onCancel = () => done(cancelValue);
+	if (opts.onSelectionChange) {
+		selectList.onSelectionChange = opts.onSelectionChange;
+	}
 	container.addChild(selectList);
 
 	container.addChild(new Text("", 1, 0));
@@ -255,15 +272,66 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 		description: p.description,
 	}));
 	items.push({ value: "__back__", label: "Back", description: "return to main menu" });
+	const selectedIndex = Math.max(
+		0,
+		PRESETS.findIndex((p) => p.name === state.preset),
+	);
 
-	const result = await ctx.ui.custom<string>((tui, theme, _kb, done) =>
-		buildSelectScreen<string>(
-			{ title: "Animation Preset", items, hint: "enter to apply · esc back", cancelValue: "__back__" },
+	let stopPreview = (): void => {};
+	const result = await ctx.ui.custom<string>((tui, theme, _kb, done) => {
+		let preview: PresetPreview | null = createPresetPreview(state.preset, theme);
+		let timer: ReturnType<typeof setTimeout> | undefined;
+
+		const stop = (): void => {
+			if (timer === undefined) return;
+			clearTimeout(timer);
+			timer = undefined;
+		};
+		stopPreview = stop;
+
+		const schedule = (): void => {
+			stop();
+			const ms = previewTickMs(preview);
+			if (ms === null) return;
+			timer = setTimeout(() => {
+				if (!preview) return;
+				preview = advancePreview(preview);
+				tui.requestRender();
+				schedule();
+			}, ms);
+		};
+
+		const finish = (value: string): void => {
+			stop();
+			done(value);
+		};
+
+		const show = (name: string): void => {
+			preview = createPresetPreview(name, theme) ?? createPresetPreview(state.preset, theme);
+			schedule();
+		};
+
+		schedule();
+
+		return buildSelectScreen<string>(
+			{
+				title: "Animation Preset",
+				items,
+				liveHeaderLines: () => [formatPreviewHeader(preview, theme)],
+				hint: "↑↓ preview · enter apply · esc back",
+				cancelValue: "__back__",
+				selectedIndex,
+				onSelectionChange: (item) => {
+					show(item.value === "__back__" ? state.preset : item.value);
+				},
+			},
 			tui,
 			theme,
-			done,
-		),
-	);
+			finish,
+		);
+	}).finally(() => {
+		stopPreview();
+	});
 
 	if (result && result !== "__back__") {
 		state.preset = result;
@@ -497,6 +565,15 @@ async function handleReset(state: SpinnerConfig, cycler: MessageCycler | null, c
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
+
+function liveLines(getLines: () => readonly string[]): Component {
+	return {
+		render() {
+			return [...getLines()];
+		},
+		invalidate() {},
+	};
+}
 
 function applyPreview(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): void {
 	const indicator = buildIndicator(state.preset, state.customFrames, state.customIntervalMs, ctx.ui.theme);
