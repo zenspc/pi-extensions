@@ -28,6 +28,7 @@ describe("parseSpinnerCommand", () => {
 		assert.deepEqual(parseSpinnerCommand("sequential"), { action: "cycleMode", mode: "sequential" });
 		assert.deepEqual(parseSpinnerCommand("dots"), { action: "preset", name: "dots" });
 		assert.deepEqual(parseSpinnerCommand("hidden"), { action: "preset", name: "hidden" });
+		assert.deepEqual(parseSpinnerCommand("line"), { action: "preset", name: "line" });
 	});
 
 	it("lowercases known preset names", () => {

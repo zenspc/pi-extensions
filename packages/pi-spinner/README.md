@@ -55,6 +55,12 @@ Project overrides still win on next load if present.
 | `bars` | 12 bars growing and shrinking like a VU meter |
 | `progress` | Five-frame progress bar that fills and resets |
 | `rainbow` | Dots cycling through the full theme color palette |
+| `line` | Classic ASCII \| / - \\ spinner |
+| `arc` | Six-frame circular arc |
+| `star` | Sparkle that grows and shrinks |
+| `box` | Four quadrants bouncing around a cell |
+| `hamburger` | Three-frame trigram morph |
+| `point` | A dot running through an ellipsis |
 | `minimal` | Static muted ellipsis, no animation |
 | `dot` | Single static accent dot |
 | `hidden` | No glyph; the working message still shows. Compaction and retry loaders stay on pi's built-in styling. |
@@ -74,7 +80,7 @@ Merge order: built-in defaults < global < project. So a project file with just `
 
 ```jsonc
 {
-	// Animation preset name. One of: braille, dots, arrows, bars, progress, rainbow, minimal, dot, hidden.
+	// Animation preset name. One of: braille, dots, arrows, bars, progress, rainbow, line, arc, star, box, hamburger, point, minimal, dot, hidden.
 	// Ignored if `customFrames` is non-empty.
 	"preset": "dots",
 
