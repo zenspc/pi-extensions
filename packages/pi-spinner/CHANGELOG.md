@@ -1,5 +1,11 @@
 # @zenspc/pi-spinner
 
+## 0.4.0
+
+### Minor Changes
+
+- 8bb14b2: Preview the highlighted animation in `/spinner` before pressing enter.
+
 ## 0.3.0
 
 ### Minor Changes
