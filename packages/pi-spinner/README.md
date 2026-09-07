@@ -18,12 +18,15 @@ pi install ./packages/pi-spinner
 ## Quick start
 
 1. Run `/spinner` inside pi to open the customization TUI.
-2. Open Animation preset and arrow through the list.
+2. Open Animation and arrow through the list.
+   Built-ins come first, then your named customs, then **New custom…**.
    The highlighted spinner plays at the top of the picker before you press enter.
-   Enter applies it. Escape keeps the previous preset.
+   Enter applies it. Escape keeps the previous animation.
+   **New custom…** asks for a name, then frames (one per line), then an interval (default 100ms).
+   That upserts the registry and selects the new name.
+   When the active animation is a custom, the main menu shows **Edit custom** (frames, interval, delete with confirm).
+   Delete falls back to `braille`.
    Then edit your message list, set the cycle interval, and save (to global or project).
-   You can also edit custom frames and the frame interval from the same menu.
-   An empty frames editor clears the override so the preset shows again.
    Cycle order can be random or sequential.
    A built-in message pack (default, calm, dry) replaces the current list when you pick it in the TUI.
    Activity messages are off by default; turn them on from the TUI to briefly show the current tool.
@@ -38,7 +41,7 @@ If you never customize anything, the extension uses pi's built-in defaults: brai
 | `/spinner` | Open the TUI |
 | `/spinner status` | Show merged config + paths |
 | `/spinner help` | Usage |
-| `/spinner <preset>` | Set preset (including `hidden`, `dot`) |
+| `/spinner <preset>` | Set animation (built-in name or custom name) |
 | `/spinner pack <name>` | Replace messages with a built-in pack |
 | `/spinner random` / `/spinner sequential` | Set cycle order |
 | `/spinner rotate` | Same as `/spinner-rotate` |
@@ -77,15 +80,26 @@ The extension loads (and merges) two optional JSON config files:
 | `~/.pi/agent/extensions/spinner.json` | Global, applies to all projects |
 | `<project>/.pi/spinner.json` | Project-local, overrides global |
 
-Merge order: built-in defaults < global < project. So a project file with just `{ "preset": "rainbow" }` keeps your global messages and overrides only the preset.
+Merge order: built-in defaults < global < project. So a project file with just `{ "preset": "rainbow" }` keeps your global messages and customs and overrides only the active animation.
+A project file that sets `customs` replaces the previous layer's registry, including `customs: []`.
 
 ### Schema
 
 ```jsonc
 {
-	// Animation preset name. One of: braille, dots, arrows, bars, progress, rainbow, line, arc, star, box, hamburger, point, minimal, dot, hidden.
-	// Ignored if `customFrames` is non-empty.
-	"preset": "dots",
+	// Active animation name. A built-in (braille, dots, arrows, bars, progress,
+	// rainbow, line, arc, star, box, hamburger, point, minimal, dot, hidden)
+	// or a name from `customs`.
+	"preset": "wave",
+
+	// Named custom animations. Max 20. Names are lowercase `[a-z][a-z0-9-]{0,31}`
+	// and cannot collide with built-ins or slash verbs (help, status, rotate,
+	// reset, pack, random, sequential). Each entry: 1-32 frames, each frame up
+	// to 8 characters. intervalMs is clamped to [50, 2000]; default 100.
+	"customs": [
+		{ "name": "wave", "frames": ["~", "≈", "~"], "intervalMs": 80 },
+		{ "name": "blocks", "frames": ["▖", "▘", "▝", "▗"], "intervalMs": 90 }
+	],
 
 	// Message list, one entry per line in the TUI editor. One is shown at a time
 	// while the agent is working; the cycler rotates through them on a timer.
@@ -110,13 +124,6 @@ Merge order: built-in defaults < global < project. So a project file with just `
 	// `sequential` walks the list and wraps.
 	"cycleMode": "random",
 
-	// Optional raw animation frames. When non-empty, this overrides `preset`.
-	// Each frame is up to 8 characters; max 32 frames.
-	// Editable from /spinner; an empty frames editor clears the override.
-	"customFrames": ["⠋", "⠙", "⠹", "⠸"],
-	// Frame interval (ms) for `customFrames`. Clamped to [50, 2000]. Default 100.
-	"customIntervalMs": 80,
-
 	// When true, the working message briefly shows the current tool
 	// (basename / first token only) while it runs. The cycler resumes
 	// after the tool ends. Default false. TUI only.
@@ -128,6 +135,10 @@ Merge order: built-in defaults < global < project. So a project file with just `
 	"syncThinkingLabel": false
 }
 ```
+
+Old files that set non-empty `customFrames` (and omit `customs`) load as one custom named `custom`.
+The next save writes `customs` and omits `customFrames` / `customIntervalMs`.
+If the old file also set a built-in `preset`, the active identity becomes `custom` because those frames used to win.
 
 ### Example: minimal global override
 
@@ -166,10 +177,12 @@ Merge order: built-in defaults < global < project. So a project file with just `
 ## Limitations
 
 - The custom loader is only visible in interactive TUI mode, consistent with pi's own loading UI. RPC/print/JSON runs ignore it.
-- Custom animation frames are rendered verbatim; the extension wraps them in `theme.fg("accent", ...)` for the built-in presets, so theme changes (light/dark) are honored automatically. If you supply `customFrames`, they also use the accent color.
+- Custom animation frames are rendered verbatim.
+  Built-in presets wrap each frame in `theme.fg(...)` using that preset's color keys, so theme changes (light/dark) are honored automatically.
+  Named customs use the accent color.
 - The editor that opens for message and custom-frame editing uses pi's standard input editor, so familiar shortcuts work.
-- Custom frames are also editable from `/spinner`.
-  An empty frames editor clears the override so the preset is active again.
+- Named customs are created and edited from `/spinner`.
+  Empty frames abort create or edit and do not delete the entry.
 
 ## Security notes
 
@@ -181,13 +194,15 @@ Hardening applied at the config boundary:
 - Only regular files are read or overwritten (symlinks/dirs/devices are refused).
 - Writes are atomic (temp + rename) with mode `0o600`; parent dirs are created as `0o700`.
 - Keys are allowlisted; unknown fields (including `customized` runtime state) are never persisted.
-- Preset names must match a built-in; unknown names are dropped.
+- `preset` must be a built-in name or a valid custom identifier; unknown junk is dropped.
+  A dangling custom `preset` falls back to `braille` after merge.
 - `cycleMode` must be `random` or `sequential`; unknown values are dropped.
 - `messagePack` must be `default`, `calm`, or `dry`; unknown values are dropped.
 - Messages and frames are stripped of ANSI/control characters before they reach the TUI.
 - Tool args used for activity messages are sanitized the same way as config messages before they reach the TUI (ANSI/control stripped, then capped at 40 characters).
   Only a basename or the first command token is shown; full paths and command lines are not.
-- Message count (50), message length (120), frame count (32), and frame length (8) are hard-capped.
+- Message count (50), message length (120), custom spinner count (20), frame count (32), and frame length (8) are hard-capped.
+- Custom names must match `^[a-z][a-z0-9-]{0,31}$` and cannot equal a built-in or slash verb.
 - Intervals are clamped to documented ranges.
 
 This package does not touch the network, credentials, or the model context.

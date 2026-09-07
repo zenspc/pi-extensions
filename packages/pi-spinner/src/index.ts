@@ -53,7 +53,7 @@ import {
 import { formatActivityMessage } from "./activity.ts";
 import { MESSAGE_PACKS, type MessagePackName } from "./constants.ts";
 import { MessageCycler } from "./cycler.ts";
-import { buildIndicator, findPreset, themeMessage } from "./presets.ts";
+import { buildIndicator, resolveAnimation, themeMessage } from "./presets.ts";
 import { runSpinnerMenu } from "./ui.ts";
 
 export default function spinnerExtension(pi: ExtensionAPI) {
@@ -70,9 +70,7 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 		activityEnabled = cfg.activityMessages;
 
 		// Indicator: apply once, pi persists it across loader recreations.
-		ctx.ui.setWorkingIndicator(
-			buildIndicator(cfg.preset, cfg.customFrames, cfg.customIntervalMs, ctx.ui.theme),
-		);
+		ctx.ui.setWorkingIndicator(buildIndicator(cfg, ctx.ui.theme));
 
 		// Cycler: rotate messages on a timer. An activity-only file is
 		// customized but must not start rotation by itself.
@@ -183,9 +181,15 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 				rotateNow(ctx);
 				return;
 			case "preset": {
+				const cfg = loadConfig(ctx.cwd);
+				const anim = resolveAnimation({ ...cfg, preset: cmd.name });
+				if (anim.name !== cmd.name) {
+					ctx.ui.notify(`Unknown animation: ${cmd.name}`, "warning");
+					return;
+				}
 				if (!saveGlobal({ preset: cmd.name }, ctx)) return;
 				refreshLive(ctx);
-				ctx.ui.notify(`Animation: ${findPreset(cmd.name)?.label ?? cmd.name}`, "info");
+				ctx.ui.notify(`Animation: ${anim.label}`, "info");
 				return;
 			}
 			case "pack": {
@@ -232,7 +236,8 @@ export default function spinnerExtension(pi: ExtensionAPI) {
 	function spinnerCompletions(prefix: string) {
 		if (typeof getSpinnerArgumentCompletions !== "function") return null;
 		try {
-			return getSpinnerArgumentCompletions(prefix);
+			const extra = loadConfig(process.cwd()).customs.map((entry) => entry.name);
+			return getSpinnerArgumentCompletions(prefix, extra);
 		} catch {
 			return null;
 		}

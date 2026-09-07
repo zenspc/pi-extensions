@@ -29,13 +29,14 @@ describe("parseSpinnerCommand", () => {
 		assert.deepEqual(parseSpinnerCommand("dots"), { action: "preset", name: "dots" });
 		assert.deepEqual(parseSpinnerCommand("hidden"), { action: "preset", name: "hidden" });
 		assert.deepEqual(parseSpinnerCommand("line"), { action: "preset", name: "line" });
+		assert.deepEqual(parseSpinnerCommand("wave"), { action: "preset", name: "wave" });
 	});
 
 	it("lowercases known preset names", () => {
 		assert.deepEqual(parseSpinnerCommand("DOTS"), { action: "preset", name: "dots" });
 	});
 
-	it("rejects unknown tokens and extra words", () => {
+	it("rejects reserved-verb collisions, junk identifiers, and extra words", () => {
 		assert.deepEqual(parseSpinnerCommand("pack nope"), {
 			action: "unknown",
 			token: "pack nope",
@@ -43,6 +44,10 @@ describe("parseSpinnerCommand", () => {
 		assert.deepEqual(parseSpinnerCommand("braille extra"), {
 			action: "unknown",
 			token: "braille extra",
+		});
+		assert.deepEqual(parseSpinnerCommand("nope!"), {
+			action: "unknown",
+			token: "nope!",
 		});
 	});
 });
@@ -69,8 +74,8 @@ describe("formatSpinnerHelp / formatSpinnerStatus", () => {
 	it("reports merged config fields and both paths", () => {
 		const cfg = {
 			...defaults(),
-			preset: "dots",
-			customFrames: ["x", "y"],
+			preset: "wave",
+			customs: [{ name: "wave", frames: ["x", "y"], intervalMs: 80 }],
 			messages: ["a", "b", "c"],
 			messagePack: "calm" as const,
 			cycleMode: "sequential" as const,
@@ -81,8 +86,8 @@ describe("formatSpinnerHelp / formatSpinnerStatus", () => {
 			global: "/g/spinner.json",
 			project: "/p/spinner.json",
 		});
-		assert.match(status, /dots/);
-		assert.match(status, /Custom frames: 2/);
+		assert.match(status, /Animation: wave \(custom, 2 frames\)/);
+		assert.match(status, /Customs: 1/);
 		assert.match(status, /Messages: 3/);
 		assert.match(status, /calm/);
 		assert.match(status, /sequential/);
@@ -91,6 +96,16 @@ describe("formatSpinnerHelp / formatSpinnerStatus", () => {
 		assert.match(status, /\/g\/spinner\.json/);
 		assert.match(status, /\/p\/spinner\.json/);
 		assert.equal(status.includes("\u001b"), false);
+		assert.equal(status.includes("Custom frames:"), false);
+	});
+
+	it("reports a builtin animation label", () => {
+		const status = formatSpinnerStatus(
+			{ ...defaults(), preset: "dots" },
+			{ global: "/g/spinner.json", project: "/p/spinner.json" },
+		);
+		assert.match(status, /Animation: Dots pulse/);
+		assert.match(status, /Customs: 0/);
 	});
 });
 
@@ -113,5 +128,11 @@ describe("getSpinnerArgumentCompletions", () => {
 
 	it("returns null when nothing matches", () => {
 		assert.equal(getSpinnerArgumentCompletions("nope"), null);
+	});
+
+	it("includes extra custom names", () => {
+		const values = getSpinnerArgumentCompletions("wa", ["wave", "dots"])?.map((item) => item.value) ?? [];
+		assert.ok(values.includes("wave"));
+		assert.equal(values.includes("dots"), false);
 	});
 });

@@ -1,4 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { CustomSpinner } from "./config.ts";
 import { buildIndicator, findPreset } from "./presets.ts";
 
 export type PresetPreview = {
@@ -9,17 +10,37 @@ export type PresetPreview = {
 	readonly index: number;
 };
 
-export function createPresetPreview(name: string, theme: Theme): PresetPreview | null {
-	const preset = findPreset(name);
-	if (!preset) return null;
-	const indicator = buildIndicator(preset.name, [], undefined, theme);
+export function createAnimationPreview(
+	cfg: { readonly customs?: readonly CustomSpinner[] },
+	name: string,
+	theme: Theme,
+): PresetPreview | null {
+	const customs = cfg.customs ? [...cfg.customs] : [];
+	const builtin = findPreset(name);
+	if (builtin) {
+		const indicator = buildIndicator({ preset: builtin.name, customs: [] }, theme);
+		return {
+			name: builtin.name,
+			label: builtin.label,
+			frames: indicator?.frames ?? [],
+			intervalMs: builtin.intervalMs,
+			index: 0,
+		};
+	}
+	const custom = customs.find((entry) => entry.name === name.toLowerCase());
+	if (!custom) return null;
+	const indicator = buildIndicator({ preset: custom.name, customs }, theme);
 	return {
-		name: preset.name,
-		label: preset.label,
+		name: custom.name,
+		label: custom.name,
 		frames: indicator?.frames ?? [],
-		intervalMs: preset.intervalMs,
+		intervalMs: custom.intervalMs,
 		index: 0,
 	};
+}
+
+export function createPresetPreview(name: string, theme: Theme): PresetPreview | null {
+	return createAnimationPreview({ customs: [] }, name, theme);
 }
 
 export function advancePreview(preview: PresetPreview): PresetPreview {

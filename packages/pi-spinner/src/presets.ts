@@ -7,16 +7,14 @@
  */
 
 import type { Theme, WorkingIndicatorOptions } from "@earendil-works/pi-coding-agent";
+import { findCustom, type SpinnerConfig } from "./config.ts";
 import { DEFAULT_MESSAGES, PRESET_NAMES, type BuiltinPresetName } from "./constants.ts";
 
 export { DEFAULT_MESSAGES, PRESET_NAMES };
 export type { BuiltinPresetName };
 
-/** Names of the shipped presets. "custom" means user-supplied raw frames. */
-export type PresetName = BuiltinPresetName | "custom";
-
 export interface PresetDefinition {
-	readonly name: PresetName;
+	readonly name: BuiltinPresetName;
 	readonly label: string;
 	readonly description: string;
 	readonly rawFrames: string[];
@@ -157,40 +155,67 @@ export function findPreset(name: string | undefined): PresetDefinition | undefin
 	return PRESETS.find((p) => p.name === name);
 }
 
+export type ResolvedAnimation = {
+	name: string;
+	label: string;
+	frames: readonly string[];
+	intervalMs: number;
+	colorKeys: readonly string[];
+	kind: "builtin" | "custom";
+};
+
+export function resolveAnimation(cfg: Pick<SpinnerConfig, "preset" | "customs">): ResolvedAnimation {
+	const builtin = findPreset(cfg.preset);
+	if (builtin) {
+		return {
+			name: builtin.name,
+			label: builtin.label,
+			frames: builtin.rawFrames,
+			intervalMs: builtin.intervalMs,
+			colorKeys: builtin.colorKeys,
+			kind: "builtin",
+		};
+	}
+
+	const custom = findCustom(cfg.customs, cfg.preset);
+	if (custom) {
+		return {
+			name: custom.name,
+			label: custom.name,
+			frames: custom.frames,
+			intervalMs: custom.intervalMs,
+			colorKeys: ["accent"],
+			kind: "custom",
+		};
+	}
+
+	const fallback = PRESETS[0];
+	return {
+		name: fallback?.name ?? "braille",
+		label: fallback?.label ?? "Braille spinner",
+		frames: fallback?.rawFrames ?? [],
+		intervalMs: fallback?.intervalMs ?? 80,
+		colorKeys: fallback?.colorKeys ?? ["accent"],
+		kind: "builtin",
+	};
+}
+
 /**
- * Build a WorkingIndicatorOptions value from a preset, a set of user-supplied
- * custom frames, or `undefined` (meaning: restore pi's default spinner).
- *
  * The theme is required so that frames can be wrapped in `theme.fg(...)`. Frames
  * are rendered verbatim by pi, so the extension owns coloring.
  */
 export function buildIndicator(
-	presetName: string | undefined,
-	customFrames: string[] | undefined,
-	customIntervalMs: number | undefined,
+	cfg: Pick<SpinnerConfig, "preset" | "customs">,
 	theme: Theme,
 ): WorkingIndicatorOptions | undefined {
-	if (customFrames && customFrames.length > 0) {
-		return {
-			frames: customFrames.map((f) => theme.fg("accent", f)),
-			intervalMs: customIntervalMs && customIntervalMs > 0 ? customIntervalMs : 100,
-		};
-	}
+	const anim = resolveAnimation(cfg);
+	if (anim.frames.length === 0) return { frames: [] };
 
-	// Unknown / missing preset name: fall back to braille rather than
-	// returning undefined. The framework's behaviour for
-	// `setWorkingIndicator(undefined)` is "restore default", but if the
-	// loader does not interpret it that way, a typo in the config would
-	// silently blank the spinner.
-	const preset = findPreset(presetName) ?? PRESETS[0];
-	if (!preset) return undefined; // no presets shipped - shouldn't happen
-	if (preset.rawFrames.length === 0) return { frames: [] };
-
-	const frames = preset.rawFrames.map((frame, i) => {
-		const key = preset.colorKeys[i % preset.colorKeys.length] ?? "accent";
+	const frames = anim.frames.map((frame, i) => {
+		const key = anim.colorKeys[i % anim.colorKeys.length] ?? "accent";
 		return theme.fg(key as Parameters<Theme["fg"]>[0], frame);
 	});
-	return { frames, intervalMs: preset.intervalMs };
+	return { frames, intervalMs: anim.intervalMs };
 }
 
 /**

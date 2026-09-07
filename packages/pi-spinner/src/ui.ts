@@ -19,6 +19,9 @@ import {
 } from "@earendil-works/pi-tui";
 import {
 	defaults,
+	deleteCustom,
+	findCustom,
+	isValidCustomName,
 	type SpinnerConfig,
 	type UserSpinnerConfig,
 	type SaveTarget,
@@ -27,6 +30,7 @@ import {
 	saveConfig,
 	sanitizeMessage,
 	sanitizeFrame,
+	upsertCustom,
 	LIMITS,
 } from "./config.ts";
 import {
@@ -37,10 +41,10 @@ import {
 	type MessagePackName,
 } from "./constants.ts";
 import type { MessageCycler } from "./cycler.ts";
-import { PRESETS, findPreset, buildIndicator } from "./presets.ts";
+import { PRESETS, buildIndicator, resolveAnimation } from "./presets.ts";
 import {
 	advancePreview,
-	createPresetPreview,
+	createAnimationPreview,
 	formatPreviewHeader,
 	previewTickMs,
 	type PresetPreview,
@@ -48,10 +52,9 @@ import {
 
 type MainAction =
 	| "animation"
+	| "editCustom"
 	| "messages"
 	| "interval"
-	| "frames"
-	| "frameInterval"
 	| "cycleMode"
 	| "pack"
 	| "activity"
@@ -61,11 +64,9 @@ type MainAction =
 	| "close";
 
 const MAIN_ITEMS: SelectItem<MainAction>[] = [
-	{ value: "animation", label: "Animation preset", description: "change the spinner" },
+	{ value: "animation", label: "Animation", description: "change the spinner" },
 	{ value: "messages", label: "Messages", description: "edit the message list" },
 	{ value: "interval", label: "Cycle interval", description: "how often to switch messages" },
-	{ value: "frames", label: "Custom frames", description: "override the preset with raw frames" },
-	{ value: "frameInterval", label: "Frame interval", description: "speed of custom frames" },
 	{ value: "cycleMode", label: "Cycle order", description: "random or sequential" },
 	{ value: "pack", label: "Message pack", description: "replace the list with a built-in pack" },
 	{ value: "activity", label: "Activity messages", description: "show the current tool while it runs" },
@@ -88,10 +89,13 @@ export async function runSpinnerMenu(opts: SpinnerMenuOptions): Promise<void> {
 		return;
 	}
 
-	const state: SpinnerConfig = { ...opts.initial, messages: [...opts.initial.messages] };
+	const state: SpinnerConfig = {
+		...opts.initial,
+		messages: [...opts.initial.messages],
+		customs: [...opts.initial.customs],
+	};
 	const cycler = opts.cycler;
 
-	// Apply current config on entry so the user sees their live state
 	applyPreview(state, cycler, ctx);
 
 	// eslint-disable-next-line no-constant-condition
@@ -103,17 +107,14 @@ export async function runSpinnerMenu(opts: SpinnerMenuOptions): Promise<void> {
 			case "animation":
 				await pickAnimation(state, cycler, ctx);
 				break;
+			case "editCustom":
+				await editActiveCustom(state, cycler, ctx);
+				break;
 			case "messages":
 				await editMessages(state, cycler, ctx);
 				break;
 			case "interval":
 				await editInterval(state, cycler, ctx);
-				break;
-			case "frames":
-				await editCustomFrames(state, cycler, ctx);
-				break;
-			case "frameInterval":
-				await editFrameInterval(state, cycler, ctx);
 				break;
 			case "cycleMode":
 				await pickCycleMode(state, cycler, ctx);
@@ -224,24 +225,59 @@ function formatSeconds(ms: number): string {
 	return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function parseFrameList(edited: string): string[] {
+	const next: string[] = [];
+	for (const line of edited.split(/\r?\n/)) {
+		if (next.length >= LIMITS.MAX_CUSTOM_FRAMES) break;
+		const frame = sanitizeFrame(line);
+		if (frame) next.push(frame);
+	}
+	return next;
+}
+
 async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Promise<MainAction> {
-	const presetLabel = findPreset(state.preset)?.label ?? state.preset;
+	const anim = resolveAnimation(state);
 	const cycleLabel = formatSeconds(state.cycleIntervalMs);
-	const items: SelectItem<MainAction>[] = MAIN_ITEMS.map((item) => {
-		if (item.value === "animation") return { ...item, description: presetLabel };
-		if (item.value === "messages") return { ...item, description: `${state.messages.length} entries` };
-		if (item.value === "interval") return { ...item, description: cycleLabel };
-		if (item.value === "frames") {
-			const n = state.customFrames.length;
-			return { ...item, description: n === 0 ? "off" : `${n} frames (overrides preset)` };
+	const activeCustom = findCustom(state.customs, state.preset);
+	const items: SelectItem<MainAction>[] = [];
+	for (const item of MAIN_ITEMS) {
+		if (item.value === "animation") {
+			items.push({ ...item, description: anim.label });
+			if (activeCustom) {
+				items.push({
+					value: "editCustom",
+					label: "Edit custom",
+					description: `${activeCustom.name} · ${activeCustom.frames.length} frames`,
+				});
+			}
+			continue;
 		}
-		if (item.value === "frameInterval") return { ...item, description: `${state.customIntervalMs}ms` };
-		if (item.value === "cycleMode") return { ...item, description: state.cycleMode };
-		if (item.value === "pack") return { ...item, description: state.messagePack };
-		if (item.value === "activity") return { ...item, description: state.activityMessages ? "on" : "off" };
-		if (item.value === "thinking") return { ...item, description: state.syncThinkingLabel ? "on" : "off" };
-		return item;
-	});
+		if (item.value === "messages") {
+			items.push({ ...item, description: `${state.messages.length} entries` });
+			continue;
+		}
+		if (item.value === "interval") {
+			items.push({ ...item, description: cycleLabel });
+			continue;
+		}
+		if (item.value === "cycleMode") {
+			items.push({ ...item, description: state.cycleMode });
+			continue;
+		}
+		if (item.value === "pack") {
+			items.push({ ...item, description: state.messagePack });
+			continue;
+		}
+		if (item.value === "activity") {
+			items.push({ ...item, description: state.activityMessages ? "on" : "off" });
+			continue;
+		}
+		if (item.value === "thinking") {
+			items.push({ ...item, description: state.syncThinkingLabel ? "on" : "off" });
+			continue;
+		}
+		items.push(item);
+	}
 
 	return ctx.ui
 		.custom<MainAction>((tui, theme, _kb, done) =>
@@ -250,9 +286,8 @@ async function pickMainAction(state: SpinnerConfig, ctx: ExtensionContext): Prom
 					title: "pi-spinner",
 					items,
 					headerLines: [
-						`  preset: ${presetLabel}`,
+						`  animation: ${anim.label}`,
 						`  messages: ${state.messages.length}  ·  cycle: ${cycleLabel}`,
-						`  custom frames: ${state.customFrames.length || "off"}`,
 					],
 					hint: "↑↓ navigate · enter select · esc close",
 					cancelValue: "close",
@@ -271,15 +306,24 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 		label: `${state.preset === p.name ? "● " : "  "}${p.label}`,
 		description: p.description,
 	}));
+	for (const custom of state.customs) {
+		items.push({
+			value: custom.name,
+			label: `${state.preset === custom.name ? "● " : "  "}${custom.name}`,
+			description: `${custom.frames.length} frames`,
+		});
+	}
+	items.push({ value: "__new__", label: "New custom…", description: "name, frames, interval" });
 	items.push({ value: "__back__", label: "Back", description: "return to main menu" });
-	const selectedIndex = Math.max(
-		0,
-		PRESETS.findIndex((p) => p.name === state.preset),
-	);
+
+	const builtinIdx = PRESETS.findIndex((p) => p.name === state.preset);
+	const customIdx = state.customs.findIndex((entry) => entry.name === state.preset);
+	const selectedIndex =
+		builtinIdx >= 0 ? builtinIdx : customIdx >= 0 ? PRESETS.length + customIdx : 0;
 
 	let stopPreview = (): void => {};
 	const result = await ctx.ui.custom<string>((tui, theme, _kb, done) => {
-		let preview: PresetPreview | null = createPresetPreview(state.preset, theme);
+		let preview: PresetPreview | null = createAnimationPreview(state, state.preset, theme);
 		let timer: ReturnType<typeof setTimeout> | undefined;
 
 		const stop = (): void => {
@@ -307,7 +351,7 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 		};
 
 		const show = (name: string): void => {
-			preview = createPresetPreview(name, theme) ?? createPresetPreview(state.preset, theme);
+			preview = createAnimationPreview(state, name, theme) ?? createAnimationPreview(state, state.preset, theme);
 			schedule();
 		};
 
@@ -315,14 +359,14 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 
 		return buildSelectScreen<string>(
 			{
-				title: "Animation Preset",
+				title: "Animation",
 				items,
 				liveHeaderLines: () => [formatPreviewHeader(preview, theme)],
 				hint: "↑↓ preview · enter apply · esc back",
 				cancelValue: "__back__",
 				selectedIndex,
 				onSelectionChange: (item) => {
-					show(item.value === "__back__" ? state.preset : item.value);
+					show(item.value === "__back__" || item.value === "__new__" ? state.preset : item.value);
 				},
 			},
 			tui,
@@ -333,17 +377,143 @@ async function pickAnimation(state: SpinnerConfig, cycler: MessageCycler | null,
 		stopPreview();
 	});
 
-	if (result && result !== "__back__") {
-		state.preset = result;
-		applyPreview(state, cycler, ctx);
-		ctx.ui.notify(`Animation: ${findPreset(result)?.label ?? result}`, "info");
+	if (!result || result === "__back__") return;
+	if (result === "__new__") {
+		await createCustom(state, cycler, ctx);
+		return;
 	}
+
+	state.preset = result;
+	applyPreview(state, cycler, ctx);
+	ctx.ui.notify(`Animation: ${resolveAnimation(state).label}`, "info");
+}
+
+async function createCustom(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const rawName = await ctx.ui.input("Custom name (lowercase letters, digits, hyphens)", "");
+	if (rawName === undefined) return;
+	const name = rawName.trim().toLowerCase();
+	if (!isValidCustomName(name)) {
+		ctx.ui.notify("Name must be a unique identifier, not a built-in or slash verb", "error");
+		return;
+	}
+	const existing = findCustom(state.customs, name);
+	if (!existing && state.customs.length >= LIMITS.MAX_CUSTOM_SPINNERS) {
+		ctx.ui.notify(`At most ${LIMITS.MAX_CUSTOM_SPINNERS} custom animations`, "error");
+		return;
+	}
+	if (existing) {
+		const confirmed = await ctx.ui.confirm(
+			"Replace custom animation?",
+			`"${name}" already exists. Save these frames over it.`,
+		);
+		if (!confirmed) return;
+	}
+
+	const edited = await ctx.ui.editor("Custom frames (one per line)", "");
+	if (edited === undefined) return;
+	const frames = parseFrameList(edited);
+	if (frames.length === 0) {
+		ctx.ui.notify("Need at least one frame", "error");
+		return;
+	}
+
+	const intervalMs = await promptFrameInterval(ctx, 100);
+	if (intervalMs === undefined) return;
+
+	state.customs = upsertCustom(state.customs, { name, frames, intervalMs });
+	state.preset = name;
+	applyPreview(state, cycler, ctx);
+	ctx.ui.notify(`Animation: ${name}`, "info");
+}
+
+async function editActiveCustom(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
+	const current = findCustom(state.customs, state.preset);
+	if (!current) return;
+
+	type EditAction = "frames" | "interval" | "delete" | "back";
+	const items: SelectItem<EditAction>[] = [
+		{ value: "frames", label: "Frames", description: `${current.frames.length} frames` },
+		{ value: "interval", label: "Interval", description: `${current.intervalMs}ms` },
+		{ value: "delete", label: "Delete", description: "remove this custom" },
+		{ value: "back", label: "Back", description: "return to main menu" },
+	];
+
+	const result = await ctx.ui.custom<EditAction>((tui, theme, _kb, done) =>
+		buildSelectScreen<EditAction>(
+			{
+				title: `Edit ${current.name}`,
+				items,
+				hint: "enter to apply · esc back",
+				cancelValue: "back",
+			},
+			tui,
+			theme,
+			done,
+		),
+	);
+
+	if (!result || result === "back") return;
+
+	if (result === "delete") {
+		const confirmed = await ctx.ui.confirm(
+			"Delete custom animation?",
+			`Remove "${current.name}" from the registry. The active animation falls back to braille if this one is selected.`,
+		);
+		if (!confirmed) return;
+		const next = deleteCustom(state, current.name);
+		state.preset = next.preset;
+		state.customs = next.customs;
+		applyPreview(state, cycler, ctx);
+		ctx.ui.notify(`Deleted ${current.name}`, "info");
+		return;
+	}
+
+	if (result === "frames") {
+		const edited = await ctx.ui.editor("Custom frames (one per line)", current.frames.join("\n"));
+		if (edited === undefined) return;
+		const frames = parseFrameList(edited);
+		if (frames.length === 0) {
+			ctx.ui.notify("Need at least one frame", "error");
+			return;
+		}
+		state.customs = upsertCustom(state.customs, { ...current, frames });
+		applyPreview(state, cycler, ctx);
+		ctx.ui.notify(`Frames updated: ${frames.length}`, "info");
+		return;
+	}
+
+	const intervalMs = await promptFrameInterval(ctx, current.intervalMs);
+	if (intervalMs === undefined) return;
+	state.customs = upsertCustom(state.customs, { ...current, intervalMs });
+	applyPreview(state, cycler, ctx);
+	ctx.ui.notify(`Frame interval: ${intervalMs}ms`, "info");
+}
+
+async function promptFrameInterval(ctx: ExtensionContext, current: number): Promise<number | undefined> {
+	const raw = await ctx.ui.input("Frame interval (milliseconds)", String(current));
+	if (raw === undefined) return undefined;
+
+	const ms = Number.parseInt(raw.trim(), 10);
+	if (!Number.isFinite(ms) || ms <= 0) {
+		ctx.ui.notify("Invalid number", "error");
+		return undefined;
+	}
+
+	if (ms < LIMITS.MIN_FRAME_INTERVAL_MS || ms > LIMITS.MAX_FRAME_INTERVAL_MS) {
+		ctx.ui.notify(
+			`Must be between ${LIMITS.MIN_FRAME_INTERVAL_MS}ms and ${LIMITS.MAX_FRAME_INTERVAL_MS}ms`,
+			"error",
+		);
+		return undefined;
+	}
+
+	return ms;
 }
 
 async function editMessages(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
 	const prefill = state.messages.join("\n");
 	const edited = await ctx.ui.editor("Edit messages (one per line)", prefill);
-	if (edited === undefined) return; // cancelled
+	if (edited === undefined) return;
 
 	const next: string[] = [];
 	for (const line of edited.split(/\r?\n/)) {
@@ -360,53 +530,6 @@ async function editMessages(state: SpinnerConfig, cycler: MessageCycler | null, 
 	state.messages = next;
 	applyPreview(state, cycler, ctx);
 	ctx.ui.notify(`Messages updated: ${next.length} entries`, "info");
-}
-
-async function editCustomFrames(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
-	const prefill = state.customFrames.join("\n");
-	const edited = await ctx.ui.editor("Edit custom frames (one per line; empty clears)", prefill);
-	if (edited === undefined) return;
-
-	const next: string[] = [];
-	for (const line of edited.split(/\r?\n/)) {
-		if (next.length >= LIMITS.MAX_CUSTOM_FRAMES) break;
-		const frame = sanitizeFrame(line);
-		if (frame) next.push(frame);
-	}
-
-	if (next.length === 0) {
-		state.customFrames = [];
-		applyPreview(state, cycler, ctx);
-		ctx.ui.notify("Custom frames cleared; preset is active", "info");
-		return;
-	}
-
-	state.customFrames = next;
-	applyPreview(state, cycler, ctx);
-	ctx.ui.notify(`Custom frames updated: ${next.length} frames`, "info");
-}
-
-async function editFrameInterval(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
-	const raw = await ctx.ui.input("Frame interval (milliseconds)", String(state.customIntervalMs));
-	if (raw === undefined) return;
-
-	const ms = Number.parseInt(raw.trim(), 10);
-	if (!Number.isFinite(ms) || ms <= 0) {
-		ctx.ui.notify("Invalid number", "error");
-		return;
-	}
-
-	if (ms < LIMITS.MIN_FRAME_INTERVAL_MS || ms > LIMITS.MAX_FRAME_INTERVAL_MS) {
-		ctx.ui.notify(
-			`Must be between ${LIMITS.MIN_FRAME_INTERVAL_MS}ms and ${LIMITS.MAX_FRAME_INTERVAL_MS}ms`,
-			"error",
-		);
-		return;
-	}
-
-	state.customIntervalMs = ms;
-	applyPreview(state, cycler, ctx);
-	ctx.ui.notify(`Frame interval: ${state.customIntervalMs}ms`, "info");
 }
 
 async function pickCycleMode(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): Promise<void> {
@@ -497,7 +620,7 @@ async function pickSaveTarget(state: SpinnerConfig, ctx: ExtensionContext): Prom
 					title: "Save Settings",
 					items,
 					headerLines: [
-						`  preset: ${state.preset}`,
+						`  animation: ${resolveAnimation(state).label}`,
 						`  messages: ${state.messages.length}`,
 						`  cycle: ${formatSeconds(state.cycleIntervalMs)}`,
 					],
@@ -512,15 +635,13 @@ async function pickSaveTarget(state: SpinnerConfig, ctx: ExtensionContext): Prom
 
 	if (result === "global" || result === "project") {
 		try {
-			// Only persist allowlisted user fields - never write `customized` or other runtime state.
 			const partial: UserSpinnerConfig = {
 				preset: state.preset,
+				customs: state.customs,
 				messages: state.messages,
 				messagePack: state.messagePack,
 				cycleIntervalMs: state.cycleIntervalMs,
 				cycleMode: state.cycleMode,
-				customFrames: state.customFrames,
-				customIntervalMs: state.customIntervalMs,
 				activityMessages: state.activityMessages,
 				syncThinkingLabel: state.syncThinkingLabel,
 			};
@@ -542,16 +663,13 @@ async function handleReset(state: SpinnerConfig, cycler: MessageCycler | null, c
 	ctx.ui.setWorkingMessage();
 	ctx.ui.setWorkingIndicator();
 
-	// Single source of truth: copy from defaults() so the un-customized state
-	// is consistent with what loadConfig() will produce on the next session.
 	const d = defaults();
 	state.preset = d.preset;
+	state.customs = [...d.customs];
 	state.messages = [...d.messages];
 	state.messagePack = d.messagePack;
 	state.cycleIntervalMs = d.cycleIntervalMs;
 	state.cycleMode = d.cycleMode;
-	state.customFrames = [...d.customFrames];
-	state.customIntervalMs = d.customIntervalMs;
 	state.activityMessages = d.activityMessages;
 	state.syncThinkingLabel = d.syncThinkingLabel;
 
@@ -576,11 +694,9 @@ function liveLines(getLines: () => readonly string[]): Component {
 }
 
 function applyPreview(state: SpinnerConfig, cycler: MessageCycler | null, ctx: ExtensionContext): void {
-	const indicator = buildIndicator(state.preset, state.customFrames, state.customIntervalMs, ctx.ui.theme);
-	ctx.ui.setWorkingIndicator(indicator);
+	ctx.ui.setWorkingIndicator(buildIndicator(state, ctx.ui.theme));
 	if (cycler) {
 		cycler.update(state.messages, state.cycleIntervalMs, state.cycleMode);
-		// Force an immediate tick so the new state is visible right away
 		if (cycler.isRunning) cycler.tickNow();
 	}
 }

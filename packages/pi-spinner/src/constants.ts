@@ -2,7 +2,7 @@
  * Shared constants with no peer-package imports so config IO stays unit-testable.
  */
 
-/** Built-in preset names only (no "custom" - that is a frames override). */
+/** Built-in animation names. */
 export const PRESET_NAMES = [
 	"braille",
 	"dots",

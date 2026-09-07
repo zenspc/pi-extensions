@@ -4,6 +4,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { PRESETS } from "./presets.ts";
 import {
 	advancePreview,
+	createAnimationPreview,
 	createPresetPreview,
 	formatPreviewHeader,
 	previewGlyph,
@@ -87,5 +88,18 @@ describe("formatPreviewHeader", () => {
 			assert.ok(preview, preset.name);
 			assert.ok(formatPreviewHeader(preview, theme).includes(preset.label), preset.name);
 		}
+	});
+
+	it("previews a named custom the same way as a builtin", () => {
+		const preview = createAnimationPreview(
+			{ customs: [{ name: "wave", frames: ["~", "≈"], intervalMs: 80 }] },
+			"wave",
+			theme,
+		);
+		assert.ok(preview);
+		assert.equal(preview.label, "wave");
+		assert.equal(preview.intervalMs, 80);
+		assert.equal(preview.frames.length, 2);
+		assert.match(formatPreviewHeader(preview, theme), /wave/);
 	});
 });

@@ -4,7 +4,14 @@
  */
 
 import { CYCLE_MODES, MESSAGE_PACK_NAMES, PRESET_NAMES } from "./constants.ts";
-import { isKnownCycleMode, isKnownMessagePack, isKnownPreset, type SpinnerConfig } from "./config.ts";
+import {
+	isKnownCycleMode,
+	isKnownMessagePack,
+	isKnownPreset,
+	isValidCustomName,
+	type SpinnerConfig,
+} from "./config.ts";
+import { resolveAnimation } from "./presets.ts";
 
 export type SpinnerCommand =
 	| { action: "menu" }
@@ -51,7 +58,7 @@ export function parseSpinnerCommand(args: string): SpinnerCommand {
 		if (first === "rotate") return { action: "rotate" };
 		if (first === "reset") return { action: "reset", target: "all" };
 		if (isKnownCycleMode(first)) return { action: "cycleMode", mode: first };
-		if (isKnownPreset(first)) return { action: "preset", name: first };
+		if (isKnownPreset(first) || isValidCustomName(first)) return { action: "preset", name: first };
 		return { action: "unknown", token: trimmed };
 	}
 
@@ -77,7 +84,7 @@ export function formatSpinnerHelp(paths: SpinnerPaths): string {
 		"  (no args)           Open the customization TUI",
 		"  status              Show merged config and paths",
 		"  help                Show this help",
-		"  <preset>            Set animation preset (dots, hidden, ...)",
+		"  <preset>            Set animation (built-in or custom name)",
 		"  pack <name>         Replace messages with a built-in pack (default, calm, dry)",
 		"  random              Set cycle order to random",
 		"  sequential          Set cycle order to sequential",
@@ -92,9 +99,14 @@ export function formatSpinnerHelp(paths: SpinnerPaths): string {
 }
 
 export function formatSpinnerStatus(cfg: SpinnerConfig, paths: SpinnerPaths): string {
+	const anim = resolveAnimation(cfg);
+	const animation =
+		anim.kind === "custom"
+			? `Animation: ${anim.name} (custom, ${anim.frames.length} frames)`
+			: `Animation: ${anim.label}`;
 	return [
-		`Preset: ${cfg.preset}`,
-		`Custom frames: ${cfg.customFrames.length}`,
+		animation,
+		`Customs: ${cfg.customs.length}`,
 		`Messages: ${cfg.messages.length}`,
 		`Pack: ${cfg.messagePack}`,
 		`Cycle mode: ${cfg.cycleMode}`,
@@ -105,17 +117,24 @@ export function formatSpinnerStatus(cfg: SpinnerConfig, paths: SpinnerPaths): st
 	].join("\n");
 }
 
-export function getSpinnerArgumentCompletions(prefix: string): AutocompleteItem[] | null {
+export function getSpinnerArgumentCompletions(
+	prefix: string,
+	extraNames: readonly string[] = [],
+): AutocompleteItem[] | null {
 	const raw = typeof prefix === "string" ? prefix : "";
 	const hasTrailingSpace = /\s$/.test(raw);
 	const parts = raw.trim().split(/\s+/).filter(Boolean);
 
 	if (parts.length === 0 || (parts.length === 1 && !hasTrailingSpace)) {
 		const start = (parts[0] ?? "").toLowerCase();
-		const items = FIRST_TOKENS.filter((token) => token.startsWith(start)).map((token) => ({
-			value: token,
-			label: token,
-		}));
+		const extras = extraNames.filter((name) => isValidCustomName(name) && name.startsWith(start));
+		const seen = new Set<string>();
+		const items: AutocompleteItem[] = [];
+		for (const token of [...FIRST_TOKENS, ...extras]) {
+			if (seen.has(token) || !token.startsWith(start)) continue;
+			seen.add(token);
+			items.push({ value: token, label: token });
+		}
 		return items.length > 0 ? items : null;
 	}
 

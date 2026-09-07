@@ -15,13 +15,19 @@ import {
 	MAX_CONFIG_BYTES,
 	defaults,
 	deleteConfigFile,
+	deleteCustom,
+	findCustom,
 	isKnownPreset,
+	isReservedAnimationName,
+	isValidCustomName,
 	loadConfigFromPaths,
 	mergeSpinnerConfig,
+	normalizeAnimation,
 	parseUserSpinnerConfig,
 	readConfigFile,
 	sanitizeFrame,
 	sanitizeMessage,
+	upsertCustom,
 	writeConfigFile,
 } from "./config.ts";
 
@@ -71,30 +77,116 @@ describe("isKnownPreset", () => {
 	});
 });
 
+describe("custom names", () => {
+	it("accepts lowercase identifiers and rejects reserved tokens", () => {
+		assert.equal(isValidCustomName("wave"), true);
+		assert.equal(isValidCustomName("custom"), true);
+		assert.equal(isValidCustomName("a"), true);
+		assert.equal(isValidCustomName("blocks-2"), true);
+		assert.equal(isValidCustomName("Dots"), false);
+		assert.equal(isValidCustomName("dots"), false);
+		assert.equal(isValidCustomName("help"), false);
+		assert.equal(isValidCustomName("status"), false);
+		assert.equal(isValidCustomName("rotate"), false);
+		assert.equal(isValidCustomName("reset"), false);
+		assert.equal(isValidCustomName("pack"), false);
+		assert.equal(isValidCustomName("random"), false);
+		assert.equal(isValidCustomName("sequential"), false);
+		assert.equal(isValidCustomName("1wave"), false);
+		assert.equal(isValidCustomName("Wave"), false);
+		assert.equal(isValidCustomName("has_underscore"), false);
+		assert.equal(isReservedAnimationName("dots"), true);
+		assert.equal(isReservedAnimationName("help"), true);
+		assert.equal(isReservedAnimationName("wave"), false);
+	});
+});
+
 describe("parseUserSpinnerConfig", () => {
 	it("keeps valid fields", () => {
 		const parsed = parseUserSpinnerConfig({
 			preset: "dots",
+			customs: [{ name: "wave", frames: ["~", "≈"], intervalMs: 80 }],
 			messages: ["One", "Two"],
 			messagePack: "calm",
 			cycleIntervalMs: 3000,
 			cycleMode: "sequential",
-			customFrames: ["⠋", "⠙"],
-			customIntervalMs: 80,
 			activityMessages: true,
 			syncThinkingLabel: true,
 		});
 		assert.deepEqual(parsed, {
 			preset: "dots",
+			customs: [{ name: "wave", frames: ["~", "≈"], intervalMs: 80 }],
 			messages: ["One", "Two"],
 			messagePack: "calm",
 			cycleIntervalMs: 3000,
 			cycleMode: "sequential",
-			customFrames: ["⠋", "⠙"],
-			customIntervalMs: 80,
 			activityMessages: true,
 			syncThinkingLabel: true,
 		});
+	});
+
+	it("migrates legacy customFrames into a custom named custom and selects it", () => {
+		const parsed = parseUserSpinnerConfig({
+			preset: "dots",
+			customFrames: ["a", "b"],
+		});
+		assert.equal(parsed.preset, "custom");
+		assert.deepEqual(parsed.customs, [{ name: "custom", frames: ["a", "b"], intervalMs: 100 }]);
+		assert.equal(Object.hasOwn(parsed, "customFrames"), false);
+		assert.equal(Object.hasOwn(parsed, "customIntervalMs"), false);
+	});
+
+	it("uses customIntervalMs when migrating customFrames", () => {
+		const parsed = parseUserSpinnerConfig({
+			customFrames: ["x"],
+			customIntervalMs: 80,
+		});
+		assert.equal(parsed.preset, "custom");
+		assert.deepEqual(parsed.customs, [{ name: "custom", frames: ["x"], intervalMs: 80 }]);
+	});
+
+	it("ignores customFrames when customs is present", () => {
+		const parsed = parseUserSpinnerConfig({
+			preset: "dots",
+			customs: [{ name: "wave", frames: ["~"], intervalMs: 80 }],
+			customFrames: ["a", "b"],
+			customIntervalMs: 50,
+		});
+		assert.equal(parsed.preset, "dots");
+		assert.deepEqual(parsed.customs, [{ name: "wave", frames: ["~"], intervalMs: 80 }]);
+	});
+
+	it("persists an empty customs array when the key is present", () => {
+		const parsed = parseUserSpinnerConfig({ customs: [] });
+		assert.deepEqual(parsed.customs, []);
+		assert.equal(parsed.preset, undefined);
+	});
+
+	it("drops empty-frame customs and reserved names", () => {
+		const parsed = parseUserSpinnerConfig({
+			customs: [
+				{ name: "empty", frames: [], intervalMs: 80 },
+				{ name: "dots", frames: ["x"], intervalMs: 80 },
+				{ name: "help", frames: ["x"], intervalMs: 80 },
+				{ name: "wave", frames: ["~"], intervalMs: 80 },
+			],
+		});
+		assert.deepEqual(parsed.customs, [{ name: "wave", frames: ["~"], intervalMs: 80 }]);
+	});
+
+	it("lowercases custom names and lets the last duplicate win", () => {
+		const parsed = parseUserSpinnerConfig({
+			customs: [
+				{ name: "Wave", frames: ["~"], intervalMs: 80 },
+				{ name: "WAVE", frames: ["≈", "~"], intervalMs: 90 },
+			],
+		});
+		assert.deepEqual(parsed.customs, [{ name: "wave", frames: ["≈", "~"], intervalMs: 90 }]);
+	});
+
+	it("keeps a custom identifier as preset", () => {
+		const parsed = parseUserSpinnerConfig({ preset: "wave" });
+		assert.equal(parsed.preset, "wave");
 	});
 
 	it("accepts only real booleans for activityMessages", () => {
@@ -142,10 +234,10 @@ describe("parseUserSpinnerConfig", () => {
 
 	it("drops unknown presets, junk keys, and invalid types", () => {
 		const parsed = parseUserSpinnerConfig({
-			preset: "not-a-real-preset",
+			preset: "not a real preset",
 			messages: ["ok", 3, "", "\u001b[31m", "also ok"],
 			cycleIntervalMs: "fast",
-			customFrames: ["ab", "toolongframe", 9, "●"],
+			customs: [{ name: "ab", frames: ["ab", "toolongframe", 9, "●"], intervalMs: 80 }],
 			evil: true,
 			__proto__: { polluted: true },
 			customized: true,
@@ -153,7 +245,7 @@ describe("parseUserSpinnerConfig", () => {
 		assert.equal(parsed.preset, undefined);
 		assert.deepEqual(parsed.messages, ["ok", "also ok"]);
 		assert.equal(parsed.cycleIntervalMs, undefined);
-		assert.deepEqual(parsed.customFrames, ["ab", "●"]);
+		assert.deepEqual(parsed.customs, [{ name: "ab", frames: ["ab", "●"], intervalMs: 80 }]);
 		assert.equal(Object.hasOwn(parsed, "evil"), false);
 		assert.equal(Object.hasOwn(parsed, "customized"), false);
 		assert.equal((Object.prototype as { polluted?: unknown }).polluted, undefined);
@@ -163,21 +255,35 @@ describe("parseUserSpinnerConfig", () => {
 		assert.equal(parseUserSpinnerConfig({ cycleIntervalMs: 10 }).cycleIntervalMs, LIMITS.MIN_INTERVAL_MS);
 		assert.equal(parseUserSpinnerConfig({ cycleIntervalMs: 999_999 }).cycleIntervalMs, LIMITS.MAX_INTERVAL_MS);
 		assert.equal(
-			parseUserSpinnerConfig({ customIntervalMs: 1 }).customIntervalMs,
+			parseUserSpinnerConfig({
+				customs: [{ name: "wave", frames: ["~"], intervalMs: 1 }],
+			}).customs?.[0]?.intervalMs,
 			LIMITS.MIN_FRAME_INTERVAL_MS,
 		);
 		assert.equal(
-			parseUserSpinnerConfig({ customIntervalMs: 50_000 }).customIntervalMs,
+			parseUserSpinnerConfig({
+				customs: [{ name: "wave", frames: ["~"], intervalMs: 50_000 }],
+			}).customs?.[0]?.intervalMs,
 			LIMITS.MAX_FRAME_INTERVAL_MS,
+		);
+		assert.equal(
+			parseUserSpinnerConfig({ customFrames: ["x"], customIntervalMs: 1 }).customs?.[0]?.intervalMs,
+			LIMITS.MIN_FRAME_INTERVAL_MS,
 		);
 	});
 
-	it("caps message and frame counts", () => {
+	it("caps message, frame, and custom spinner counts", () => {
 		const messages = Array.from({ length: LIMITS.MAX_MESSAGES + 20 }, (_, i) => `m${i}`);
 		const frames = Array.from({ length: LIMITS.MAX_CUSTOM_FRAMES + 10 }, () => "·");
-		const parsed = parseUserSpinnerConfig({ messages, customFrames: frames });
+		const customs = Array.from({ length: LIMITS.MAX_CUSTOM_SPINNERS + 5 }, (_, i) => ({
+			name: `c${i}`,
+			frames: ["·"],
+			intervalMs: 100,
+		}));
+		const parsed = parseUserSpinnerConfig({ messages, customs: [{ name: "wave", frames, intervalMs: 80 }, ...customs] });
 		assert.equal(parsed.messages?.length, LIMITS.MAX_MESSAGES);
-		assert.equal(parsed.customFrames?.length, LIMITS.MAX_CUSTOM_FRAMES);
+		assert.equal(parsed.customs?.[0]?.frames.length, LIMITS.MAX_CUSTOM_FRAMES);
+		assert.equal(parsed.customs?.length, LIMITS.MAX_CUSTOM_SPINNERS);
 	});
 
 	it("returns empty for non-objects", () => {
@@ -195,6 +301,35 @@ describe("defaults", () => {
 		assert.equal(d.activityMessages, false);
 		assert.equal(d.syncThinkingLabel, false);
 		assert.equal(d.hasRotationConfig, false);
+		assert.deepEqual(d.customs, []);
+		assert.equal(Object.hasOwn(d, "customFrames"), false);
+	});
+});
+
+describe("normalizeAnimation / registry helpers", () => {
+	it("rewrites a dangling custom preset to braille", () => {
+		const next = normalizeAnimation({ ...defaults(), preset: "wave" });
+		assert.equal(next.preset, "braille");
+	});
+
+	it("keeps a custom preset that exists in the registry", () => {
+		const next = normalizeAnimation({
+			...defaults(),
+			preset: "wave",
+			customs: [{ name: "wave", frames: ["~"], intervalMs: 80 }],
+		});
+		assert.equal(next.preset, "wave");
+	});
+
+	it("upserts by lowercase name and deletes back to braille when active", () => {
+		const first = upsertCustom([], { name: "Wave", frames: ["~"], intervalMs: 80 });
+		assert.deepEqual(first, [{ name: "wave", frames: ["~"], intervalMs: 80 }]);
+		const second = upsertCustom(first, { name: "WAVE", frames: ["≈"], intervalMs: 90 });
+		assert.deepEqual(second, [{ name: "wave", frames: ["≈"], intervalMs: 90 }]);
+		assert.equal(findCustom(second, "WAVE")?.intervalMs, 90);
+		const deleted = deleteCustom({ ...defaults(), preset: "wave", customs: second }, "wave");
+		assert.deepEqual(deleted.customs, []);
+		assert.equal(deleted.preset, "braille");
 	});
 });
 
@@ -212,6 +347,17 @@ describe("mergeSpinnerConfig", () => {
 		const base = defaults();
 		const next = mergeSpinnerConfig(base, { messages: [] });
 		assert.deepEqual(next.messages, base.messages);
+	});
+
+	it("later-wins on customs including an empty array, then normalizes", () => {
+		const base = mergeSpinnerConfig(defaults(), {
+			preset: "wave",
+			customs: [{ name: "wave", frames: ["~"], intervalMs: 80 }],
+		});
+		assert.equal(base.preset, "wave");
+		const hidden = mergeSpinnerConfig(base, { customs: [] });
+		assert.deepEqual(hidden.customs, []);
+		assert.equal(hidden.preset, "braille");
 	});
 });
 
@@ -231,7 +377,6 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 			assert.equal(result.ok, true);
 			const st = lstatSync(path);
 			assert.ok(st.isFile());
-			// mode bits may be masked by umask; at least owner-read should be set and group/other write off ideally.
 			assert.equal(st.mode & 0o200, 0o200);
 
 			const loaded = readConfigFile(path);
@@ -244,13 +389,75 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 				activityMessages: true,
 			});
 
-			// No runtime-only fields leaked into the file.
 			const raw = JSON.parse(readFileSync(path, "utf8"));
 			assert.equal(raw.customized, undefined);
+			assert.equal(raw.customFrames, undefined);
+			assert.equal(raw.customIntervalMs, undefined);
 
 			const del = deleteConfigFile(path);
 			assert.equal(del.deleted, true);
 			assert.equal(readConfigFile(path), undefined);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("stores two named customs and reloads both", () => {
+		const dir = tempDir();
+		const path = join(dir, "spinner.json");
+		try {
+			const result = writeConfigFile(path, {
+				preset: "wave",
+				customs: [
+					{ name: "wave", frames: ["~", "≈", "~"], intervalMs: 80 },
+					{ name: "blocks", frames: ["▖", "▘", "▝", "▗"], intervalMs: 90 },
+				],
+			});
+			assert.equal(result.ok, true);
+			const loaded = readConfigFile(path);
+			assert.equal(loaded?.preset, "wave");
+			assert.deepEqual(loaded?.customs, [
+				{ name: "wave", frames: ["~", "≈", "~"], intervalMs: 80 },
+				{ name: "blocks", frames: ["▖", "▘", "▝", "▗"], intervalMs: 90 },
+			]);
+			const onDisk = JSON.parse(readFileSync(path, "utf8"));
+			assert.equal(onDisk.customFrames, undefined);
+			assert.equal(onDisk.customIntervalMs, undefined);
+			assert.equal(onDisk.customs.length, 2);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("persists customs: [] when the key is present", () => {
+		const dir = tempDir();
+		const path = join(dir, "spinner.json");
+		try {
+			const result = writeConfigFile(path, { customs: [] });
+			assert.equal(result.ok, true);
+			const onDisk = JSON.parse(readFileSync(path, "utf8"));
+			assert.deepEqual(onDisk.customs, []);
+			assert.deepEqual(readConfigFile(path)?.customs, []);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("never writes customFrames or customIntervalMs after a legacy load", () => {
+		const dir = tempDir();
+		const path = join(dir, "spinner.json");
+		try {
+			writeFileSync(path, JSON.stringify({ preset: "dots", customFrames: ["a", "b"], customIntervalMs: 80 }), "utf8");
+			const loaded = readConfigFile(path);
+			assert.equal(loaded?.preset, "custom");
+			assert.deepEqual(loaded?.customs, [{ name: "custom", frames: ["a", "b"], intervalMs: 80 }]);
+			const result = writeConfigFile(path, { messages: ["Hi"] });
+			assert.equal(result.ok, true);
+			const onDisk = JSON.parse(readFileSync(path, "utf8"));
+			assert.equal(onDisk.customFrames, undefined);
+			assert.equal(onDisk.customIntervalMs, undefined);
+			assert.equal(onDisk.preset, "custom");
+			assert.deepEqual(onDisk.customs, [{ name: "custom", frames: ["a", "b"], intervalMs: 80 }]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -294,7 +501,6 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 
 			const del = deleteConfigFile(link);
 			assert.equal(del.deleted, false);
-			// Target file must remain untouched.
 			assert.equal(JSON.parse(readFileSync(target, "utf8")).preset, "dots");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -334,7 +540,7 @@ describe("readConfigFile / writeConfigFile / deleteConfigFile", () => {
 		const path = join(dir, "spinner.json");
 		try {
 			const result = writeConfigFile(path, {
-				preset: "nope",
+				preset: "nope!",
 				messages: ["ok", "\u001b[31mRED", "x".repeat(LIMITS.MAX_MESSAGE_LENGTH + 5)],
 				// @ts-expect-error intentional junk key
 				customized: true,
@@ -361,7 +567,6 @@ describe("loadConfigFromPaths", () => {
 		const globalPath = join(dir, "global.json");
 		const projectPath = join(dir, "project.json");
 		try {
-			// No files → defaults, not customized
 			const plain = loadConfigFromPaths(globalPath, projectPath);
 			assert.equal(plain.customized, false);
 			assert.equal(plain.hasRotationConfig, false);
@@ -383,10 +588,45 @@ describe("loadConfigFromPaths", () => {
 			const both = loadConfigFromPaths(globalPath, projectPath);
 			assert.equal(both.customized, true);
 			assert.equal(both.preset, "rainbow");
-			// Project did not override messages → global messages remain
 			assert.deepEqual(both.messages, ["G1", "G2"]);
 			assert.equal(both.cycleIntervalMs, 6000);
 			assert.equal(both.cycleMode, "sequential");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("loads old customFrames as preset custom and one customs entry", () => {
+		const dir = tempDir();
+		const globalPath = join(dir, "global.json");
+		const projectPath = join(dir, "project.json");
+		try {
+			writeFileSync(globalPath, JSON.stringify({ preset: "dots", customFrames: ["a", "b"] }), "utf8");
+			const cfg = loadConfigFromPaths(globalPath, projectPath);
+			assert.equal(cfg.preset, "custom");
+			assert.equal(cfg.customs.length, 1);
+			assert.equal(cfg.customs[0]?.name, "custom");
+			assert.deepEqual(cfg.customs[0]?.frames, ["a", "b"]);
+			assert.equal(cfg.hasRotationConfig, true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps global customs when the project file only sets preset", () => {
+		const dir = tempDir();
+		const globalPath = join(dir, "global.json");
+		const projectPath = join(dir, "project.json");
+		try {
+			writeConfigFile(globalPath, {
+				preset: "wave",
+				customs: [{ name: "wave", frames: ["~"], intervalMs: 80 }],
+			});
+			writeConfigFile(projectPath, { preset: "dots" });
+			const cfg = loadConfigFromPaths(globalPath, projectPath);
+			assert.equal(cfg.preset, "dots");
+			assert.equal(cfg.customs.length, 1);
+			assert.equal(cfg.customs[0]?.name, "wave");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -417,6 +657,20 @@ describe("loadConfigFromPaths", () => {
 			assert.equal(cfg.customized, true);
 			assert.equal(cfg.syncThinkingLabel, true);
 			assert.equal(cfg.hasRotationConfig, false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("treats a customs key as rotation config", () => {
+		const dir = tempDir();
+		const globalPath = join(dir, "global.json");
+		const projectPath = join(dir, "project.json");
+		try {
+			writeConfigFile(globalPath, { customs: [] });
+			const cfg = loadConfigFromPaths(globalPath, projectPath);
+			assert.equal(cfg.customized, true);
+			assert.equal(cfg.hasRotationConfig, true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
