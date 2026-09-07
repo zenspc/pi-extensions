@@ -1,5 +1,11 @@
 # @zenspc/pi-spinner
 
+## 0.5.0
+
+### Minor Changes
+
+- af6af2a: Store named custom animations in a `customs` array. `preset` is the active built-in or custom name.
+
 ## 0.4.0
 
 ### Minor Changes
