@@ -214,6 +214,60 @@ describe("main", () => {
     });
   });
 
+  it("renders stale-base reporting advice for a behind-base blocker", async () => {
+    const harness = testRuntime(
+      fakeReader({ facts: { mergeStateStatus: "BEHIND" } })
+    );
+    expect(
+      await main(
+        ["--owner", "owner", "--repo", "repo", "--pr", "1", "--pretty"],
+        harness.runtime
+      )
+    ).toBe(6);
+    expect(harness.stdout.join("")).toContain(
+      "action=report the stale base branch to the branch owner, then wait for checks"
+    );
+  });
+
+  it("emits the behind-base reason in JSON blocker output", async () => {
+    const harness = testRuntime(
+      fakeReader({ facts: { mergeStateStatus: "BEHIND" } })
+    );
+    expect(
+      await main(
+        ["--owner", "owner", "--repo", "repo", "--pr", "1"],
+        harness.runtime
+      )
+    ).toBe(6);
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      kind: "BLOCKER",
+      exitCode: 6,
+      blocker: { kind: "merge-gate", reason: "behind-base" },
+    });
+  });
+
+  it("shows a behind-base PR as non-green in status-only output", async () => {
+    const harness = testRuntime(
+      fakeReader({ facts: { mergeStateStatus: "BEHIND" } })
+    );
+    expect(
+      await main(
+        [
+          "--owner",
+          "owner",
+          "--repo",
+          "repo",
+          "--pr",
+          "1",
+          "--status-only",
+          "--pretty",
+        ],
+        harness.runtime
+      )
+    ).toBe(0);
+    expect(harness.stdout.join("")).toContain("⚠️ behind base");
+  });
+
   it("shows help without touching the reader", async () => {
     const reader = fakeReader();
     const harness = testRuntime(reader);

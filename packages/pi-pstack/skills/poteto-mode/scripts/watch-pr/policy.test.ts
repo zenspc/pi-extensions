@@ -88,6 +88,39 @@ describe("readiness truth table", () => {
       blocker: { kind: "failing-checks" },
     });
   });
+
+  it("reports an open PR behind its base as a merge gate after CI passes", async () => {
+    const snapshot = await readSnapshot({
+      reader: fakeReader({
+        facts: { mergeStateStatus: "BEHIND" },
+        fastPath: { kind: "checks", checks: [passingCheck()] },
+      }),
+      context: context(6),
+      pendingHistory: "include",
+      allowDraft: false,
+    });
+    expect(classifyPr(snapshot)).toMatchObject({
+      kind: "blocker",
+      blocker: { kind: "merge-gate", reason: "behind-base" },
+    });
+  });
+
+  it("waits for a behind-base PR's pending CI before reporting its merge gate", async () => {
+    const snapshot = await readSnapshot({
+      reader: fakeReader({
+        facts: { mergeStateStatus: "BEHIND" },
+        fastPath: { kind: "checks", checks: [pendingCheck()] },
+      }),
+      context: context(7),
+      pendingHistory: "include",
+      allowDraft: false,
+    });
+    expect(classifyPr(snapshot)).toMatchObject({
+      kind: "waiting",
+      frontier: { number: 7 },
+      pending: [{ name: "ci" }],
+    });
+  });
 });
 
 describe("snapshot query planning", () => {
@@ -197,6 +230,83 @@ it("attributes a stack wait to the PR whose checks are pending, not the bottom",
   });
 });
 
+it("waits for stack CI before an upstack behind-base gate", async () => {
+  const pendingFrontier = await readSnapshot({
+    reader: fakeReader({
+      fastPath: { kind: "checks", checks: [pendingCheck("frontier-build")] },
+    }),
+    context: context(22),
+    pendingHistory: "include",
+    allowDraft: false,
+  });
+  const behindUpstack = await readSnapshot({
+    reader: fakeReader({ facts: { mergeStateStatus: "BEHIND" } }),
+    context: context(23),
+    pendingHistory: "include",
+    allowDraft: false,
+  });
+  expect(
+    selectTierMajorStackDecision([pendingFrontier, behindUpstack])
+  ).toMatchObject({
+    kind: "waiting",
+    frontier: { number: 22 },
+    pending: [{ name: "frontier-build" }],
+  });
+});
+
+it("reports a behind frontier before waiting for upstack CI", async () => {
+  const behindFrontier = await readSnapshot({
+    reader: fakeReader({ facts: { mergeStateStatus: "BEHIND" } }),
+    context: context(24),
+    pendingHistory: "include",
+    allowDraft: false,
+  });
+  const pendingUpstack = await readSnapshot({
+    reader: fakeReader({
+      fastPath: { kind: "checks", checks: [pendingCheck("upstack-build")] },
+    }),
+    context: context(25),
+    pendingHistory: "include",
+    allowDraft: false,
+  });
+  expect(
+    selectTierMajorStackDecision([behindFrontier, pendingUpstack])
+  ).toMatchObject({
+    kind: "blocker",
+    blocker: { kind: "merge-gate", reason: "behind-base" },
+  });
+});
+
+it("preserves conflict and changes-requested priority over behind-base", async () => {
+  const conflict = await readSnapshot({
+    reader: fakeReader({
+      facts: { mergeable: "CONFLICTING", mergeStateStatus: "BEHIND" },
+    }),
+    context: context(24),
+    pendingHistory: "include",
+    allowDraft: false,
+  });
+  expect(classifyPr(conflict)).toMatchObject({
+    kind: "blocker",
+    blocker: { kind: "merge-conflicts" },
+  });
+  const changesRequested = await readSnapshot({
+    reader: fakeReader({
+      facts: {
+        mergeStateStatus: "BEHIND",
+        reviewDecision: "CHANGES_REQUESTED",
+      },
+    }),
+    context: context(25),
+    pendingHistory: "include",
+    allowDraft: false,
+  });
+  expect(classifyPr(changesRequested)).toMatchObject({
+    kind: "blocker",
+    blocker: { kind: "merge-gate", reason: "changes-requested" },
+  });
+});
+
 it("waits on a draft while checks are pending, then reports the draft gate", async () => {
   const pending = await readSnapshot({
     reader: fakeReader({
@@ -230,6 +340,25 @@ describe("queued-stack cadence", () => {
       allowDraft: false,
     });
   }
+
+  it("tolerates an upstack behind-base row while waiting for the merge queue", async () => {
+    const queue = [context(26), context(27)] satisfies NonEmpty<PrContext>;
+    let state = createQueueState(queue, 0);
+    const frontier = await openSnapshot(queue[0]);
+    state = applyQueueSnapshot(state, frontier, 0, options).state;
+    const behindUpstack = await readSnapshot({
+      reader: fakeReader({ facts: { mergeStateStatus: "BEHIND" } }),
+      context: queue[1],
+      pendingHistory: "omit",
+      allowDraft: false,
+    });
+    state = applyQueueSnapshot(state, behindUpstack, 0, options).state;
+    expect(evaluateQueue(state, 0, options)).toMatchObject({
+      kind: "waiting",
+      frontier: { number: 26 },
+      reason: { kind: "merge-queue", unmergedCount: 2 },
+    });
+  });
 
   it("drops a sweep head only after its snapshot succeeds", async () => {
     const queue = [
