@@ -160,17 +160,17 @@ function gateReason(
   if (row.kind === "merged") return null;
   if (row.kind === "closed") return "closed-without-merge";
   if (row.facts.isDraft && !allowDraft) return "draft-pr";
-  return row.facts.reviewDecision === "CHANGES_REQUESTED"
-    ? "changes-requested"
-    : null;
+  if (row.facts.reviewDecision === "CHANGES_REQUESTED")
+    return "changes-requested";
+  return row.facts.mergeStateStatus === "BEHIND" ? "behind-base" : null;
 }
 function gateBlocker(
   row: T.PrSnapshot,
   allowDraft: boolean
-): T.MergeBlocker | null {
+): Extract<T.MergeBlocker, { kind: "merge-gate" }> | null {
   const reason = gateReason(row, allowDraft);
   return reason === null ||
-    (reason === "draft-pr" &&
+    ((reason === "draft-pr" || reason === "behind-base") &&
       row.kind === "open" &&
       row.ci.kind === "ci-pending")
     ? null
@@ -241,15 +241,19 @@ export function selectTierMajorStackDecision(
     }
   for (const row of rows) {
     const blocker = gateBlocker(row, allowDraft);
-    if (blocker !== null) return { kind: "blocker", blocker };
+    if (blocker !== null && blocker.reason !== "behind-base")
+      return { kind: "blocker", blocker };
   }
-  for (const row of rows)
+  for (const row of rows) {
     if (row.kind === "open" && row.ci.kind === "ci-pending")
       return {
         kind: "waiting",
         frontier: row.context,
         pending: row.ci.pending,
       };
+    const blocker = gateBlocker(row, allowDraft);
+    if (blocker !== null) return { kind: "blocker", blocker };
+  }
   const prs = nonEmpty(
     rows
       .map((row) => readyContribution(row, allowDraft))
@@ -663,7 +667,11 @@ export function evaluateQueue(
   const rows = nonEmpty(active);
   if (rows === null) throw new Error("active queue cannot be empty");
   const decision = selectTierMajorStackDecision(rows, options.allowDraft);
-  if (decision.kind === "blocker")
+  const queueManagesFreshness =
+    decision.kind === "blocker" &&
+    decision.blocker.kind === "merge-gate" &&
+    decision.blocker.reason === "behind-base";
+  if (decision.kind === "blocker" && !queueManagesFreshness)
     return { kind: "blocker", state, blocker: decision.blocker };
   const frontier = rows[0].context;
   if (state.frontier !== null && state.frontier.number !== frontier.number)
