@@ -19,7 +19,6 @@ export const ROLE_NAMES = [
 	"hardest tasks",
 	"how explorer",
 	"how explainer",
-	"how critics",
 	"why investigators",
 	"why synthesizer",
 	"reflect tooling",
@@ -40,7 +39,6 @@ export interface PstackConfig {
 }
 
 export const LIST_ROLES: ReadonlySet<RoleName> = new Set([
-	"how critics",
 	"arena runners",
 	"arena cross-judge pool",
 	"architect runners",

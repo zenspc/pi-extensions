@@ -19,17 +19,17 @@ Requires [`pi-subagents`](https://www.npmjs.com/package/pi-subagents) for the `p
 3. Run `/pstack off` to hide even the four Discoverable skills (`how`, `why`, `unslop`, `typescript-best-practices`) from the Skill catalog.
    Off persists in `~/.pi/agent/pstack/models.json`.
    `/skill:<name>` keeps working.
-   `/pstack on` restores those four, not all 45.
+   `/pstack on` restores those four, not all 47.
 
 That is it.
 The other skills are Hidden; the mode skill uses them as needed.
 
 ## What you get
 
-- **45 skills**, including:
-  - `poteto-mode`: the main entry point. Reads your request, matches one of 22 playbooks (bug fix, perf, feature, refactoring, investigation, shipping, orchestrate, autopilot, and more), copies its steps in verbatim, and routes to the other skills as steps fire.
+- **47 skills**, including:
+  - `poteto-mode`: the main entry point. Reads your request, matches one of 23 playbooks (bug fix, perf, feature, refactoring, investigation, shipping, orchestrate, autopilot, and more), copies its steps in verbatim, and routes to the other skills as steps fire.
   - Workflow skills: `how`, `why`, `recall`, `blast-radius`, `architect`, `arena`, `swarm`, `interrogate`, `reflect`, `teach`, `tdd`, `no-comments`, `unslop`, `deslop`, `bro`, `figure-it-out`, `show-me-your-work`, `create-verification-skill`, `maintain-verification-skill`, `automate-me`, `technical-writing`, `typescript-best-practices`.
-  - 21 principle skills (`principle-laziness-protocol`, `principle-model-the-domain`, `principle-prove-it-works`, ...), one rule each, indexed inline by `poteto-mode`.
+  - 23 principle skills (`principle-laziness-protocol`, `principle-model-the-domain`, `principle-prove-it-works`, ...), one rule each, indexed inline by `poteto-mode`.
 - **2 subagents** (loaded by pi-subagents):
   - `poteto-agent`: runs poteto's style end to end. Reads `poteto-mode` in full before any work.
   - `comment-sicko`: read-only comment reviewer that savors deletion. Usually invoked through the `no-comments` skill.

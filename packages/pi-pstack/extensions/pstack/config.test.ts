@@ -55,13 +55,13 @@ describe("parseConfig", () => {
 				"bug-fix": "anthropic/claude-opus-4-6",
 				"not-a-role": "anthropic/claude-opus-4-6",
 				"how explorer": "no-slash",
-				"how critics": ["anthropic/ok", "bad", "__proto__/x"],
+				"arena runners": ["anthropic/ok", "bad", "__proto__/x"],
 			},
 		});
 		assert.equal(parsed.roles["bug-fix"], "anthropic/claude-opus-4-6");
 		assert.equal(parsed.roles["not-a-role"], undefined);
 		assert.equal(parsed.roles["how explorer"], "inherit-parent");
-		assert.deepEqual(parsed.roles["how critics"], ["anthropic/ok"]);
+		assert.deepEqual(parsed.roles["arena runners"], ["anthropic/ok"]);
 
 		const wrongVersion = parseConfig({
 			version: 2,
@@ -179,7 +179,7 @@ describe("loadConfig / saveConfig", () => {
 				version: 1,
 				roles: {
 					"bug-fix": "anthropic/claude-opus-4-6",
-					"how critics": ["anthropic/a", "openai/b"],
+					"arena runners": ["anthropic/a", "openai/b"],
 				},
 			});
 			assert.equal(saveConfig(cfg, path), true);
@@ -212,13 +212,13 @@ describe("parseLegacyMarkdown", () => {
 # pstack model configuration. comments ignored
 
 feature, refactoring: xai/grok-4.6-fast
-how critics: anthropic/claude-fable-5[high], openai/gpt-5.6
+arena runners: anthropic/claude-fable-5[high], openai/gpt-5.6
 unknown role: anthropic/claude-opus-4-6
 
 bug-fix: openai/gpt-5.6
 `);
 		assert.equal(parsed.roles["feature, refactoring"], "xai/grok-4.6-fast");
-		assert.deepEqual(parsed.roles["how critics"], [
+		assert.deepEqual(parsed.roles["arena runners"], [
 			"anthropic/claude-fable-5[high]",
 			"openai/gpt-5.6",
 		]);
@@ -263,12 +263,12 @@ describe("formatRoleTable", () => {
 			version: 1,
 			roles: {
 				"bug-fix": "anthropic/claude-opus-4-6",
-				"how critics": ["anthropic/a", "openai/b"],
+				"arena runners": ["anthropic/a", "openai/b"],
 			},
 		});
 		assert.equal(
 			formatRoleTable(cfg),
-			"bug-fix: anthropic/claude-opus-4-6\nhow critics: anthropic/a, openai/b",
+			"bug-fix: anthropic/claude-opus-4-6\narena runners: anthropic/a, openai/b",
 		);
 	});
 });
@@ -280,12 +280,12 @@ describe("modelsForRole", () => {
 			roles: {
 				"bug-fix": "inherit-parent",
 				"how explorer": "auto",
-				"how critics": ["anthropic/a", "inherit-parent", "auto", "openai/b"],
+				"arena runners": ["anthropic/a", "inherit-parent", "auto", "openai/b"],
 			},
 		});
 		assert.deepEqual(modelsForRole(cfg, "bug-fix"), []);
 		assert.deepEqual(modelsForRole(cfg, "how explorer"), []);
-		assert.deepEqual(modelsForRole(cfg, "how critics"), ["anthropic/a", "openai/b"]);
+		assert.deepEqual(modelsForRole(cfg, "arena runners"), ["anthropic/a", "openai/b"]);
 		assert.deepEqual(modelsForRole(cfg, "hillclimb"), []);
 	});
 });
