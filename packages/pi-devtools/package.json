@@ -1,0 +1,56 @@
+{
+  "name": "@zenspc/pi-devtools",
+  "version": "0.4.0",
+  "description": "Context usage report, cwd switching (/cd), markdown preview (/preview), richer session footer, welcome header, and Dracula theme for Pi",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "devtools",
+    "context",
+    "cwd",
+    "cd",
+    "markdown",
+    "preview",
+    "theme",
+    "welcome",
+    "header"
+  ],
+  "license": "MIT",
+  "author": "dhairyaar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenspc/pi-extensions.git",
+    "directory": "packages/pi-devtools"
+  },
+  "bugs": {
+    "url": "https://github.com/zenspc/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-devtools#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "extensions",
+    "themes",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  },
+  "scripts": {
+    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../LICENSE LICENSE"
+  }
+}

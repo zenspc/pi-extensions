@@ -1,0 +1,34 @@
+{
+  "name": "pi-extensions",
+  "private": true,
+  "description": "Monorepo of Pi coding agent extensions by @zenspc",
+  "packageManager": "pnpm@9.15.0",
+  "keywords": [
+    "pi-package"
+  ],
+  "scripts": {
+    "check": "node scripts/check-packages.mjs",
+    "test": "node --experimental-strip-types --test scripts/*.test.mjs packages/*/extensions/*.test.mjs packages/*/extensions/*.test.ts packages/*/extensions/**/*.test.mjs packages/*/extensions/**/*.test.ts packages/*/src/*.test.ts packages/*/tests/**/*.test.ts packages/pi-pstack/skills/poteto-mode/scripts/check-plan.test.mjs",
+    "test:local": "node scripts/check-packages.mjs && echo \"Try: pi -e ./packages/<name>\"",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "tag-packages": "node scripts/tag-packages.mjs",
+    "release": "pnpm -r publish --access public"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.5"
+  },
+  "pi": {
+    "extensions": [
+      "./packages/pi-safety/extensions",
+      "./packages/pi-workflow/extensions",
+      "./packages/pi-devtools/extensions",
+      "./packages/pi-preferred-thinking/extensions/preferred-thinking.ts",
+      "./packages/pi-copilot-discovery/src/index.ts",
+      "./packages/pi-spinner/src/index.ts",
+      "./packages/pi-quiet/src/index.ts",
+      "./packages/pi-sticky-editor/src/index.ts",
+      "./packages/pi-pstack/extensions/pstack/index.ts"
+    ]
+  }
+}

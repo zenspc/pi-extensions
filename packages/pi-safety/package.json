@@ -1,0 +1,44 @@
+{
+  "name": "@zenspc/pi-safety",
+  "version": "0.1.2",
+  "description": "Confirm destructive bash and git actions before Pi runs them",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "safety"
+  ],
+  "license": "MIT",
+  "author": "dhairyaar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenspc/pi-extensions.git",
+    "directory": "packages/pi-safety"
+  },
+  "bugs": {
+    "url": "https://github.com/zenspc/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-safety#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "extensions",
+    "!extensions/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/safety-guard.ts"
+    ]
+  },
+  "type": "module",
+  "scripts": {
+    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../LICENSE LICENSE"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.pi/
+*.log
+.npmrc.local
+local-test/
+plan/
+plans/
+.pi-subagents/
+.scratch
+/CONTEXT.md
+/docs/adr/

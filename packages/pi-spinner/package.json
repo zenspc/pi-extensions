@@ -1,0 +1,48 @@
+{
+	"name": "@zenspc/pi-spinner",
+	"version": "0.5.0",
+	"description": "Customize pi's streaming spinner animation and rotate through a user-defined message list.",
+	"type": "module",
+	"license": "MIT",
+	"author": "dhairyaar",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/zenspc/pi-extensions.git",
+		"directory": "packages/pi-spinner"
+	},
+	"bugs": {
+		"url": "https://github.com/zenspc/pi-extensions/issues"
+	},
+	"homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-spinner#readme",
+	"publishConfig": {
+		"access": "public"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"loading",
+		"spinner",
+		"animation",
+		"ux"
+	],
+	"files": [
+		"src/",
+		"!src/**/*.test.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	],
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"scripts": {
+		"test": "node --experimental-strip-types --test src/*.test.ts",
+		"prepack": "cp --remove-destination ../../LICENSE LICENSE",
+		"postpack": "ln -sfn ../../LICENSE LICENSE"
+	}
+}

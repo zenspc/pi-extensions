@@ -1,0 +1,46 @@
+{
+  "name": "@zenspc/pi-workflow",
+  "version": "0.1.0",
+  "description": "Plan mode for read-only exploration and tracked plan execution in Pi",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "plan-mode",
+    "workflow"
+  ],
+  "license": "MIT",
+  "author": "dhairyaar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenspc/pi-extensions.git",
+    "directory": "packages/pi-workflow"
+  },
+  "bugs": {
+    "url": "https://github.com/zenspc/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-workflow#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "scripts": {
+    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../LICENSE LICENSE"
+  }
+}
