@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	readFileSync,
 	renameSync,
+	statSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -136,7 +137,10 @@ export function parseConfig(raw: unknown): PstackConfig {
 export function loadConfig(path: string = configPath()): PstackConfig {
 	try {
 		if (!existsSync(path)) return defaultConfig();
-		const st = lstatSync(path);
+		// statSync follows a symlink, which is how Home Manager, stow, and chezmoi
+		// install a file. lstatSync sees the link itself, rejects it, and returns the
+		// default table in silence.
+		const st = statSync(path);
 		if (!st.isFile()) return defaultConfig();
 		if (st.size > MAX_CONFIG_BYTES) return defaultConfig();
 		const text = readFileSync(path, "utf8");
