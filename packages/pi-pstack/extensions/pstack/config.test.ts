@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
 	lstatSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -133,7 +134,7 @@ describe("loadConfig / saveConfig", () => {
 		}
 	});
 
-	it("returns default for a symlink", () => {
+	it("loads a symlink to a regular file", () => {
 		const dir = tempDir("pstack-link-");
 		const target = join(dir, "target.json");
 		const link = join(dir, "models.json");
@@ -141,9 +142,33 @@ describe("loadConfig / saveConfig", () => {
 			writeFileSync(target, JSON.stringify({ version: 1, roles: { "bug-fix": "anthropic/x" } }), "utf8");
 			symlinkSync(target, link);
 			assert.equal(lstatSync(link).isSymbolicLink(), true);
-			assert.deepEqual(loadConfig(link), defaultConfig());
+			assert.equal(loadConfig(link).roles["bug-fix"], "anthropic/x");
 			assert.equal(saveConfig(defaultConfig(), link), false);
 			assert.equal(lstatSync(link).isSymbolicLink(), true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns default for a dangling symlink", () => {
+		const dir = tempDir("pstack-dangling-");
+		const link = join(dir, "models.json");
+		try {
+			symlinkSync(join(dir, "target.json"), link);
+			assert.deepEqual(loadConfig(link), defaultConfig());
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns default for a symlink to a directory", () => {
+		const dir = tempDir("pstack-link-dir-");
+		const target = join(dir, "target");
+		const link = join(dir, "models.json");
+		try {
+			mkdirSync(target);
+			symlinkSync(target, link);
+			assert.deepEqual(loadConfig(link), defaultConfig());
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
