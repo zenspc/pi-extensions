@@ -16,6 +16,7 @@ import type {
 	ToolDefinition,
 	ToolRenderContext,
 	ToolRenderResultOptions,
+	ToolRendererResolver,
 } from "@earendil-works/pi-coding-agent";
 import {
 	createBashToolDefinition,
@@ -56,7 +57,6 @@ import {
 } from "./shell.ts";
 import {
 	type StockToolRenderers,
-	type ToolRendererWrapper,
 	tryRegisterToolRenderer,
 } from "./tool-renderer-api.ts";
 import type { QuietToolName } from "./tools-meta.ts";
@@ -350,6 +350,9 @@ function buildQuietRenderers(
 					const inner = stock.renderResult(result, options, theme, stockCtx);
 					shellState(context).stockResult = inner;
 					box.addChild(inner);
+				} else {
+					const text = resultText(result);
+					if (text) box.addChild(new Text(theme.fg("toolOutput", text), 0, 0));
 				}
 				return emptyComponent();
 			}
@@ -536,10 +539,11 @@ export function registerQuietToolRendererWrapper(
 	isEnabled: () => boolean,
 	index: CompactionIndex,
 ): boolean {
-	const wrap: ToolRendererWrapper = (tool, renderers) => {
-		const quiet = buildQuietRenderers(tool.name, isEnabled, index, {
+	const wrap: ToolRendererResolver = (toolName, next) => {
+		const renderers = next() ?? {};
+		const quiet = buildQuietRenderers(toolName, isEnabled, index, {
 			stockSelfShell: renderers.renderShell === "self",
-			fallbackTitle: tool.label ?? tool.name,
+			fallbackTitle: toolName,
 			renderCall: renderers.renderCall,
 			renderResult: renderers.renderResult,
 		});

@@ -53,6 +53,9 @@ Notes:
 Detailed context usage report.
 
 Shows startup context (system prompt, tools, context files, skills) and, once a conversation exists, LLM-facing entries with content-block breakdown.
+Conversation estimates follow Pi's canonical context projection, including replacements and omissions from context edits.
+Raw branch counts remain separate from effective context counts.
+When available, measured usage determines the total; `estimatedTotal` and category breakdowns remain chars/4 estimates.
 
 Subcommands:
 
@@ -116,6 +119,9 @@ Limits:
 ### Custom footer
 
 Richer footer status for the active session, including response timing and cache-freshness heuristics.
+Cumulative token and cost totals cover the whole session, including abandoned branches, assistant and tool-result usage, standalone usage, compaction, and branch summaries.
+Nested tool usage is counted only through its recorded parent result, matching Pi's accounting.
+Response speed and cache freshness still track assistant responses separately.
 
 `PI_CACHE_RETENTION=long` switches the cache TTL heuristic to the longer retention window.
 

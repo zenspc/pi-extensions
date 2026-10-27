@@ -2,10 +2,9 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
-  addAssistantUsage,
   emptyFooterUsageTotals,
   resolveFooterThinkingLevel,
-  sumAssistantUsageFromBranch,
+  sumRecordedUsage,
   thinkingLevelColorToken,
 } from "./custom-footer-helpers.mjs";
 
@@ -56,6 +55,7 @@ export default function (pi: ExtensionAPI) {
     // After one render at/after TTL, stop ticking until the next response.
     let idleFrozen = false;
     let usageTotals = emptyFooterUsageTotals();
+    let usageEntryCount = -1;
     let idleTick: ReturnType<typeof setInterval> | null = null;
 
     const stopIdleTick = () => {
@@ -90,7 +90,6 @@ export default function (pi: ExtensionAPI) {
 
     // Seed from existing session history when resuming
     const branch = ctx.sessionManager.getBranch();
-    usageTotals = sumAssistantUsageFromBranch(branch);
     for (let i = branch.length - 1; i >= 0; i--) {
       const entry = branch[i];
       if (entry.type === "message" && entry.message.role === "assistant") {
@@ -134,7 +133,6 @@ export default function (pi: ExtensionAPI) {
         assistantStartTime = null;
         lastResponseAt = Date.now();
         idleFrozen = false;
-        usageTotals = addAssistantUsage(usageTotals, m);
         startIdleTick();
         requestRender?.();
       }
@@ -152,7 +150,6 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setFooter((tui, theme, footerData) => {
       requestRender = () => tui.requestRender();
       const unsubBranch = footerData.onBranchChange(() => {
-        usageTotals = sumAssistantUsageFromBranch(ctx.sessionManager.getBranch());
         tui.requestRender();
       });
 
@@ -176,6 +173,13 @@ export default function (pi: ExtensionAPI) {
         dispose,
         invalidate() {},
         render(width: number): string[] {
+          // Entries are append-only. Read persisted sources so standalone usage and
+          // summaries are included, without double counting live nested-tool events.
+          const entries = ctx.sessionManager.getEntries();
+          if (entries.length !== usageEntryCount) {
+            usageTotals = sumRecordedUsage(entries);
+            usageEntryCount = entries.length;
+          }
           const { input, output, cost, reasoning } = usageTotals;
 
           const fmt = (n: number) => {
