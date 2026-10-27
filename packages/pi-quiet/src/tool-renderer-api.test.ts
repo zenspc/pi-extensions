@@ -1,30 +1,22 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-	type ToolRendererWrapper,
-	tryRegisterToolRenderer,
-} from "./tool-renderer-api.ts";
+import type { ExtensionAPI, ToolRendererResolver } from "@earendil-works/pi-coding-agent";
+import { tryRegisterToolRenderer } from "./tool-renderer-api.ts";
 
 describe("tryRegisterToolRenderer", () => {
 	it("returns false when Pi has no registerToolRenderer seam", () => {
-		const pi = {
-			registerTool() {},
-		} as unknown as ExtensionAPI;
-		const wrap: ToolRendererWrapper = (_tool, renderers) => renderers;
-		assert.equal(tryRegisterToolRenderer(pi, wrap), false);
+		const pi = { registerTool() {} } as unknown as ExtensionAPI;
+		const resolve: ToolRendererResolver = (_toolName, next) => next();
+		assert.equal(tryRegisterToolRenderer(pi, resolve), false);
 	});
 
-	it("registers the wrapper and returns true when the seam exists", () => {
-		const calls: ToolRendererWrapper[] = [];
+	it("registers the resolver and returns true when the seam exists", () => {
+		const calls: ToolRendererResolver[] = [];
 		const pi = {
-			registerToolRenderer(wrap: ToolRendererWrapper) {
-				calls.push(wrap);
-			},
+			registerToolRenderer(resolve: ToolRendererResolver) { calls.push(resolve); },
 		} as unknown as ExtensionAPI;
-		const wrap: ToolRendererWrapper = (_tool, renderers) => renderers;
-		assert.equal(tryRegisterToolRenderer(pi, wrap), true);
-		assert.equal(calls.length, 1);
-		assert.equal(calls[0], wrap);
+		const resolve: ToolRendererResolver = (_toolName, next) => next();
+		assert.equal(tryRegisterToolRenderer(pi, resolve), true);
+		assert.deepEqual(calls, [resolve]);
 	});
 });

@@ -1,60 +1,29 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-	addAssistantUsage,
+	addRecordedUsage,
 	emptyFooterUsageTotals,
 	resolveFooterThinkingLevel,
-	sumAssistantUsageFromBranch,
+	sumRecordedUsage,
 	thinkingLevelColorToken,
 	THINKING_LEVEL_COLORS,
 } from "./custom-footer-helpers.mjs";
 
-/**
- * Old footer policy: hard-code "high", only update on thinking_level_select.
- * New sessions never emit that event when the level is already set, so this
- * stays wrong. Kept here so the feedback loop remains red-capable against the bug.
- */
-function oldFooterThinkingLevelOnSessionStart(_getThinkingLevel) {
-	return "high";
-}
-
 describe("resolveFooterThinkingLevel", () => {
-	it("uses the live session level on new sessions (no thinking_level_select)", () => {
-		// Symptom: selected/default level is medium; no change event fires.
-		const live = "medium";
-		const getLive = () => live;
-
-		// Old policy reproduces the user-reported bug.
-		assert.equal(oldFooterThinkingLevelOnSessionStart(getLive), "high");
-		assert.notEqual(oldFooterThinkingLevelOnSessionStart(getLive), live);
-
-		// Fixed policy must show the selected level immediately.
-		assert.equal(resolveFooterThinkingLevel(getLive), "medium");
-		assert.notEqual(resolveFooterThinkingLevel(getLive), "high");
+	it("uses the live session level on new sessions without a change event", () => {
+		assert.equal(resolveFooterThinkingLevel(() => "medium"), "medium");
 	});
 
 	it("tracks whatever getThinkingLevel returns after a change", () => {
 		let live = "low";
-		assert.equal(
-			resolveFooterThinkingLevel(() => live),
-			"low",
-		);
+		assert.equal(resolveFooterThinkingLevel(() => live), "low");
 		live = "xhigh";
-		assert.equal(
-			resolveFooterThinkingLevel(() => live),
-			"xhigh",
-		);
+		assert.equal(resolveFooterThinkingLevel(() => live), "xhigh");
 	});
 
 	it("falls back to off for empty values", () => {
-		assert.equal(
-			resolveFooterThinkingLevel(() => ""),
-			"off",
-		);
-		assert.equal(
-			resolveFooterThinkingLevel(() => undefined),
-			"off",
-		);
+		assert.equal(resolveFooterThinkingLevel(() => ""), "off");
+		assert.equal(resolveFooterThinkingLevel(() => undefined), "off");
 	});
 });
 
@@ -76,129 +45,65 @@ describe("thinkingLevelColorToken", () => {
 	});
 });
 
-function assistantEntry(usage) {
-	return {
-		type: "message",
-		message: {
-			role: "assistant",
-			usage,
-		},
-	};
-}
+const usage = { input: 100, output: 50, cost: { total: 0.125 }, reasoningTokens: 20 };
+const totals = { input: 100, output: 50, cost: 0.125, reasoning: 20 };
+const assistantEntry = (value) => ({ type: "message", message: { role: "assistant", usage: value } });
 
 describe("emptyFooterUsageTotals", () => {
 	it("returns all zeros", () => {
-		assert.deepEqual(emptyFooterUsageTotals(), {
-			input: 0,
-			output: 0,
-			cost: 0,
-			reasoning: 0,
-		});
+		assert.deepEqual(emptyFooterUsageTotals(), { input: 0, output: 0, cost: 0, reasoning: 0 });
 	});
 });
 
-describe("sumAssistantUsageFromBranch", () => {
-	it("returns zeros for an empty branch", () => {
-		assert.deepEqual(sumAssistantUsageFromBranch([]), emptyFooterUsageTotals());
+describe("sumRecordedUsage", () => {
+	it("returns zeros for empty history", () => {
+		assert.deepEqual(sumRecordedUsage([]), emptyFooterUsageTotals());
 	});
 
 	it("sums one assistant message exactly", () => {
-		const branch = [
-			assistantEntry({
-				input: 100,
-				output: 50,
-				cost: { total: 0.012 },
-				reasoningTokens: 20,
-			}),
-		];
-		assert.deepEqual(sumAssistantUsageFromBranch(branch), {
-			input: 100,
-			output: 50,
-			cost: 0.012,
-			reasoning: 20,
-		});
+		assert.deepEqual(sumRecordedUsage([assistantEntry(usage)]), totals);
 	});
 
-	it("ignores user and tool messages", () => {
-		const branch = [
-			{ type: "message", message: { role: "user", content: "hi" } },
-			assistantEntry({
-				input: 10,
-				output: 5,
-				cost: { total: 0.001 },
-				reasoningTokens: 2,
-			}),
-			{ type: "message", message: { role: "toolResult", content: "ok" } },
-			{ type: "compaction", summary: "x" },
+	it("includes every recorded usage source, regardless of standalone kind", () => {
+		const entries = [
+			assistantEntry(usage),
+			{ type: "message", message: { role: "toolResult", usage } },
+			{ type: "usage", kind: "future-kind", usage },
+			{ type: "compaction", usage },
+			{ type: "branch_summary", usage },
 		];
-		assert.deepEqual(sumAssistantUsageFromBranch(branch), {
-			input: 10,
-			output: 5,
-			cost: 0.001,
-			reasoning: 2,
-		});
+		assert.deepEqual(sumRecordedUsage(entries), { input: 500, output: 250, cost: 0.625, reasoning: 100 });
 	});
 
-	it("treats missing reasoningTokens as 0", () => {
-		const branch = [
-			assistantEntry({
-				input: 1,
-				output: 2,
-				cost: { total: 0.5 },
-			}),
+	it("ignores user messages, metadata, and nested detail usage already in the parent result", () => {
+		const entries = [
+			{ type: "message", message: { role: "user", usage } },
+			{ type: "custom", usage },
+			{ type: "message", message: { role: "toolResult", usage, details: { nested: [{ usage }] } } },
 		];
-		assert.deepEqual(sumAssistantUsageFromBranch(branch), {
-			input: 1,
-			output: 2,
-			cost: 0.5,
-			reasoning: 0,
-		});
+		assert.deepEqual(sumRecordedUsage(entries), totals);
 	});
 
-	it("does not throw on malformed entries without usage", () => {
-		const branch = [
-			{ type: "message", message: { role: "assistant" } },
-			{ type: "message", message: { role: "assistant", usage: null } },
-			{
-				type: "message",
-				message: { role: "assistant", usage: { cost: {} } },
-			},
-		];
-		assert.deepEqual(sumAssistantUsageFromBranch(branch), emptyFooterUsageTotals());
+	it("treats missing reasoningTokens as zero", () => {
+		assert.deepEqual(sumRecordedUsage([assistantEntry({ input: 1, output: 2, cost: { total: 0.5 } })]),
+			{ input: 1, output: 2, cost: 0.5, reasoning: 0 });
+	});
+
+	it("tolerates malformed and missing usage", () => {
+		assert.deepEqual(sumRecordedUsage([
+			null, {}, assistantEntry(undefined), assistantEntry(null), assistantEntry({ cost: {} }),
+			assistantEntry({ input: NaN, output: Infinity, cost: { total: "bad" } }),
+			{ type: "compaction" }, { type: "message" },
+		]), emptyFooterUsageTotals());
 	});
 });
 
-describe("addAssistantUsage", () => {
-	it("matches sum of two assistant messages", () => {
-		const m1 = {
-			role: "assistant",
-			usage: {
-				input: 100,
-				output: 40,
-				cost: { total: 0.01 },
-				reasoningTokens: 5,
-			},
-		};
-		const m2 = {
-			role: "assistant",
-			usage: {
-				input: 200,
-				output: 60,
-				cost: { total: 0.02 },
-				reasoningTokens: 15,
-			},
-		};
-		const folded = addAssistantUsage(addAssistantUsage(emptyFooterUsageTotals(), m1), m2);
-		const summed = sumAssistantUsageFromBranch([
-			{ type: "message", message: m1 },
-			{ type: "message", message: m2 },
-		]);
-		assert.deepEqual(folded, summed);
-		assert.deepEqual(folded, {
-			input: 300,
-			output: 100,
-			cost: 0.03,
-			reasoning: 20,
-		});
+describe("addRecordedUsage", () => {
+	it("matches rebuilt totals without mutating its input", () => {
+		const empty = emptyFooterUsageTotals();
+		const folded = addRecordedUsage(addRecordedUsage(empty, { usage }), { usage });
+		assert.deepEqual(folded, sumRecordedUsage([assistantEntry(usage), { type: "usage", usage }]));
+		assert.deepEqual(folded, { input: 200, output: 100, cost: 0.25, reasoning: 40 });
+		assert.deepEqual(empty, emptyFooterUsageTotals());
 	});
 });

@@ -50,12 +50,12 @@ function asNumber(value) {
 }
 
 /**
- * Add one assistant message's usage into totals (pure; returns a new object).
+ * Add one recorded usage source into totals (pure; returns a new object).
  * @param {FooterUsageTotals} totals
  * @param {any} message
  * @returns {FooterUsageTotals}
  */
-export function addAssistantUsage(totals, message) {
+export function addRecordedUsage(totals, message) {
 	const usage = message?.usage;
 	return {
 		input: totals.input + asNumber(usage?.input),
@@ -66,15 +66,18 @@ export function addAssistantUsage(totals, message) {
 }
 
 /**
- * Sum assistant message usage from a session branch-like array.
- * @param {Iterable<any>} branch
+ * Sum top-level session usage only; nested tool usage is already in its parent result.
+ * @param {Iterable<any>} entries
  * @returns {FooterUsageTotals}
  */
-export function sumAssistantUsageFromBranch(branch) {
+export function sumRecordedUsage(entries) {
 	let totals = emptyFooterUsageTotals();
-	for (const entry of branch) {
-		if (entry?.type === "message" && entry?.message?.role === "assistant") {
-			totals = addAssistantUsage(totals, entry.message);
+	for (const entry of entries) {
+		if (entry?.type === "message" &&
+			(entry.message?.role === "assistant" || entry.message?.role === "toolResult")) {
+			totals = addRecordedUsage(totals, entry.message);
+		} else if (entry?.type === "usage" || entry?.type === "compaction" || entry?.type === "branch_summary") {
+			totals = addRecordedUsage(totals, entry);
 		}
 	}
 	return totals;

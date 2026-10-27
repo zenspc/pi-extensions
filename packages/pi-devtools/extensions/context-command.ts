@@ -10,7 +10,7 @@
  * Overlay content is never added to the model context.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, SessionProjection } from "@earendil-works/pi-coding-agent";
 import { Box, matchesKey, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	applyScrollAction,
@@ -57,6 +57,7 @@ type ContextReport = {
 	model: string;
 	limit: number;
 	total: number;
+	estimatedTotal: number;
 	free: number;
 	measuredTokens: number | null;
 	measuredPercent: number | null;
@@ -74,6 +75,7 @@ type ContextReport = {
 		entries: number;
 		branchMessages: number;
 		excludedByCompaction: number;
+		excludedByContextEdits: number;
 		byRole: Item[];
 		byBlockKind: Item[];
 		toolCalls: Item[];
@@ -238,10 +240,6 @@ function messageChars(message: AnyRecord): number {
 	return contentCharCount(message.content ?? message);
 }
 
-function messageRole(entry: AnyRecord): string | undefined {
-	return entry?.message?.role;
-}
-
 function selectedToolNames(options: AnyRecord, pi: ExtensionAPI): Set<string> {
 	const selected = Array.isArray(options.selectedTools) ? options.selectedTools : [];
 	if (selected.length === 0) {
@@ -380,7 +378,7 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 	].filter((item) => item.tokens > 0);
 
 	const branch = ctx.sessionManager.getBranch?.() ?? [];
-	const contextEntries = ctx.sessionManager.buildContextEntries?.() ?? branch;
+	const projection: SessionProjection = ctx.sessionManager.buildSessionProjection();
 
 	const roleTokens = new Map<string, number>();
 	const blockKindTokens = new Map<string, number>();
@@ -396,8 +394,9 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 	}
 
 	let entryIndex = 0;
-	for (const entry of contextEntries) {
+	for (const { sourceEntry: entry, messages } of projection.entries) {
 		entryIndex++;
+		if (messages.length === 0) continue;
 		const id = shortId(entry.id);
 
 		if (entry.type === "compaction") {
@@ -437,7 +436,7 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 		}
 
 		if (entry.type === "custom_message") {
-			const content = entry.content;
+			const content = (messages[0] as AnyRecord).content;
 			const blocks = contentBlocks(content);
 			const chars = blocksCharCount(blocks);
 			const tokens = estimateTokensFromChars(chars);
@@ -459,9 +458,11 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 
 		if (entry.type !== "message") continue;
 
+		const message = messages[0] as AnyRecord;
+		// Startup categories already account for the prompt and tool loadout.
+		if (message.role === "system") continue;
 		contextMessageEntries++;
-		const role = messageRole(entry) ?? "message";
-		const message = entry.message ?? {};
+		const role = message.role ?? "message";
 		const tokens = messageTokens(message);
 		const chars = messageChars(message);
 		conversationTokens += tokens;
@@ -514,7 +515,11 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 		});
 	}
 
-	const excludedByCompaction = Math.max(0, branchMessages - contextMessageEntries);
+	const selectedBranchMessages = projection.entries.filter(({ sourceEntry }) => sourceEntry.type === "message").length;
+	const excludedByCompaction = Math.max(0, branchMessages - selectedBranchMessages);
+	const excludedByContextEdits = projection.entries.filter(({ sourceEntry, messages }) =>
+		(sourceEntry.type === "message" || sourceEntry.type === "custom_message") && messages.length === 0,
+	).length;
 
 	const startupSystem = systemItems.reduce((sum, item) => sum + item.tokens, 0);
 	const startupTools = toolItems.reduce((sum, item) => sum + item.tokens, 0);
@@ -523,11 +528,13 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 	const compactionTokens = compactionItem?.tokens ?? 0;
 	const startupTokens = startupSystem + startupTools + startupMemory + startupSkills;
 	const estimatedTotal = startupTokens + conversationTokens;
-	const total = measuredTokens != null ? Math.max(measuredTokens, estimatedTotal) : estimatedTotal;
+	const total = measuredTokens ?? estimatedTotal;
 	const other = measuredTokens != null ? Math.max(0, measuredTokens - estimatedTotal) : 0;
 	const free = Math.max(0, limit - total);
 
-	const hasConversation = contextMessageEntries > 0 || !!compactionItem || entriesDetail.length > 0;
+	const hasConversation = entriesDetail.length > 0 || branch.some((entry: AnyRecord) =>
+		(entry.type === "message" && entry.message?.role !== "system") || entry.type === "custom_message",
+	);
 
 	const categories: Item[] = [
 		{ label: "System prompt", tokens: startupSystem },
@@ -556,10 +563,13 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 		model,
 		limit,
 		total,
+		estimatedTotal,
 		free,
 		measuredTokens,
 		measuredPercent,
-		estimateNote: "chars/4 estimate",
+		estimateNote: measuredTokens != null
+			? "Total uses measured usage; category breakdown uses chars/4 estimates."
+			: "chars/4 estimate",
 		sessionFile,
 		mode: hasConversation ? "conversation" : "startup",
 		categories,
@@ -573,6 +583,7 @@ function buildReport(pi: ExtensionAPI, ctx: any): ContextReport {
 			entries: contextMessageEntries,
 			branchMessages,
 			excludedByCompaction,
+			excludedByContextEdits,
 			byRole: [...roleTokens.entries()]
 				.map(([label, tokens]) => ({ label, tokens }))
 				.sort((a, b) => b.tokens - a.tokens),
@@ -598,7 +609,7 @@ function headerUsageLine(report: ContextReport): string {
 				: pct(report.measuredTokens, report.limit)
 			: null;
 	const pctPart = measuredPct != null ? ` (${measuredPct})` : "";
-	return `est ${fmt(report.total)} · provider ${measured} / ${fmt(report.limit)}${pctPart} · free ${fmt(report.free)} · mode ${report.mode}`;
+	return `est ${fmt(report.estimatedTotal)} · provider ${measured} / ${fmt(report.limit)}${pctPart} · free ${fmt(report.free)} · mode ${report.mode}`;
 }
 
 function plainReport(report: ContextReport): string {
@@ -651,8 +662,10 @@ function plainReport(report: ContextReport): string {
 			report.conversation.excludedByCompaction > 0
 				? ` · ${report.conversation.excludedByCompaction} branch messages excluded by compaction`
 				: "";
+		const edited = report.conversation.excludedByContextEdits
+			? ` · ${report.conversation.excludedByContextEdits} entries omitted by context edits` : "";
 		lines.push(
-			`Conversation · ${report.conversation.entries} context messages · ${report.conversation.branchMessages} branch messages${excl}`,
+			`Conversation · ${report.conversation.entries} context messages · ${report.conversation.branchMessages} branch messages${excl}${edited}`,
 		);
 		if (report.conversation.compaction) {
 			const c = report.conversation.compaction;
@@ -733,8 +746,10 @@ function renderReport(report: ContextReport, theme: any, width: number): string[
 			report.conversation.excludedByCompaction > 0
 				? ` · ${report.conversation.excludedByCompaction} excluded by compaction`
 				: "";
+		const edited = report.conversation.excludedByContextEdits
+			? ` · ${report.conversation.excludedByContextEdits} omitted by context edits` : "";
 		add(
-			`${theme.fg("accent", "Conversation")} ${theme.fg("dim", `${report.conversation.entries} context msgs · ${report.conversation.branchMessages} branch${excl}`)}`,
+			`${theme.fg("accent", "Conversation")} ${theme.fg("dim", `${report.conversation.entries} context msgs · ${report.conversation.branchMessages} branch${excl}${edited}`)}`,
 		);
 		if (report.conversation.compaction) item("├", report.conversation.compaction);
 		for (const row of report.conversation.byRole) item("├", row);
@@ -799,6 +814,7 @@ function reportToJson(report: ContextReport): string {
 		model: report.model,
 		limit: report.limit,
 		total: report.total,
+		estimatedTotal: report.estimatedTotal,
 		free: report.free,
 		measuredTokens: report.measuredTokens,
 		measuredPercent: report.measuredPercent,
@@ -818,6 +834,7 @@ function reportToJson(report: ContextReport): string {
 			entries: report.conversation.entries,
 			branchMessages: report.conversation.branchMessages,
 			excludedByCompaction: report.conversation.excludedByCompaction,
+			excludedByContextEdits: report.conversation.excludedByContextEdits,
 			byRole: scrubList(report.conversation.byRole),
 			byBlockKind: scrubList(report.conversation.byBlockKind),
 			toolCalls: scrubList(report.conversation.toolCalls),
