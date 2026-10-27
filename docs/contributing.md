@@ -38,6 +38,9 @@ pi -e ./packages/pi-sticky-editor
 pi install ./packages/pi-safety
 ```
 
+`pnpm test` runs at most two test files concurrently to reduce CPU and memory contention during real Chrome integration tests on CI runners.
+All tests still run, including browser launch, reuse, snapshots, screenshots, and navigation approval checks.
+
 Path installs are not copied.
 Edit files in place and restart or `/reload` as needed.
 
