@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
 
@@ -27,9 +27,7 @@ type ResolvedHost = {
 
 export class RelativeUserDataDirError extends Error {
 	constructor(value: string) {
-		super(
-			`${USER_DATA_DIR_ENV} must be an absolute path after ~ expansion (got ${value})`,
-		);
+		super(`${USER_DATA_DIR_ENV} must be an absolute path after ~ expansion (got ${value})`);
 		this.name = "RelativeUserDataDirError";
 	}
 }
@@ -38,8 +36,8 @@ export class MissingChromeBinaryError extends Error {
 	constructor(overrideValue?: string) {
 		super(
 			overrideValue
-				? `${CHROME_BIN_ENV}=${overrideValue} does not exist. Set ${CHROME_BIN_ENV} to a Chrome, Chromium, or Edge executable.`
-				: `No Chrome binary found. Set ${CHROME_BIN_ENV} to a Chrome, Chromium, or Edge executable.`,
+				? `${CHROME_BIN_ENV}=${overrideValue} is not an executable file. Set ${CHROME_BIN_ENV} to a Chrome, Chromium, or Edge executable.`
+				: `No Chrome binary found. Set ${CHROME_BIN_ENV} to a Chrome, Chromium, or Edge executable.`
 		);
 		this.name = "MissingChromeBinaryError";
 	}
@@ -92,7 +90,7 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
 function expandLeadingTilde(
 	value: string,
 	home: string,
-	join: (...paths: string[]) => string,
+	join: (...paths: string[]) => string
 ): string {
 	if (value === "~") return home;
 	if (value.startsWith("~/") || value.startsWith("~\\")) {
@@ -106,13 +104,22 @@ function resolveHost(host: ResolveHost = {}): ResolvedHost {
 		env: host.env ?? process.env,
 		homedir: host.homedir ?? homedir(),
 		family: osFamily(host.platform ?? process.platform),
-		exists: host.exists ?? ((path) => existsSync(path)),
+		exists:
+			host.exists ??
+			((path) => {
+				try {
+					accessSync(path, constants.X_OK);
+					return statSync(path).isFile();
+				} catch {
+					return false;
+				}
+			}),
 	};
 }
 
 function win32Candidates(
 	env: NodeJS.ProcessEnv,
-	join: (...paths: string[]) => string,
+	join: (...paths: string[]) => string
 ): BinaryCandidate[] {
 	const pf = nonempty(env.PROGRAMFILES) ?? "C:\\Program Files";
 	const pf86 = nonempty(env["PROGRAMFILES(X86)"]) ?? "C:\\Program Files (x86)";
@@ -179,12 +186,12 @@ function locateCandidate(candidate: BinaryCandidate, host: ResolvedHost): string
 
 function locateOverride(raw: string, host: ResolvedHost): string | undefined {
 	const expanded = expandLeadingTilde(raw, host.homedir, pathOps(host.family).join);
-	if (pathOps(host.family).isAbsolute(expanded)) {
+	if (pathOps(host.family).isAbsolute(expanded) || /[\\/]/.test(expanded)) {
 		return host.exists(expanded) ? expanded : undefined;
 	}
 	const fromPath = lookupOnPath(expanded, host);
 	if (fromPath !== undefined) return fromPath;
-	return host.exists(expanded) ? expanded : undefined;
+	return host.exists(expanded) ? pathOps(host.family).resolve(expanded) : undefined;
 }
 
 export function resolveUserDataDir(host: ResolveHost = {}): string {
@@ -197,6 +204,10 @@ export function resolveUserDataDir(host: ResolveHost = {}): string {
 	const expanded = expandLeadingTilde(override, resolved.homedir, join);
 	if (!isAbsolute(expanded)) {
 		throw new RelativeUserDataDirError(override);
+	}
+	const normalized = pathOps(resolved.family).normalize(expanded);
+	if (pathOps(resolved.family).dirname(normalized) === normalized) {
+		throw new Error(`${USER_DATA_DIR_ENV} must not be a filesystem root.`);
 	}
 	return expanded;
 }

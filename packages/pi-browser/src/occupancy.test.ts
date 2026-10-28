@@ -47,7 +47,7 @@ describe("readChromeLock", () => {
 					throw new CodedError("ENOENT");
 				},
 			}),
-			{ kind: "absent" },
+			{ kind: "absent" }
 		);
 	});
 
@@ -64,7 +64,7 @@ describe("readChromeLock", () => {
 					return false;
 				},
 			}),
-			{ kind: "stale", pid: 999 },
+			{ kind: "stale", pid: 999 }
 		);
 	});
 
@@ -75,7 +75,7 @@ describe("readChromeLock", () => {
 				hostname: () => "box",
 				processExists: (pid) => pid === 7,
 			}),
-			{ kind: "live", pid: 7 },
+			{ kind: "live", pid: 7 }
 		);
 	});
 
@@ -86,14 +86,14 @@ describe("readChromeLock", () => {
 					throw new CodedError("EINVAL");
 				},
 			}),
-			{ kind: "live" },
+			{ kind: "live" }
 		);
 		assert.deepEqual(
 			readChromeLock(DIR, {
 				readlink: () => "not-a-lock",
 				hostname: () => "box",
 			}),
-			{ kind: "live" },
+			{ kind: "live" }
 		);
 		assert.deepEqual(
 			readChromeLock(DIR, {
@@ -101,7 +101,7 @@ describe("readChromeLock", () => {
 				hostname: () => "box",
 				processExists: () => false,
 			}),
-			{ kind: "live" },
+			{ kind: "live" }
 		);
 	});
 });
@@ -120,7 +120,7 @@ describe("inspectOccupancy", () => {
 				},
 				waitForPort,
 			}),
-			{ kind: "empty" },
+			{ kind: "empty" }
 		);
 		assert.deepEqual(
 			await inspectOccupancy(DIR, {
@@ -129,7 +129,7 @@ describe("inspectOccupancy", () => {
 				processExists: () => false,
 				waitForPort,
 			}),
-			{ kind: "stale-lock" },
+			{ kind: "stale-lock" }
 		);
 		assert.equal(probed, 0);
 	});
@@ -145,7 +145,7 @@ describe("inspectOccupancy", () => {
 					return 45000;
 				},
 			}),
-			{ kind: "live-with-debug", port: 45000 },
+			{ kind: "live-with-debug", port: 45000 }
 		);
 	});
 
@@ -159,17 +159,36 @@ describe("inspectOccupancy", () => {
 					throw new Error("no port");
 				},
 			}),
-			{ kind: "live-without-debug" },
+			{ kind: "live-without-debug" }
 		);
 	});
 });
 
 describe("clearStaleLock", () => {
+	it("refuses to delete a live or unverifiable lock", () => {
+		const deleted: string[] = [];
+		assert.throws(
+			() =>
+				clearStaleLock(
+					DIR,
+					(path) => {
+						deleted.push(path);
+					},
+					{ readlink: () => "box-7", hostname: () => "box", processExists: () => true }
+				),
+			/Refusing/
+		);
+		assert.deepEqual(deleted, []);
+	});
 	it("unlinks the singleton files and leftover DevToolsActivePort", () => {
 		const removed: string[] = [];
-		clearStaleLock(DIR, (path) => {
-			removed.push(path);
-		});
+		clearStaleLock(
+			DIR,
+			(path) => {
+				removed.push(path);
+			},
+			{ readlink: () => "box-999", hostname: () => "box", processExists: () => false }
+		);
 		assert.deepEqual(removed, [
 			join(DIR, SINGLETON_LOCK_FILE),
 			join(DIR, SINGLETON_SOCKET_FILE),

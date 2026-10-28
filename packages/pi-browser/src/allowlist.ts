@@ -1,13 +1,7 @@
-import {
-	lstatSync,
-	mkdirSync,
-	readFileSync,
-	renameSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
+import { writeJsonAtomic } from "./storage.ts";
 
 export const ALLOWLIST_FILENAME = "pi-browser-allowlist.json";
 
@@ -18,24 +12,24 @@ export interface AllowlistFile {
 
 export function getAgentDir(
 	env: NodeJS.ProcessEnv = process.env,
-	home: () => string = homedir,
+	home: () => string = homedir
 ): string {
 	const envDir = env.PI_CODING_AGENT_DIR;
-	return envDir
-		? envDir.replace(/^~(\/|$)/, `${home()}$1`)
-		: join(home(), ".pi", "agent");
+	return envDir ? envDir.replace(/^~(\/|$)/, `${home()}$1`) : join(home(), ".pi", "agent");
 }
 
 export function getAllowlistPath(
 	env: NodeJS.ProcessEnv = process.env,
-	home: () => string = homedir,
+	home: () => string = homedir
 ): string {
 	return join(getAgentDir(env, home), "extensions", ALLOWLIST_FILENAME);
 }
 
 export function parseAllowlist(raw: unknown): Set<string> {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return new Set();
-	const domains = (raw as Record<string, unknown>).domains;
+	const file = raw as Record<string, unknown>;
+	if (file.version !== 1) return new Set();
+	const domains = file.domains;
 	if (!Array.isArray(domains)) return new Set();
 	return new Set(domains.filter((entry): entry is string => typeof entry === "string"));
 }
@@ -49,22 +43,33 @@ export function loadAllowlist(path: string = getAllowlistPath()): Set<string> {
 }
 
 function readAllowlistFile(path: string): AllowlistFile {
-	return { version: 1, domains: [...loadAllowlist(path)].sort() };
+	let raw: unknown;
+	try {
+		raw = JSON.parse(readFileSync(path, "utf8"));
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, domains: [] };
+		throw new Error(
+			`Cannot update invalid Allowlist at ${path}. Repair it before approving permanently.`,
+			{ cause: error }
+		);
+	}
+	const file = raw as AllowlistFile | null;
+	if (
+		!file ||
+		file.version !== 1 ||
+		!Array.isArray(file.domains) ||
+		!file.domains.every((entry) => typeof entry === "string")
+	) {
+		throw new Error(
+			`Cannot update invalid Allowlist at ${path}. Repair it before approving permanently.`
+		);
+	}
+	return { version: 1, domains: [...new Set(file.domains)].sort() };
 }
 
 export function addToAllowlist(domain: string, path: string = getAllowlistPath()): void {
 	const file = readAllowlistFile(path);
 	if (!file.domains.includes(domain)) file.domains.push(domain);
-	mkdirSync(dirname(path), { recursive: true });
-	const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
-	try {
-		writeFileSync(tmp, `${JSON.stringify(file, null, "\t")}\n`, "utf8");
-		renameSync(tmp, path);
-	} catch (error) {
-		try {
-			unlinkSync(tmp);
-		} catch {
-		}
-		throw error;
-	}
+	file.domains.sort();
+	writeJsonAtomic(path, file);
 }

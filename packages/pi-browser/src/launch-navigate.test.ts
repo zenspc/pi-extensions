@@ -20,7 +20,7 @@ type AnyTool = ToolDefinition<any, any>;
 
 function loadTools(
 	attachment: ReturnType<typeof createAttachment>,
-	allowlistPath: string,
+	allowlistPath: string
 ): Map<string, AnyTool> {
 	const tools = new Map<string, AnyTool>();
 	const pi = {
@@ -52,7 +52,7 @@ function startApp(): Promise<{ server: Server; port: number }> {
 function closeServer(server: Server): Promise<void> {
 	server.closeAllConnections();
 	return new Promise((resolve, reject) =>
-		server.close((error) => (error ? reject(error) : resolve())),
+		server.close((error) => (error ? reject(error) : resolve()))
 	);
 }
 
@@ -123,8 +123,10 @@ describe("launch path", () => {
 			{ url: `http://127.0.0.1:${appPort}/` },
 			undefined,
 			undefined,
-			undefined as never,
+			undefined as never
 		);
+		assert.equal(result.content[0].type, "text");
+		assert.ok(result.content[0].type === "text");
 		assert.match(result.content[0].text, /Launch page/);
 		assert.match(result.content[0].text, new RegExp(`127\\.0\\.0\\.1:${appPort}`));
 		assert.equal(result.details.title, "Launch page");
@@ -134,7 +136,7 @@ describe("launch path", () => {
 		if (decoyBound) {
 			assert.equal(
 				decoyHits.some((url) => url.includes("/json/version")),
-				false,
+				false
 			);
 		}
 

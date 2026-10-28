@@ -13,15 +13,15 @@ describe("resolveUserDataDir", () => {
 	it("defaults to {homedir}/.pi-chrome on linux, darwin, and win32", () => {
 		assert.equal(
 			resolveUserDataDir({ env: {}, homedir: "/home/rey", platform: "linux" }),
-			"/home/rey/.pi-chrome",
+			"/home/rey/.pi-chrome"
 		);
 		assert.equal(
 			resolveUserDataDir({ env: {}, homedir: "/Users/rey", platform: "darwin" }),
-			"/Users/rey/.pi-chrome",
+			"/Users/rey/.pi-chrome"
 		);
 		assert.equal(
 			resolveUserDataDir({ env: {}, homedir: "C:\\Users\\rey", platform: "win32" }),
-			"C:\\Users\\rey\\.pi-chrome",
+			"C:\\Users\\rey\\.pi-chrome"
 		);
 	});
 
@@ -32,7 +32,7 @@ describe("resolveUserDataDir", () => {
 				homedir: "/home/rey",
 				platform: "linux",
 			}),
-			"/abs/dir",
+			"/abs/dir"
 		);
 	});
 
@@ -43,7 +43,7 @@ describe("resolveUserDataDir", () => {
 				homedir: "/home/rey",
 				platform: "linux",
 			}),
-			"/home/rey/agent",
+			"/home/rey/agent"
 		);
 	});
 
@@ -54,7 +54,7 @@ describe("resolveUserDataDir", () => {
 				homedir: "C:\\Users\\rey",
 				platform: "win32",
 			}),
-			"C:\\Users\\rey\\agent",
+			"C:\\Users\\rey\\agent"
 		);
 	});
 
@@ -65,7 +65,7 @@ describe("resolveUserDataDir", () => {
 				homedir: "C:\\Users\\rey",
 				platform: "win32",
 			}),
-			"C:\\Users\\rey\\agent",
+			"C:\\Users\\rey\\agent"
 		);
 	});
 
@@ -78,8 +78,20 @@ describe("resolveUserDataDir", () => {
 					platform: "linux",
 				}),
 			(error: unknown) =>
-				error instanceof RelativeUserDataDirError && /absolute/.test(error.message),
+				error instanceof RelativeUserDataDirError && /absolute/.test(error.message)
 		);
+	});
+
+	it("rejects a filesystem root as the User Data Dir", () => {
+		for (const [platform, root] of [
+			["linux", "/"],
+			["win32", "C:\\\\"],
+		] as const) {
+			assert.throws(
+				() => resolveUserDataDir({ env: { [USER_DATA_DIR_ENV]: root }, platform }),
+				/filesystem root/
+			);
+		}
 	});
 
 	it("does not expand ~name", () => {
@@ -91,7 +103,7 @@ describe("resolveUserDataDir", () => {
 					platform: "linux",
 				}),
 			(error: unknown) =>
-				error instanceof RelativeUserDataDirError && /absolute/.test(error.message),
+				error instanceof RelativeUserDataDirError && /absolute/.test(error.message)
 		);
 	});
 
@@ -102,7 +114,7 @@ describe("resolveUserDataDir", () => {
 				homedir: "/home/rey",
 				platform: "linux",
 			}),
-			"/home/rey/.pi-chrome",
+			"/home/rey/.pi-chrome"
 		);
 	});
 });
@@ -119,7 +131,7 @@ describe("resolveChromeBinary", () => {
 					return path === "/opt/chrome";
 				},
 			}),
-			"/opt/chrome",
+			"/opt/chrome"
 		);
 		assert.deepEqual(queried, ["/opt/chrome"]);
 	});
@@ -132,7 +144,7 @@ describe("resolveChromeBinary", () => {
 				platform: "linux",
 				exists: (path) => path === "/home/rey/opt/chrome",
 			}),
-			"/home/rey/opt/chrome",
+			"/home/rey/opt/chrome"
 		);
 	});
 
@@ -144,7 +156,7 @@ describe("resolveChromeBinary", () => {
 				exists: (path) =>
 					path === "/opt/bin/google-chrome" || path === "/usr/bin/google-chrome-stable",
 			}),
-			"/opt/bin/google-chrome",
+			"/opt/bin/google-chrome"
 		);
 	});
 
@@ -155,7 +167,18 @@ describe("resolveChromeBinary", () => {
 				platform: "linux",
 				exists: (path) => path === "./chrome",
 			}),
-			"./chrome",
+			"./chrome"
+		);
+	});
+
+	it("makes a bare local executable path absolute rather than accidentally searching PATH again", () => {
+		assert.equal(
+			resolveChromeBinary({
+				env: { [CHROME_BIN_ENV]: "chrome" },
+				platform: "linux",
+				exists: (path) => path === "chrome",
+			}),
+			`${process.cwd()}/chrome`
 		);
 	});
 
@@ -164,10 +187,9 @@ describe("resolveChromeBinary", () => {
 			resolveChromeBinary({
 				env: {},
 				platform: "linux",
-				exists: (path) =>
-					path === "/usr/bin/google-chrome" || path === "/usr/bin/chromium",
+				exists: (path) => path === "/usr/bin/google-chrome" || path === "/usr/bin/chromium",
 			}),
-			"/usr/bin/google-chrome",
+			"/usr/bin/google-chrome"
 		);
 	});
 
@@ -181,18 +203,18 @@ describe("resolveChromeBinary", () => {
 					queried.push(path);
 					return false;
 				},
-			}),
+			})
 		);
 		assert.equal(
 			queried.some((path) => path.endsWith("chrome.exe")),
-			false,
+			false
 		);
 	});
 
 	it("treats unknown platforms as linux", () => {
 		assert.equal(
 			resolveUserDataDir({ env: {}, homedir: "/home/rey", platform: "freebsd" }),
-			"/home/rey/.pi-chrome",
+			"/home/rey/.pi-chrome"
 		);
 		const queried: string[] = [];
 		assert.throws(() =>
@@ -203,12 +225,12 @@ describe("resolveChromeBinary", () => {
 					queried.push(path);
 					return false;
 				},
-			}),
+			})
 		);
 		assert.ok(queried.includes("/usr/bin/google-chrome-stable"));
 		assert.equal(
 			queried.some((path) => path.endsWith("chrome.exe")),
-			false,
+			false
 		);
 	});
 
@@ -220,7 +242,7 @@ describe("resolveChromeBinary", () => {
 				exists: (path) =>
 					path === "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 			}),
-			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 		);
 	});
 
@@ -231,7 +253,7 @@ describe("resolveChromeBinary", () => {
 				platform: "win32",
 				exists: (path) => path === "D:\\Apps\\Google\\Chrome\\Application\\chrome.exe",
 			}),
-			"D:\\Apps\\Google\\Chrome\\Application\\chrome.exe",
+			"D:\\Apps\\Google\\Chrome\\Application\\chrome.exe"
 		);
 	});
 
@@ -244,7 +266,7 @@ describe("resolveChromeBinary", () => {
 					exists: () => false,
 				}),
 			(error: unknown) =>
-				error instanceof MissingChromeBinaryError && error.message.includes(CHROME_BIN_ENV),
+				error instanceof MissingChromeBinaryError && error.message.includes(CHROME_BIN_ENV)
 		);
 	});
 
@@ -259,7 +281,7 @@ describe("resolveChromeBinary", () => {
 			(error: unknown) =>
 				error instanceof MissingChromeBinaryError &&
 				error.message.includes(CHROME_BIN_ENV) &&
-				error.message.includes("/missing/chrome"),
+				error.message.includes("/missing/chrome")
 		);
 	});
 
@@ -270,7 +292,7 @@ describe("resolveChromeBinary", () => {
 				platform: "linux",
 				exists: (path) => path === "/usr/bin/google-chrome",
 			}),
-			"/usr/bin/google-chrome",
+			"/usr/bin/google-chrome"
 		);
 	});
 });
