@@ -10,7 +10,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 |---|---|---|
 | [`@zenspc/pi-safety`](./packages/pi-safety) | `pi install npm:@zenspc/pi-safety` | Confirm destructive bash/git actions |
 | [`@zenspc/pi-workflow`](./packages/pi-workflow) | `pi install npm:@zenspc/pi-workflow` | Plan mode + tracked execution |
-| [`@zenspc/pi-devtools`](./packages/pi-devtools) | `pi install npm:@zenspc/pi-devtools` | `/context` report + richer footer |
+| [`@zenspc/pi-devtools`](./packages/pi-devtools) | `pi install npm:@zenspc/pi-devtools` | `/ctx` context audit + richer footer |
 | [`@zenspc/pi-preferred-thinking`](./packages/pi-preferred-thinking) | `pi install npm:@zenspc/pi-preferred-thinking` | Per-model thinking level preferences (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-copilot-discovery`](./packages/pi-copilot-discovery) | `pi install npm:@zenspc/pi-copilot-discovery` | Live GitHub Copilot model discovery (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-spinner`](./packages/pi-spinner) | `pi install npm:@zenspc/pi-spinner` | Customize the spinner animation and rotate the loader message |
@@ -23,7 +23,8 @@ Pre-1.0 APIs may change.
 
 ## Security notes
 
-- **pi-devtools**: full prompt/memory dumps can contain secrets, tokens, or PII. Prefer `/context json` when sharing reports, and redact before pasting into issues.
+- **pi-devtools**: `/ctx` reports include paths and short previews of messages and tool arguments, which may contain secrets or PII.
+  Redact before sharing reports.
 - **pi-copilot-discovery**: reuses your existing GitHub Copilot credentials and may enable model policies on your Copilot account after login. Unmaintained; functionality is now officially supported by Pi.
 - **pi-safety**: best-effort confirmation for known risky patterns. It is not a sandbox or a complete deny-list.
 - **pi-workflow**: plan mode is a workflow aid, not a hard security boundary.
@@ -74,7 +75,7 @@ Example: install only the context command from devtools.
   "packages": [
     {
       "source": "npm:@zenspc/pi-devtools",
-      "extensions": ["extensions/context-command.ts"]
+      "extensions": ["extensions/context-audit/index.ts"]
     }
   ]
 }

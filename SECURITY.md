@@ -42,7 +42,7 @@ That is not treated as a vulnerability by itself.
 
 Examples:
 
-- `/context prompt full` and similar context dumps
+- `/ctx` audit reports, including paths and short previews of messages and tool arguments
 - Memory dumps or session inspection output from these extensions
 
 Those features can include local secrets, tokens, or absolute paths from the host machine.
@@ -62,7 +62,7 @@ If a tarball leaked tokens or secrets, rotate credentials and report via the pri
 
 The following are expected product behavior, not security bugs:
 
-- Intentional local context dumps in `@zenspc/pi-devtools` (`prompt full`, expanded prompt view, `memory <substr>`)
+- Intentional local context inspection in `@zenspc/pi-devtools` (`/ctx` reports)
 - User-disabled safety guard (`~/.pi/agent/safety-guard.json` with `"enabled": false`)
 - Upstream Copilot/GitHub outages, rate limits, or policy denials
 - Missing models due to tenant entitlements or account configuration
