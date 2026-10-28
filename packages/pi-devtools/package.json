@@ -1,7 +1,7 @@
 {
   "name": "@zenspc/pi-devtools",
   "version": "0.4.1",
-  "description": "Context usage report, cwd switching (/cd), markdown preview (/preview), richer session footer, welcome header, and Dracula theme for Pi",
+  "description": "Context audit (/ctx), cwd switching (/cd), markdown preview (/preview), richer session footer, welcome header, and Dracula theme for Pi",
   "keywords": [
     "pi-package",
     "pi-extension",

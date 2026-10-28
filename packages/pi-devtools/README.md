@@ -1,6 +1,6 @@
 # @zenspc/pi-devtools
 
-Context usage report, working-directory switching, markdown preview, richer session footer, custom welcome header, and Dracula theme for Pi.
+Context audit, working-directory switching, markdown preview, richer session footer, custom welcome header, and Dracula theme for Pi.
 
 ## Install
 
@@ -48,47 +48,33 @@ Notes:
 - This is one active cwd at a time, not a multi-root workspace.
 - There is no LLM tool for `/cd` (command only).
 
-### `/context`
+### `/ctx`
 
-Detailed context usage report.
+Audits what fills the context window and attributes the cost to packages, extensions, tools, skills, and context files.
+Replaces the former `/context` command and its subcommands.
 
-Shows startup context (system prompt, tools, context files, skills) and, once a conversation exists, LLM-facing entries with content-block breakdown.
-Conversation estimates follow Pi's canonical context projection, including replacements and omissions from context edits.
-Raw branch counts remain separate from effective context counts.
-When available, measured usage determines the total; `estimatedTotal` and category breakdowns remain chars/4 estimates.
+- **Findings** - ranked problems with suggested fixes.
+- **Fixed overhead** - system prompt, tool declarations, skills list, context files, and extension prompt sections, grouped by source.
+- **Conversation** - messages, replies, thinking, tool calls/results, `!` bash output, injected messages, and summaries.
+- **Largest items**, **tool results by tool**, **repeated calls**, and **provider-measured jumps** between requests.
 
-Subcommands:
+Uses Pi's canonical session projection, including compaction and context edits.
+Character counts are exact; token estimates are calibrated to provider counts when available, otherwise use 4 chars/token.
+Opaque thinking signatures are reported separately rather than priced.
 
-- `help`
-- `prompt` - system prompt size (chars / tokens / lines)
-- `prompt full` - dump full system prompt text
-- `memory [substr]`
-- `tools`
-- `json`
+In the TUI, the report opens in a full-screen overlay:
 
-In the TUI, `/context prompt` starts collapsed.
-Press `e` or `space` to expand or collapse the body.
-
-Context overlays scroll inside the component (not via terminal scrollback), so they keep working when other extensions (for example sticky editor) own transcript scrolling:
-
-- `↑` / `↓`, `j` / `k`, `Ctrl+N` / `Ctrl+P` - line scroll
-- `PgUp` / `PgDn` - page scroll
+- `↑` / `↓`, `j` / `k` - line scroll
+- `PgUp` / `PgDn`, `b` / `space` / `f` - page scroll
 - `g` / `Home`, `G` / `End` - jump top/bottom
-- `Esc` / `Enter` - close
+- `q` / `Esc` / `Enter` - close
 
-Overlay content is never added to the model context.
+Outside the TUI, the report is sent as a notification.
+The report is never added to the model context.
+It includes paths and short previews of messages and tool arguments, which may contain sensitive information.
+Redact before sharing.
 
-Security note:
-
-- Default `/context` and `/context prompt` are size/metadata oriented (no full bodies).
-- `prompt full`, expanded TUI prompt view, and `memory <substr>` dump **raw** local content (system prompt and memory file bodies).
-- Those dumps can contain secrets, tokens, paths, or PII.
-- Overlay output is never added to the model context.
-- Prefer `/context json` when sharing a report.
-- Redact dumps before pasting into chats, tickets, or GitHub issues.
-- Large dumps are truncated for display (print mode and UI).
-
-`/context help` repeats the same warnings.
+See [context-audit's module guide](./extensions/context-audit/README.md) for details.
 
 ### `/preview`
 
@@ -164,7 +150,7 @@ If you already have a local `dracula` theme, remove or rename that file so the p
   "packages": [
     {
       "source": "npm:@zenspc/pi-devtools",
-      "extensions": ["extensions/context-command.ts"]
+      "extensions": ["extensions/context-audit/index.ts"]
     }
   ]
 }
@@ -213,8 +199,9 @@ Theme only:
 ```text
 extensions/cd-command.ts
 extensions/cd-helpers.mjs
-extensions/context-command.ts
-extensions/context-scroll.mjs
+extensions/context-audit/index.ts
+extensions/context-audit/          # report analysis, rendering, and viewer modules
+extensions/context-scroll.mjs     # shared by /preview
 extensions/custom-footer.ts
 extensions/preview-command.ts
 extensions/welcome-header.ts
