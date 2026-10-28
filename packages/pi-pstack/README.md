@@ -1,8 +1,7 @@
 # @zenspc/pi-pstack
 
-pstack for Pi: rigorous agent workflows you can parallelize with confidence. Ported from the Cursor pstack plugin.
-
-If you want to go fast, go deep first. pstack helps you write less, but higher quality code. It gives you fearless parallelism: when an agent goes deep and writes good, verifiable code, you can parallelize with confidence. Start multiple agents with `poteto-mode` and trust they will apply rigorous engineering principles to their work.
+Pstack for Pi provides rigorous agent workflows, playbooks, engineering principles, and multi-model review.
+It is ported from [Cursor pstack](https://github.com/cursor/plugins/tree/main/pstack).
 
 ## Install
 
@@ -10,45 +9,98 @@ If you want to go fast, go deep first. pstack helps you write less, but higher q
 pi install npm:@zenspc/pi-pstack
 ```
 
-Requires [`pi-subagents`](https://www.npmjs.com/package/pi-subagents) for the `poteto-agent`, `comment-sicko`, and workflow fan-outs (`how`, `why`, `arena`, `swarm`, `interrogate`, `reflect`).
+Targets Pi `1.4.0`, the latest published release at this sync.
+Install [`pi-subagents`](https://www.npmjs.com/package/pi-subagents) for the bundled agents and delegated workflows.
+Delegation still requires authorization from the operator's request or applicable user/project instructions.
 
 ## Get started
 
-1. Run `/setup-pstack` once to pick which models each role uses (optional; every role inherits the parent session model otherwise).
-2. Use `/poteto-mode` for sticky Poteto Mode. It stays on until `/poteto-mode off`. `/skill:poteto-mode` also enables it.
-3. Run `/pstack off` to hide even the four Discoverable skills (`how`, `why`, `unslop`, `typescript-best-practices`) from the Skill catalog.
-   Off persists in `~/.pi/agent/pstack/models.json`.
-   `/skill:<name>` keeps working.
-   `/pstack on` restores those four, not all 47.
+1. Run `/setup-pstack` to choose available Pi models for each role.
+   This is optional; every role inherits the parent session model by default.
+2. Use `/poteto-mode [task]` to enable sticky Poteto Mode.
+   It stays on until `/poteto-mode off`.
+   `/skill:poteto-mode` also enables it.
+3. Use `/skill:poteto-help` for help choosing a skill or playbook.
+4. Run `/pstack off` to hide the four Discoverable skills from the Skill catalog.
+   The setting persists in `~/.pi/agent/pstack/models.json`.
+   Explicit `/skill:<name>` commands still work.
+   `/pstack on` restores those four, not all 58.
 
-That is it.
-The other skills are Hidden; the mode skill uses them as needed.
+Only `how`, `why`, `unslop`, and `typescript-best-practices` are Discoverable.
+All other skills are Hidden and load when invoked explicitly or routed to by a workflow.
 
-## What you get
+## What is included
 
-- **47 skills**, including:
-  - `poteto-mode`: the main entry point. Reads your request, matches one of 23 playbooks (bug fix, perf, feature, refactoring, investigation, shipping, orchestrate, autopilot, and more), copies its steps in verbatim, and routes to the other skills as steps fire.
-  - Workflow skills: `how`, `why`, `recall`, `blast-radius`, `architect`, `arena`, `swarm`, `interrogate`, `reflect`, `teach`, `tdd`, `no-comments`, `unslop`, `deslop`, `bro`, `figure-it-out`, `show-me-your-work`, `create-verification-skill`, `maintain-verification-skill`, `automate-me`, `technical-writing`, `typescript-best-practices`.
-  - 23 principle skills (`principle-laziness-protocol`, `principle-model-the-domain`, `principle-prove-it-works`, ...), one rule each, indexed inline by `poteto-mode`.
-- **2 subagents** (loaded by pi-subagents):
-  - `poteto-agent`: runs poteto's style end to end. Reads `poteto-mode` in full before any work.
-  - `comment-sicko`: read-only comment reviewer that savors deletion. Usually invoked through the `no-comments` skill.
-- **Bundled scripts**: `poteto-mode/scripts/` ships the `orch` coordination CLI (orchestrate playbook) and the `watch-pr` watcher (babysit playbook). Both run under [bun](https://bun.sh).
+- **58 skills**, including `poteto-mode`, `how`, `why`, `architect`, `arena`, `swarm`, `interrogate`, and `reflect`.
+- 23 playbooks for investigation, bugs, performance, features, refactoring, verification, PRs, and autonomous work.
+- 24 principle skills, including Attack the Premise, Test Behavior Not Implementation, and Explain the Number.
+- Help and communication skills, including `poteto-help`, `in-your-own-words`, `sharpen`, `ketchup`, and `ketchup-video`.
+- Verification skills, including `benchmark-checklist`, `create-formal-verification-skill`, `maintain-formal-verification-skill`, and `statechart`.
+- Two pi-subagents definitions, `poteto-agent` and the read-only `comment-sicko` reviewer.
+  The parent chat runs the playbook; `poteto-agent` handles an assigned step.
+- The bundled `orch` coordination CLI and `watch-pr` watcher, which run under [Bun](https://bun.sh).
 
-## Model roles
+The `statechart` skill checks TLA+ models and produces Mermaid charts and reports.
+Its launcher supports Node 22.18-22.x, Node 23.6 or later, Bun 1.1.5 or later, or Deno 2.0 or later.
+The first live model check installs TLC and Java through mise and requires network access.
+View modules execute local code, so use only trusted models and views.
 
-Per-role model choices live in `~/.pi/agent/pstack/models.json`. Run `/setup-pstack` to write it. The extension injects the role table only when a role has a real model slug. Default inherit-all injects nothing. `inherit-parent` or `auto` runs on the parent session model.
+## Model roles and session state
 
-## Differences from the Cursor plugin
+`/setup-pstack` writes role choices to `~/.pi/agent/pstack/models.json`.
+Use exact Pi `provider/modelId` selectors.
+`inherit-parent` and `auto` mean omit the subagent model override.
+No role table is injected when all roles inherit.
 
-- Hidden skills set `disable-model-invocation: true`, so they stay out of the Skill catalog.
-  `/skill:name` still loads the Skill body.
-  The four Discoverable skills are `how`, `why`, `unslop`, and `typescript-best-practices`.
-- Slash commands are `/skill:<name>` instead of `/name`.
-- Subagent delegation uses pi-subagents (`subagent({ agent, task })`) instead of Cursor's Task tool. This package does not ship a replacement `subagent` tool.
-- Session transcripts live under `~/.pi/agent/sessions/` instead of `~/.cursor/projects/`. The active file is `$PI_SESSION_FILE`. Files are grouped by cwd slug (`--<cwd>--`, absolute cwd with `/` replaced by `-`).
-- The benny automation pack is not ported; it depends on Cursor automations. Model roles live in `~/.pi/agent/pstack/models.json`, written by `/setup-pstack` and injected only when a role has a real model slug.
-- `make-bot-ui` is not ported. It is Cursor Grok Bot / routine webhook UI.
+Poteto Mode is recorded in session entries and restored from the active branch on session start.
+The extension uses Pi's structured prompt options for its own `pstack` section and Skill catalog filtering.
+It does not replace or parse the complete rendered prompt, mutate the skill registry, or remove other extensions' sections.
+
+## Differences from Cursor
+
+- Skill commands use `/skill:<name>`; `/poteto-mode`, `/setup-pstack`, and `/pstack` are extension commands.
+- Hidden skills use `disable-model-invocation: true` but remain available through explicit commands.
+- Delegation uses pi-subagents, not Cursor's Task tool or cloud-agent parameters.
+  Read the pi-subagents skill for activation, isolated worktrees, retained runs, and model discovery.
+- Sessions live under `~/.pi/agent/sessions/`, with the active file exposed as `$PI_SESSION_FILE`.
+- The Pi-specific `deslop` skill, JSON model configuration, plan checker, and worktree audit are preserved on sync.
+- Cursor Custom Modes, recurring wakes, the benny automation pack, and `make-bot-ui` are not provided.
+  Use a scheduler or watcher for recurring work and the project's verification harness for UI or CLI checks.
+
+## Upstream sync and development
+
+Synced from Cursor pstack `0.15.34` at [`519d36aa98955bf680db01bcde5fdfba686dc901`](https://github.com/cursor/plugins/commit/519d36aa98955bf680db01bcde5fdfba686dc901).
+
+Review a sync before applying it:
+
+```bash
+node packages/pi-pstack/scripts/reground-from-cursor.mjs \
+  --from /path/to/cursor-plugins/pstack \
+  --to packages/pi-pstack --dry-run
+```
+
+Remove `--dry-run` to apply it.
+The script limits command rewriting to Markdown, keeps Pi-only forks and recorded fixtures, applies toolchain compatibility patches, and updates catalog counts.
+Its tests use temporary fixtures and do not require an upstream checkout.
+
+```bash
+pnpm --filter @zenspc/pi-pstack test
+
+# Bun toolchain uses the existing bun.lock.
+cd packages/pi-pstack/skills/poteto-mode/scripts
+bun install --frozen-lockfile --ignore-scripts
+bun test orch watch-pr
+
+# Statechart has its own pnpm development toolchain.
+cd ../../statechart/scripts
+pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+pnpm typecheck
+pnpm test
+```
+
+Statechart's recorded-corpus tests run without Java or TLC.
+Renderer tests fetch pinned renderer packages into the user cache with lifecycle scripts disabled and require network access.
+Optional differential tests require `TLA2TOOLS` pointing to `tla2tools.jar` and a Java runtime.
 
 ## License
 

@@ -1,0 +1,16 @@
+{
+  "name": "@zenspc/pi-pstack-statechart-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "fast-check": "4.5.3",
+    "typescript": "7.0.2"
+  },
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.15.0"
+}

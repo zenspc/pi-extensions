@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
@@ -16,7 +16,6 @@ import {
 	migrateLegacyMarkdownIfNeeded,
 	saveConfig,
 } from "./config.ts";
-import { stripSkillsByLocationPrefix } from "./skill-strip.ts";
 
 const SKILLS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "skills");
 
@@ -119,13 +118,13 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 
 	pi.on("before_agent_start", async (event) => {
 		const config = loadConfig();
-		const base = config.skillsEnabled
-			? event.systemPrompt
-			: stripSkillsByLocationPrefix(event.systemPrompt, SKILLS_DIR).prompt;
+		const options = event.systemPromptOptions;
+		if (!config.skillsEnabled) {
+			options.skills = options.skills.filter((skill) => !skill.filePath.startsWith(`${SKILLS_DIR}${sep}`));
+		}
 		const extra = systemPromptInjection(config, potetoMode);
-		return {
-			systemPrompt: extra ? `${base}\n\n${extra}` : base,
-		};
+		if (extra) options.sections.pstack = extra;
+		else delete options.sections.pstack;
 	});
 
 	pi.registerCommand("poteto-mode", {
