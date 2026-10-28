@@ -1,75 +1,80 @@
-import type { Page, Request, Route } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 import { classifyUrl } from "./domains.ts";
 
-const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
+type PausedNavigation = { requestId: string; frameId: string; request: { url: string } };
 
 export function destinationAllowed(url: URL, allowed: ReadonlySet<string>): boolean {
 	const classified = classifyUrl(url);
 	if (classified.kind === "blank") return true;
-	if (classified.kind === "site") return allowed.has(classified.domain);
-	return false;
+	return classified.kind === "site" && allowed.has(classified.domain);
 }
 
-export function redirectTarget(
-	requestUrl: string,
-	status: number,
-	location: string | undefined,
-): URL | undefined {
-	if (!REDIRECT_STATUS.has(status) || !location) return undefined;
+function blockedName(raw: string): string {
 	try {
-		return new URL(location, requestUrl);
+		const url = new URL(raw);
+		const classified = classifyUrl(url);
+		return classified.kind === "site" ? classified.domain : url.host || url.href;
 	} catch {
-		return undefined;
+		return raw;
 	}
 }
 
 export function createNavigationGuard(allowed: Set<string>) {
-	const installed = new WeakSet<Page>();
+	const installed = new WeakMap<Page, Promise<void>>();
 	let restoreUrl: string | undefined;
 	let blockedDomain: string | undefined;
 
-	function noteAbort(domain: string): void {
-		if (restoreUrl !== undefined) blockedDomain = domain;
+	async function install(tab: Page): Promise<void> {
+		const cdp = await tab.context().newCDPSession(tab);
+		try {
+			const { frameTree } = await cdp.send("Page.getFrameTree");
+			const mainFrameId = frameTree.frame.id;
+			cdp.on("Fetch.requestPaused", (event: PausedNavigation) => {
+				void handle(cdp, mainFrameId, event).catch(async () => {
+					if (restoreUrl !== undefined) blockedDomain = blockedName(event.request.url);
+					await cdp
+						.send("Fetch.failRequest", {
+							requestId: event.requestId,
+							errorReason: "BlockedByClient",
+						})
+						.catch(() => undefined);
+				});
+			});
+			await cdp.send("Network.enable");
+			await cdp.send("Network.setBypassServiceWorker", { bypass: true });
+			// Inspect each redirect in Chrome's own network stack without proxying or buffering responses.
+			await cdp.send("Fetch.enable", {
+				patterns: [{ resourceType: "Document", requestStage: "Request" }],
+			});
+			tab.once("close", () => {
+				void cdp.detach().catch(() => undefined);
+			});
+		} catch (error) {
+			await cdp.detach().catch(() => undefined);
+			throw error;
+		}
 	}
 
-	async function deny(route: Route, domain: string): Promise<void> {
-		noteAbort(domain);
-		await route.fulfill({ status: 204, body: "" });
-	}
-
-	async function handle(tab: Page, route: Route): Promise<void> {
-		const request = route.request();
-		if (!isTopLevelNavigation(request, tab)) {
-			await route.continue();
+	async function handle(
+		cdp: CDPSession,
+		mainFrameId: string,
+		event: PausedNavigation
+	): Promise<void> {
+		const { requestId } = event;
+		if (event.frameId !== mainFrameId) {
+			await cdp.send("Fetch.continueRequest", { requestId });
 			return;
 		}
-		let url: URL;
+		let permitted = false;
 		try {
-			url = new URL(request.url());
-		} catch {
-			await deny(route, request.url());
-			return;
-		}
-		if (!destinationAllowed(url, allowed)) {
-			await deny(route, blockedName(url));
-			return;
-		}
-		try {
-			const response = await route.fetch({ maxRedirects: 0 });
-			const target = redirectTarget(
-				request.url(),
-				response.status(),
-				response.headers()["location"],
-			);
-			if (target && !destinationAllowed(target, allowed)) {
-				await deny(route, blockedName(target));
-				return;
-			}
-			await route.fulfill({ response });
-		} catch {
-			try {
-				await route.abort("failed");
-			} catch {}
+			permitted = destinationAllowed(new URL(event.request.url), allowed);
+		} catch {}
+		if (permitted) {
+			await cdp.send("Fetch.continueRequest", { requestId });
+		} else {
+			if (restoreUrl !== undefined) blockedDomain = blockedName(event.request.url);
+			// A 204 prevents commit without replacing the current document with Chrome's error page.
+			await cdp.send("Fetch.fulfillRequest", { requestId, responseCode: 204, body: "" });
 		}
 	}
 
@@ -79,38 +84,33 @@ export function createNavigationGuard(allowed: Set<string>) {
 			blockedDomain = undefined;
 		},
 		async ensureInstalled(tab: Page): Promise<void> {
-			if (installed.has(tab)) return;
-			await tab.route("**/*", (route) => handle(tab, route));
-			installed.add(tab);
+			let installation = installed.get(tab);
+			if (!installation) {
+				installation = install(tab).catch((error) => {
+					installed.delete(tab);
+					throw error;
+				});
+				installed.set(tab, installation);
+			}
+			await installation;
 		},
 		async finish(tab: Page): Promise<void> {
 			const restore = restoreUrl;
-			const blocked = blockedDomain;
+			const current = new URL(tab.url());
+			const blocked =
+				blockedDomain ??
+				(destinationAllowed(current, allowed) ? undefined : blockedName(current.href));
 			restoreUrl = undefined;
 			blockedDomain = undefined;
 			if (blocked === undefined) return;
-			if (restore !== undefined) {
+			const safeRestore =
+				restore && destinationAllowed(new URL(restore), allowed) ? restore : "about:blank";
+			if (tab.url() !== safeRestore) {
 				try {
-					await tab.goto(restore, { waitUntil: "load" });
+					await tab.goto(safeRestore, { waitUntil: "domcontentloaded" });
 				} catch {}
 			}
 			throw new Error(`pi-browser blocked navigation to ${blocked}.`);
 		},
 	};
-}
-
-const EMBED_DEST = new Set(["iframe", "embed", "frame", "object"]);
-
-function isTopLevelNavigation(request: Request, tab: Page): boolean {
-	if (!request.isNavigationRequest()) return false;
-	const dest = request.headers()["sec-fetch-dest"];
-	if (dest && EMBED_DEST.has(dest)) return false;
-	if (dest === "document") return true;
-	return request.frame() === tab.mainFrame();
-}
-
-function blockedName(url: URL): string {
-	const classified = classifyUrl(url);
-	if (classified.kind === "site") return classified.domain;
-	return url.host || url.href;
 }

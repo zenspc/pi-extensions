@@ -1,29 +1,26 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
-import { tmpdir } from "node:os";
-import type { AddressInfo } from "node:net";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Page } from "playwright-core";
 import { createAttachment } from "./attachment.ts";
 import extension from "./index.ts";
-
-const CHROME_BIN = process.env.PI_BROWSER_CHROME_BIN ?? "google-chrome";
+import { createTestBrowser, startTestApp } from "./test-support.ts";
 
 const PAGE_HTML = `<!doctype html>
 <html><head><title>Eval page</title></head>
 <body>
-<main><p id="label">Ready</p></main>
+<main><p id="label">Ready</p><form method="post" action="/redirect-post">
+<label>Message <input name="message"></label><button>Save</button>
+</form></main>
 </body></html>`;
 
 type AnyTool = ToolDefinition<any, any>;
 
 function loadTools(
 	attachment: ReturnType<typeof createAttachment>,
-	allowlistPath: string,
+	allowlistPath: string
 ): Map<string, AnyTool> {
 	const tools = new Map<string, AnyTool>();
 	const pi = {
@@ -39,104 +36,56 @@ function loadTools(
 	return tools;
 }
 
-function startApp(): Promise<{ server: Server; port: number }> {
-	const server = createServer((_req, res) => {
-		res.setHeader("content-type", "text/html");
-		res.end(PAGE_HTML);
-	});
-	return new Promise((resolve, reject) => {
-		server.on("error", reject);
-		server.listen(0, "127.0.0.1", () => {
-			resolve({ server, port: (server.address() as AddressInfo).port });
-		});
-	});
-}
-
-function closeServer(server: Server): Promise<void> {
-	server.closeAllConnections();
-	return new Promise((resolve, reject) =>
-		server.close((error) => (error ? reject(error) : resolve())),
-	);
-}
-
-function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServer();
-		server.on("error", reject);
-		server.listen(0, "127.0.0.1", () => {
-			const port = (server.address() as AddressInfo).port;
-			server.close(() => resolve(port));
-		});
-	});
-}
-
-async function waitForDebugEndpoint(port: number): Promise<void> {
-	const deadline = Date.now() + 30_000;
-	while (Date.now() < deadline) {
-		try {
-			const response = await fetch(`http://127.0.0.1:${port}/json/version`);
-			if (response.ok) return;
-		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
-	}
-	throw new Error(`Chrome debug endpoint did not come up on port ${port}`);
-}
-
 describe("screenshot and evaluate integration", () => {
-	let chrome: ChildProcess;
-	let userDataDir: string;
-	let appPort: number;
-	let cdpPort: number;
-	let attachment: ReturnType<typeof createAttachment>;
-	let appServer: Server | undefined;
+	let browser: ReturnType<typeof createTestBrowser>;
+	let app: Awaited<ReturnType<typeof startTestApp>>;
 	let tools: Map<string, AnyTool>;
+	const submissions: { body: string; cookie: string }[] = [];
 
-	function run(name: string, params: Record<string, unknown> = {}): Promise<any> {
-		return tools.get(name)!.execute("test", params, undefined, undefined, undefined as never);
+	function run(
+		name: string,
+		params: Record<string, unknown> = {},
+		signal?: AbortSignal
+	): Promise<any> {
+		return tools.get(name)!.execute("test", params, signal, undefined, undefined as never);
 	}
 
 	before(async () => {
-		const { server, port } = await startApp();
-		appServer = server;
-		appPort = port;
-
-		cdpPort = await freePort();
-		userDataDir = mkdtempSync(join(tmpdir(), "pi-browser-chrome-"));
-		const allowlistPath = join(userDataDir, "allowlist.json");
-		writeFileSync(allowlistPath, `${JSON.stringify({ version: 1, domains: ["127.0.0.1"] })}\n`);
-		chrome = spawn(
-			CHROME_BIN,
-			[
-				"--headless=new",
-				`--remote-debugging-port=${cdpPort}`,
-				"--no-first-run",
-				"--no-default-browser-check",
-				`--user-data-dir=${userDataDir}`,
-				"about:blank",
-			],
-			{ stdio: "ignore" },
-		);
-		await waitForDebugEndpoint(cdpPort);
-
-		attachment = createAttachment({
-			userDataDir,
-			launchChrome: () => {},
-			waitForPort: async () => cdpPort,
+		browser = createTestBrowser();
+		app = await startTestApp((req, res) => {
+			if (req.method === "POST" && req.url === "/redirect-post") {
+				req.resume();
+				res.writeHead(307, { location: "/saved" });
+				res.end();
+				return;
+			}
+			res.setHeader("content-type", "text/html");
+			res.setHeader("set-cookie", "piTest=yes; SameSite=Lax");
+			if (req.method === "POST" && req.url === "/saved") {
+				let body = "";
+				req.on("data", (chunk) => {
+					body += chunk;
+				});
+				req.on("end", () => {
+					submissions.push({ body, cookie: req.headers.cookie ?? "" });
+					res.end(PAGE_HTML);
+				});
+				return;
+			}
+			res.end(PAGE_HTML);
 		});
-		tools = loadTools(attachment, allowlistPath);
+		const allowlistPath = join(browser.dir, "allowlist.json");
+		writeFileSync(allowlistPath, JSON.stringify({ version: 1, domains: ["127.0.0.1"] }));
+		tools = loadTools(browser.attachment, allowlistPath);
 	});
-
 	after(async () => {
-		if (attachment) await attachment.close();
-		chrome?.kill();
-		if (appServer) await closeServer(appServer);
-		rmSync(userDataDir, { recursive: true, force: true, maxRetries: 3 });
+		await browser?.close();
+		await app?.close();
 	});
 
 	async function goto(path: string): Promise<Page> {
-		return attachment.withTab(async (tab) => {
-			await tab.goto(`http://127.0.0.1:${appPort}${path}`, { waitUntil: "load" });
+		return browser.attachment.withTab(async (tab) => {
+			await tab.goto(`http://127.0.0.1:${app.port}${path}`, { waitUntil: "load" });
 			return tab;
 		});
 	}
@@ -150,23 +99,41 @@ describe("screenshot and evaluate integration", () => {
 		await goto("/");
 		const result = await run("browser_screenshot");
 
-		const note = result.content.find(
-			(item: { type: string }) => item.type === "text",
-		);
+		const note = result.content.find((item: { type: string }) => item.type === "text");
 		assert.match(note.text, /Screenshot captured \(\d+x\d+ px\)/);
 
 		const image = result.content.find((item: { type: string }) => item.type === "image");
 		assert.equal(image.mimeType, "image/png");
 		const png = Buffer.from(image.data, "base64");
-		assert.equal(
-			png.subarray(0, 8).toString("hex"),
-			"89504e470d0a1a0a",
-			"PNG signature",
-		);
+		assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", "PNG signature");
 		assert.ok(result.details.width > 0);
 		assert.ok(result.details.height > 0);
 		assert.equal(png.readUInt32BE(16), result.details.width);
 		assert.equal(png.readUInt32BE(20), result.details.height);
+	});
+
+	it("preserves form POST bodies and cookies through native 307 redirects", async () => {
+		await goto("/");
+		const snapshot = await run("browser_snapshot");
+		const ref = (name: string) => {
+			const line = snapshot.details.text
+				.split("\n")
+				.find((line: string) => line.includes(name));
+			assert.ok(line);
+			return /\[ref=(e\d+)\]/.exec(line)![1];
+		};
+		await run("browser_type", { ref: ref('textbox "Message"'), text: "Native browser POST" });
+		await run("browser_click", { ref: ref('button "Save"') });
+		assert.equal(submissions.length, 1);
+		assert.equal(
+			new URLSearchParams(submissions[0].body).get("message"),
+			"Native browser POST"
+		);
+		assert.match(submissions[0].cookie, /piTest=yes/);
+		assert.match(
+			(await run("browser_evaluate", { expression: "location.pathname" })).details.result,
+			/saved/
+		);
 	});
 
 	it("serializes a number from the page context", async () => {
@@ -192,11 +159,80 @@ describe("screenshot and evaluate integration", () => {
 		assert.equal(result.details.result, "HELLO");
 	});
 
+	it("rechecks Domain Approval during execution even without the tool-call hook", async () => {
+		await goto("/");
+		await assert.rejects(
+			run("browser_navigate", { url: "https://not-approved.test/" }),
+			/not approved/
+		);
+		assert.match(
+			(await run("browser_evaluate", { expression: "location.href" })).details.result,
+			/127.0.0.1/
+		);
+	});
+
+	it("normalizes non-JSON values so tool details remain persistable", async () => {
+		await goto("/");
+		for (const expression of [
+			"123n",
+			"NaN",
+			"Infinity",
+			"(() => { const x = {}; x.self = x; return x; })()",
+			"undefined",
+		]) {
+			const result = await run("browser_evaluate", { expression });
+			assert.equal(typeof result.content[0].text, "string");
+			assert.doesNotThrow(() => JSON.stringify(result.details));
+		}
+	});
+
+	it("bounds evaluate output and does not retain the unbounded value in details", async () => {
+		await goto("/");
+		const result = await run("browser_evaluate", { expression: '"x".repeat(100000)' });
+		assert.match(result.content[0].text, /Output truncated/);
+		assert.equal(result.details.result, result.content[0].text);
+		assert.ok(result.content[0].text.length < 51_000);
+	});
+
+	it("cancels a pending promise and can reconnect afterward", async () => {
+		await goto("/");
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), 100);
+		try {
+			await assert.rejects(
+				run("browser_evaluate", { expression: "new Promise(() => {})" }, controller.signal),
+				{ name: "AbortError" }
+			);
+		} finally {
+			clearTimeout(timer);
+		}
+		assert.equal((await run("browser_evaluate", { expression: "6 * 7" })).details.result, 42);
+	});
+
+	it("interrupts a JavaScript infinite loop without killing Chrome", async () => {
+		await goto("/");
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), 100);
+		try {
+			await assert.rejects(
+				run(
+					"browser_evaluate",
+					{ expression: "(() => { while (true) {} })()" },
+					controller.signal
+				),
+				{ name: "AbortError" }
+			);
+		} finally {
+			clearTimeout(timer);
+		}
+		assert.equal((await run("browser_evaluate", { expression: "6 * 7" })).details.result, 42);
+	});
+
 	it("rejects with the page error text on thrown errors", async () => {
 		await goto("/");
 		await assert.rejects(
 			run("browser_evaluate", { expression: `(() => { throw new Error("boom") })()` }),
-			/boom/,
+			/boom/
 		);
 	});
 
@@ -204,7 +240,7 @@ describe("screenshot and evaluate integration", () => {
 		await goto("/");
 		await assert.rejects(
 			run("browser_evaluate", { expression: "(() => {" }),
-			/browser_evaluate failed.*(Syntax|syntax)/i,
+			/browser_evaluate failed.*(Syntax|syntax)/i
 		);
 	});
 });

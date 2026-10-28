@@ -7,11 +7,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { createAttachment } from "./attachment.ts";
 import { launchDedicatedChrome, waitForDebugPort } from "./launch.ts";
-import {
-	LiveChromeWithoutDebugError,
-	SINGLETON_LOCK_FILE,
-	clearStaleLock,
-} from "./occupancy.ts";
+import { LiveChromeWithoutDebugError, SINGLETON_LOCK_FILE, clearStaleLock } from "./occupancy.ts";
 import { resolveChromeBinary } from "./resolve.ts";
 
 async function probe(port: number): Promise<boolean> {
@@ -45,7 +41,11 @@ function hasLock(userDataDir: string): boolean {
 	}
 }
 
-async function waitUntil(predicate: () => boolean, timeoutMs: number, label: string): Promise<void> {
+async function waitUntil(
+	predicate: () => boolean,
+	timeoutMs: number,
+	label: string
+): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		if (predicate()) return;
@@ -79,6 +79,12 @@ describe("reuse leftover Chrome", () => {
 			return tab.evaluate(() => (window as any).__piReuse);
 		});
 		assert.equal(marker, 7);
+		const competing = createAttachment({ userDataDir, chromeBin });
+		await assert.rejects(
+			competing.withTab(async () => undefined),
+			/already leased/
+		);
+		await competing.close();
 		await first.close();
 
 		const debugPort = await waitForDebugPort(userDataDir, { timeoutMs: 5_000 });
@@ -95,11 +101,17 @@ describe("reuse leftover Chrome", () => {
 			},
 		});
 
-		const reused = await second.withTab(async (tab) => tab.evaluate(() => (window as any).__piReuse));
+		const reused = await second.withTab(async (tab) =>
+			tab.evaluate(() => (window as any).__piReuse)
+		);
 		assert.equal(reused, 7);
 		assert.equal(spawns, 0);
 		await second.close();
-		assert.equal(await probe(debugPort), true, "Chrome stays up after the second Attachment.close");
+		assert.equal(
+			await probe(debugPort),
+			true,
+			"Chrome stays up after the second Attachment.close"
+		);
 	});
 
 	it("fails if live Chrome has no Debug Port and does not spawn another window", async () => {
@@ -115,16 +127,12 @@ describe("reuse leftover Chrome", () => {
 				"--no-default-browser-check",
 				"--headless=new",
 			],
-			{ detached: true, stdio: "ignore" },
+			{ detached: true, stdio: "ignore" }
 		);
 		chrome.unref();
 		after(() => killChrome(chrome));
 
-		await waitUntil(
-			() => hasLock(userDataDir),
-			15_000,
-			"SingletonLock never appeared",
-		);
+		await waitUntil(() => hasLock(userDataDir), 15_000, "SingletonLock never appeared");
 
 		let spawns = 0;
 		const attachment = createAttachment({
@@ -142,7 +150,7 @@ describe("reuse leftover Chrome", () => {
 			(error: unknown) =>
 				error instanceof LiveChromeWithoutDebugError &&
 				error.message.includes(userDataDir) &&
-				/quit that window/i.test(error.message),
+				/quit that window/i.test(error.message)
 		);
 		assert.equal(spawns, 0);
 		assert.equal(hasLock(userDataDir), true);

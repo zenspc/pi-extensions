@@ -1,5 +1,7 @@
-import { chromium } from "playwright-core";
-import type { Browser, Page } from "playwright-core";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Browser, CDPSession, Page } from "playwright-core";
+import { acquireLease } from "./lease.ts";
 import {
 	launchDedicatedChrome,
 	waitForDebugPort,
@@ -13,150 +15,196 @@ import {
 	type DirOccupancy,
 } from "./occupancy.ts";
 import { resolveChromeBinary, resolveUserDataDir } from "./resolve.ts";
+import { writeJsonAtomic } from "./storage.ts";
 
-type Attached = { kind: "connected"; browser: Browser; tab: Page };
-type Detached = { kind: "disconnected"; reason?: unknown };
-type AttachmentState = Detached | Attached;
-
+type Attached = { browser: Browser; tab: Page; control: CDPSession };
 export type ConnectOverCDP = (endpointURL: string) => Promise<Browser>;
-
 export type CreateAttachmentOptions = {
 	userDataDir?: string;
 	chromeBin?: string;
 	extraArgs?: readonly string[];
+	timeoutMs?: number;
 	connectOverCDP?: ConnectOverCDP;
-	launchChrome?: (spec: LaunchSpec) => void;
+	launchChrome?: (spec: LaunchSpec) => void | Promise<void>;
 	waitForPort?: (userDataDir: string) => Promise<number>;
 	spawnChrome?: SpawnChrome;
 	inspectOccupancy?: (userDataDir: string) => Promise<DirOccupancy>;
 	clearStaleLock?: (userDataDir: string) => void;
+	acquireLease?: typeof acquireLease;
 };
 
-async function defaultConnectOverCDP(endpointURL: string): Promise<Browser> {
-	return chromium.connectOverCDP(endpointURL);
+const TARGET_FILE = "pi-browser-target.json";
+
+async function targetId(tab: Page): Promise<string> {
+	const cdp = await tab.context().newCDPSession(tab);
+	try {
+		return (await cdp.send("Target.getTargetInfo")).targetInfo.targetId;
+	} finally {
+		await cdp.detach();
+	}
 }
 
-function isConnectionClosed(error: unknown): boolean {
-	return /closed|disconnected|connection/i.test(
-		error instanceof Error ? error.message : String(error),
-	);
-}
-
-async function findOwnedTab(browser: Browser): Promise<Page | undefined> {
-	for (const context of browser.contexts()) {
-		for (const page of context.pages()) {
-			try {
-				if (await page.evaluate(() => (window as any).__piBrowserOwned === true)) {
-					return page;
+async function openAutomationTab(browser: Browser, userDataDir: string): Promise<Page> {
+	const path = join(userDataDir, TARGET_FILE);
+	let ownedId: unknown;
+	try {
+		ownedId = JSON.parse(readFileSync(path, "utf8")).targetId;
+	} catch {}
+	if (typeof ownedId === "string") {
+		for (const context of browser.contexts()) {
+			for (const page of context.pages()) {
+				try {
+					if (!page.isClosed() && (await targetId(page)) === ownedId) return page;
+				} catch {
+					if (!page.isClosed())
+						throw new Error("Could not identify the saved Automation Tab");
 				}
-			} catch {
-				continue;
 			}
 		}
 	}
-	return undefined;
-}
-
-async function openAutomationTab(browser: Browser): Promise<Page> {
-	const owned = await findOwnedTab(browser);
-	if (owned) return owned;
 	const context = browser.contexts()[0] ?? (await browser.newContext());
 	const tab = await context.newPage();
-	await tab.addInitScript(() => {
-		(window as any).__piBrowserOwned = true;
-	});
-	await tab.evaluate(() => {
-		(window as any).__piBrowserOwned = true;
-	});
-	return tab;
+	try {
+		writeJsonAtomic(path, { targetId: await targetId(tab) });
+		return tab;
+	} catch (error) {
+		await tab.close().catch(() => undefined);
+		throw error;
+	}
 }
 
-export function createAttachment(options?: CreateAttachmentOptions) {
-	const connectOverCDP = options?.connectOverCDP ?? defaultConnectOverCDP;
-	const launchChrome =
-		options?.launchChrome ??
-		((spec: LaunchSpec) => {
-			launchDedicatedChrome(spec, options?.spawnChrome);
+export function createAttachment(options: CreateAttachmentOptions = {}) {
+	const connect =
+		options.connectOverCDP ??
+		(async (url: string) => {
+			const { chromium } = await import("playwright-core");
+			return chromium.connectOverCDP(url, { timeout: 30_000 });
 		});
-	const waitForPort =
-		options?.waitForPort ?? ((userDataDir: string) => waitForDebugPort(userDataDir));
-	const inspect =
-		options?.inspectOccupancy ??
-		((userDataDir: string) =>
-			inspectOccupancy(
-				userDataDir,
-				options?.waitForPort ? { waitForPort: options.waitForPort } : {},
-			));
-	const clearLock = options?.clearStaleLock ?? clearStaleLock;
-	let state: AttachmentState = { kind: "disconnected" };
-
-	async function attach(): Promise<Attached> {
-		const userDataDir = options?.userDataDir ?? resolveUserDataDir();
-		const chromeBin = options?.chromeBin ?? resolveChromeBinary();
-		const occupancy = await inspect(userDataDir);
-		const launchFresh = async (): Promise<number> => {
-			launchChrome({
-				chromeBin,
-				userDataDir,
-				extraArgs: options?.extraArgs,
+	const launch =
+		options.launchChrome ??
+		(async (spec: LaunchSpec) => {
+			const child = launchDedicatedChrome(spec, options.spawnChrome);
+			await new Promise<void>((resolve, reject) => {
+				child.once("spawn", resolve);
+				child.once("error", reject);
 			});
-			return waitForPort(userDataDir);
-		};
-		let port: number;
-		switch (occupancy.kind) {
-			case "live-with-debug":
-				port = occupancy.port;
-				break;
-			case "live-without-debug":
-				throw new LiveChromeWithoutDebugError(userDataDir);
-			case "stale-lock":
-				clearLock(userDataDir);
-				port = await launchFresh();
-				break;
-			case "empty":
-				port = await launchFresh();
-				break;
-			default: {
-				const _exhaustive: never = occupancy;
-				throw new Error(`unreachable occupancy ${String(_exhaustive)}`);
-			}
-		}
-		const browser = await connectOverCDP(`http://127.0.0.1:${port}`);
-		const tab = await openAutomationTab(browser);
-		state = { kind: "connected", browser, tab };
-		return state;
+		});
+	const wait = options.waitForPort ?? waitForDebugPort;
+	const inspect =
+		options.inspectOccupancy ??
+		((dir: string) =>
+			inspectOccupancy(dir, options.waitForPort ? { waitForPort: options.waitForPort } : {}));
+	let attached: Attached | undefined;
+	let release: (() => void) | undefined;
+	let pending: Promise<unknown> = Promise.resolve();
+
+	function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+		const call = pending.then(fn);
+		pending = call.catch(() => undefined);
+		return call;
 	}
 
-	async function withTab<T>(fn: (tab: Page) => Promise<T>): Promise<T> {
-		let attached = state;
-		if (attached.kind === "disconnected") {
-			attached = await attach();
-		}
+	async function disconnect(): Promise<void> {
+		const current = attached;
+		attached = undefined;
 		try {
-			return await fn(attached.tab);
+			await current?.browser.close();
+		} finally {
+			release?.();
+			release = undefined;
+		}
+	}
+
+	async function attach(): Promise<Attached> {
+		const dir = options.userDataDir ?? resolveUserDataDir();
+		release = (options.acquireLease ?? acquireLease)(dir);
+		let browser: Browser | undefined;
+		try {
+			const occupancy = await inspect(dir);
+			let port: number;
+			if (occupancy.kind === "live-with-debug") {
+				port = occupancy.port;
+			} else {
+				if (occupancy.kind === "live-without-debug")
+					throw new LiveChromeWithoutDebugError(dir);
+				if (occupancy.kind === "stale-lock")
+					(options.clearStaleLock ?? clearStaleLock)(dir);
+				await launch({
+					chromeBin: options.chromeBin ?? resolveChromeBinary(),
+					userDataDir: dir,
+					extraArgs: options.extraArgs,
+				});
+				port = await wait(dir);
+			}
+			browser = await connect(`http://127.0.0.1:${port}`);
+			const tab = await openAutomationTab(browser, dir);
+			tab.setDefaultTimeout(options.timeoutMs ?? 30_000);
+			tab.setDefaultNavigationTimeout(options.timeoutMs ?? 30_000);
+			const control = await tab.context().newCDPSession(tab);
+			attached = { browser, tab, control };
+			return attached;
 		} catch (error) {
-			if (!isConnectionClosed(error)) throw error;
-			state = { kind: "disconnected", reason: error };
+			await browser?.close().catch(() => undefined);
+			release?.();
+			release = undefined;
 			throw error;
 		}
 	}
 
-	async function close(): Promise<void> {
-		const current = state;
-		state = { kind: "disconnected" };
-		if (current.kind !== "connected") return;
+	async function interrupt(current: Attached): Promise<void> {
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		try {
-			await current.browser.close();
+			await Promise.race([
+				(async () => {
+					// Termination on a freshly attached CDP session can stall behind running script; keep a ready control session.
+					await current.control.send("Runtime.terminateExecution");
+					await current.control.send("Page.stopLoading");
+				})(),
+				new Promise<void>((resolve) => {
+					timer = setTimeout(resolve, 2_000);
+				}),
+			]);
 		} catch {
-			return;
+		} finally {
+			clearTimeout(timer);
+			await disconnect();
 		}
+	}
+
+	function withTab<T>(fn: (tab: Page) => Promise<T>, signal?: AbortSignal): Promise<T> {
+		return enqueue(async () => {
+			signal?.throwIfAborted();
+			if (attached && (!attached.browser.isConnected() || attached.tab.isClosed()))
+				await disconnect();
+			const current = attached ?? (await attach());
+			const deadline = AbortSignal.timeout(options.timeoutMs ?? 30_000);
+			const stop = signal ? AbortSignal.any([signal, deadline]) : deadline;
+			let onAbort: (() => void) | undefined;
+			try {
+				stop.throwIfAborted();
+				const aborted = new Promise<never>((_resolve, reject) => {
+					onAbort = () => reject(stop.reason);
+					stop.addEventListener("abort", onAbort, { once: true });
+				});
+				return await Promise.race([aborted, fn(current.tab)]);
+			} catch (error) {
+				if (stop.aborted) await interrupt(current);
+				else if (!current.browser.isConnected() || current.tab.isClosed())
+					await disconnect();
+				throw error;
+			} finally {
+				if (onAbort) stop.removeEventListener("abort", onAbort);
+			}
+		});
 	}
 
 	return {
 		withTab,
-		close,
+		close: () => enqueue(disconnect),
 		get isAttached() {
-			return state.kind === "connected";
+			return (
+				attached !== undefined && attached.browser.isConnected() && !attached.tab.isClosed()
+			);
 		},
 	};
 }

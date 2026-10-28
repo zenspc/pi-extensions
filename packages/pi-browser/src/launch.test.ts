@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, it } from "node:test";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import {
@@ -17,6 +19,7 @@ describe("chromeLaunchArgs", () => {
 		assert.deepEqual(chromeLaunchArgs("/tmp/pi-chrome"), [
 			"--user-data-dir=/tmp/pi-chrome",
 			"--remote-debugging-port=0",
+			"--remote-debugging-address=127.0.0.1",
 			"--no-first-run",
 			"--no-default-browser-check",
 		]);
@@ -26,7 +29,7 @@ describe("chromeLaunchArgs", () => {
 		const args = chromeLaunchArgs("/tmp/pi-chrome", ["--disable-extensions"]);
 		assert.equal(
 			args.some((arg) => arg.startsWith("--headless")),
-			false,
+			false
 		);
 		assert.equal(args.includes("--remote-debugging-port=9222"), false);
 		assert.deepEqual(args.at(-1), "--disable-extensions");
@@ -42,6 +45,8 @@ describe("parseDevToolsActivePort", () => {
 		assert.throws(() => parseDevToolsActivePort(""), /Invalid DevToolsActivePort/);
 		assert.throws(() => parseDevToolsActivePort("nope\n"), /Invalid DevToolsActivePort/);
 		assert.throws(() => parseDevToolsActivePort("0\n"), /Invalid DevToolsActivePort/);
+		assert.throws(() => parseDevToolsActivePort("0x1234\n"), /Invalid DevToolsActivePort/);
+		assert.throws(() => parseDevToolsActivePort("123e2\n"), /Invalid DevToolsActivePort/);
 	});
 });
 
@@ -53,13 +58,38 @@ describe("readDebugPort", () => {
 				reads.push(path);
 				return "61111\n/devtools/browser/x\n";
 			}),
-			61111,
+			61111
 		);
 		assert.deepEqual(reads, [`/tmp/profile/${DEVTOOLS_ACTIVE_PORT_FILE}`]);
 	});
 });
 
 describe("waitForDebugPort", () => {
+	it("checks the browser identity, not just whether a stale port serves HTTP", async (t) => {
+		let identity = "ours";
+		const server = createServer((_req, res) => {
+			res.setHeader("content-type", "application/json");
+			res.end(
+				JSON.stringify({
+					webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/browser/${identity}`,
+				})
+			);
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const port = (server.address() as AddressInfo).port;
+		t.after(
+			() =>
+				new Promise<void>((resolve, reject) => {
+					server.closeAllConnections();
+					server.close((error) => (error ? reject(error) : resolve()));
+				})
+		);
+		const options = { readFile: () => `${port}\n/devtools/browser/ours\n`, timeoutMs: 100 };
+		assert.equal(await waitForDebugPort("/unused", options), port);
+		identity = "another-browser";
+		await assert.rejects(waitForDebugPort("/unused", options), MissingDebugPortError);
+	});
+
 	it("returns the port once the file exists and the endpoint answers", async () => {
 		let attempts = 0;
 		const probed: number[] = [];
@@ -95,7 +125,7 @@ describe("waitForDebugPort", () => {
 			(error: unknown) =>
 				error instanceof MissingDebugPortError &&
 				error.message.includes("/tmp/missing-profile") &&
-				!/9222/.test(error.message),
+				!/9222/.test(error.message)
 		);
 	});
 });
@@ -115,7 +145,7 @@ describe("launchDedicatedChrome", () => {
 			(bin, args, options) => {
 				calls.push({ bin, args, options });
 				return child;
-			},
+			}
 		);
 
 		assert.equal(returned, child);

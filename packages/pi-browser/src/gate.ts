@@ -11,7 +11,10 @@ export type Verdict = "pass" | "ask" | "deny";
 
 export type PromptOutcome = "once" | "permanent" | "deny";
 
-export type UrlExtractor = (input: Record<string, unknown>) => string | Promise<string>;
+export type UrlExtractor = (
+	input: Record<string, unknown>,
+	signal?: AbortSignal
+) => string | Promise<string>;
 
 export type DomainGateOptions = {
 	allowlistPath?: string;
@@ -19,10 +22,12 @@ export type DomainGateOptions = {
 
 const PROMPT_CHOICES = ["Approve once", "Approve permanently", "Deny"];
 
-const urlExtractors = new Map<string, UrlExtractor>();
+const extractors = new WeakMap<ExtensionAPI, Map<string, UrlExtractor>>();
 
-export function registerExtractor(name: string, extract: UrlExtractor): void {
-	urlExtractors.set(name, extract);
+export function registerExtractor(pi: ExtensionAPI, name: string, extract: UrlExtractor): void {
+	let registered = extractors.get(pi);
+	if (!registered) extractors.set(pi, (registered = new Map()));
+	registered.set(name, extract);
 }
 
 export function decide(domain: string, allowed: Set<string>, denied: Set<string>): Verdict {
@@ -39,20 +44,11 @@ export function promptOutcome(choice: string | undefined): PromptOutcome {
 
 export function installDomainGate(
 	pi: ExtensionAPI,
-	options?: DomainGateOptions,
+	options?: DomainGateOptions
 ): { allowed: Set<string> } {
 	const allowlistPath = options?.allowlistPath ?? getAllowlistPath();
-	const sessionAllowed = new Set<string>();
+	const sessionAllowed = loadAllowlist(allowlistPath);
 	const sessionDenied = new Set<string>();
-	let allowlistLoaded = false;
-
-	function ensureAllowlistLoaded(): void {
-		if (allowlistLoaded) return;
-		allowlistLoaded = true;
-		for (const domain of loadAllowlist(allowlistPath)) sessionAllowed.add(domain);
-	}
-
-	ensureAllowlistLoaded();
 
 	function block(reason: string): ToolCallEventResult {
 		return { block: true, reason };
@@ -60,12 +56,12 @@ export function installDomainGate(
 
 	async function gateCall(
 		event: ToolCallEvent,
-		ctx: ExtensionContext,
+		ctx: ExtensionContext
 	): Promise<ToolCallEventResult | undefined> {
-		const extract = urlExtractors.get(event.toolName);
+		const extract = extractors.get(pi)?.get(event.toolName);
 		if (!extract) return undefined;
 
-		const rawUrl = await extract(event.input as unknown as Record<string, unknown>);
+		const rawUrl = await extract(event.input as unknown as Record<string, unknown>, ctx.signal);
 		let url: URL;
 		try {
 			url = new URL(rawUrl);
@@ -76,10 +72,11 @@ export function installDomainGate(
 		const classified = classifyUrl(url);
 		if (classified.kind === "blank") return undefined;
 		if (classified.kind === "blocked") {
-			return block(`pi-browser blocked "${event.toolName}": "${rawUrl}" is not an allowed site.`);
+			return block(
+				`pi-browser blocked "${event.toolName}": "${rawUrl}" is not an allowed site.`
+			);
 		}
 		const domain = classified.domain;
-		ensureAllowlistLoaded();
 		const verdict = decide(domain, sessionAllowed, sessionDenied);
 		if (verdict === "pass") return undefined;
 		if (verdict === "deny") {
@@ -88,11 +85,16 @@ export function installDomainGate(
 
 		if (!ctx.hasUI) {
 			return block(
-				`pi-browser blocked ${domain}: no UI is available to approve it. Add "${domain}" to ${allowlistPath} and retry.`,
+				`pi-browser blocked ${domain}: no UI is available to approve it. Add "${domain}" to ${allowlistPath} and retry.`
 			);
 		}
 
-		const outcome = promptOutcome(await ctx.ui.select(`Allow access to ${domain}?`, PROMPT_CHOICES));
+		const outcome = promptOutcome(
+			await ctx.ui.select(`Allow access to ${domain}?`, PROMPT_CHOICES, {
+				signal: ctx.signal,
+			})
+		);
+		ctx.signal?.throwIfAborted();
 		if (outcome === "deny") {
 			sessionDenied.add(domain);
 			return block(`User denied browser access to ${domain}.`);
@@ -102,16 +104,23 @@ export function installDomainGate(
 		return undefined;
 	}
 
-	pi.on("tool_call", async (event, ctx) => {
-		try {
-			return await gateCall(event, ctx);
-		} catch (error) {
-			return block(
-				`pi-browser domain gate failed for "${event.toolName}": ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-		}
+	let pending: Promise<unknown> = Promise.resolve();
+	pi.on("tool_call", (event, ctx) => {
+		if (!extractors.get(pi)?.has(event.toolName)) return Promise.resolve(undefined);
+		const call = pending.then(async () => {
+			try {
+				ctx.signal?.throwIfAborted();
+				return await gateCall(event, ctx);
+			} catch (error) {
+				return block(
+					`pi-browser domain gate failed for "${event.toolName}": ${
+						error instanceof Error ? error.message : String(error)
+					}`
+				);
+			}
+		});
+		pending = call.catch(() => undefined);
+		return call;
 	});
 
 	return { allowed: sessionAllowed };

@@ -41,7 +41,7 @@ describe("abort unapproved top-level navigation", () => {
 	let call: (
 		name: string,
 		params: Record<string, unknown>,
-		select?: string,
+		select?: string
 	) => Promise<{ content: { type: string; text?: string }[]; details?: unknown }>;
 	let prompts: string[];
 
@@ -51,6 +51,24 @@ describe("abort unapproved top-level navigation", () => {
 			const host = req.headers.host ?? "";
 			const url = new URL(req.url ?? "/", `http://${host}`);
 			hits.push(`${url.host}${url.pathname}`);
+			if (url.pathname === "/worker.js") {
+				res.setHeader("content-type", "application/javascript");
+				res.end(
+					'self.addEventListener("install", e => e.waitUntil(self.skipWaiting())); self.addEventListener("activate", e => e.waitUntil(self.clients.claim())); self.addEventListener("fetch", e => { if (e.request.mode === "navigate") e.respondWith(new Response("<title>Worker</title><body>SW</body>", { headers: { "content-type": "text/html" } })); });'
+				);
+				return;
+			}
+			if (url.pathname === "/cached.js") {
+				res.setHeader("content-type", "application/javascript");
+				res.setHeader("cache-control", "public, max-age=3600");
+				res.end('document.body.dataset.cached = "yes";');
+				return;
+			}
+			if (url.pathname === "/cache") {
+				res.setHeader("content-type", "text/html");
+				res.end('<title>Cache</title><body><script src="/cached.js"></script></body>');
+				return;
+			}
 			if (url.pathname === "/go") {
 				res.statusCode = 302;
 				res.setHeader("location", `http://${EVIL_HOST}:${port}/secret`);
@@ -59,7 +77,9 @@ describe("abort unapproved top-level navigation", () => {
 			}
 			res.setHeader("content-type", "text/html");
 			if (url.pathname === "/secret") {
-				res.end(`<!doctype html><html><head><title>Secret</title></head><body>${SECRET}</body></html>`);
+				res.end(
+					`<!doctype html><html><head><title>Secret</title></head><body>${SECRET}</body></html>`
+				);
 				return;
 			}
 			if (url.pathname === "/click") {
@@ -82,7 +102,9 @@ describe("abort unapproved top-level navigation", () => {
 </body></html>`);
 				return;
 			}
-			res.end(`<!doctype html><html><head><title>Home</title></head><body><p>ok</p></body></html>`);
+			res.end(
+				`<!doctype html><html><head><title>Home</title></head><body><p>ok</p></body></html>`
+			);
 		});
 		appServer = server;
 		appPort = port;
@@ -92,7 +114,7 @@ describe("abort unapproved top-level navigation", () => {
 		const allowlistPath = join(userDataDir, "allowlist.json");
 		writeFileSync(
 			allowlistPath,
-			`${JSON.stringify({ version: 1, domains: [APPROVED_HOST] })}\n`,
+			`${JSON.stringify({ version: 1, domains: [APPROVED_HOST] })}\n`
 		);
 		chrome = spawn(
 			CHROME_BIN,
@@ -106,7 +128,7 @@ describe("abort unapproved top-level navigation", () => {
 				"--disable-features=LocalNetworkAccessChecks",
 				"about:blank",
 			],
-			{ stdio: "ignore" },
+			{ stdio: "ignore" }
 		);
 		await waitForDebugEndpoint(cdpPort);
 
@@ -137,7 +159,7 @@ describe("abort unapproved top-level navigation", () => {
 		await resetTab();
 		await assert.rejects(
 			call("browser_navigate", { url: `http://${APPROVED_HOST}:${appPort}/go` }),
-			/evil\.localhost/,
+			/evil\.localhost/
 		);
 		assert.equal(prompts.length, 0);
 		const page = await attachment.withTab(async (tab) => ({
@@ -148,7 +170,7 @@ describe("abort unapproved top-level navigation", () => {
 		assert.equal(page.url, "about:blank");
 		assert.equal(
 			hits.some((hit) => hit.includes(`${EVIL_HOST}:${appPort}/secret`)),
-			false,
+			false
 		);
 	});
 
@@ -174,7 +196,7 @@ describe("abort unapproved top-level navigation", () => {
 		const result = await call(
 			"browser_navigate",
 			{ url: `http://other.localhost:${appPort}/secret` },
-			"Approve once",
+			"Approve once"
 		);
 		assert.equal(prompts.length, 1);
 		assert.match(prompts[0], /other\.localhost/);
@@ -191,6 +213,39 @@ describe("abort unapproved top-level navigation", () => {
 		assert.ok(hits.includes(`${EVIL_HOST}:${appPort}/secret`));
 	});
 
+	it("preserves Chrome's subresource cache rather than proxying every request", async () => {
+		await resetTab();
+		const url = `http://${APPROVED_HOST}:${appPort}/cache`;
+		await call("browser_navigate", { url });
+		await call("browser_navigate", { url });
+		assert.equal(hits.filter((hit) => hit.endsWith("/cached.js")).length, 1);
+	});
+
+	it("bypasses service workers in the Automation Tab without changing user tabs", async () => {
+		await resetTab();
+		const tab = await attachment.withTab(async (page) => page);
+		const userTab = await tab.context().newPage();
+		try {
+			await userTab.goto(`http://${APPROVED_HOST}:${appPort}/`);
+			await userTab.evaluate(async () => {
+				await navigator.serviceWorker.register("/worker.js");
+				await navigator.serviceWorker.ready;
+			});
+			await userTab.goto(`http://${APPROVED_HOST}:${appPort}/stay`);
+			assert.equal(await userTab.title(), "Worker");
+			const result = await call("browser_navigate", {
+				url: `http://${APPROVED_HOST}:${appPort}/stay`,
+			});
+			assert.match(result.content[0].text ?? "", /Stay/);
+			await userTab.evaluate(async () => {
+				for (const worker of await navigator.serviceWorker.getRegistrations())
+					await worker.unregister();
+			});
+		} finally {
+			await userTab.close();
+		}
+	});
+
 	it("aborts a spontaneous hop in place without restoring", async () => {
 		await resetTab();
 		await call("browser_navigate", { url: `http://${APPROVED_HOST}:${appPort}/stay` });
@@ -202,20 +257,23 @@ describe("abort unapproved top-level navigation", () => {
 				}, `http://${EVIL_HOST}:${appPort}/secret`)
 				.catch(() => undefined);
 			await new Promise((resolve) => setTimeout(resolve, 300));
-			assert.doesNotMatch(await tab.evaluate(() => document.body.innerText), new RegExp(SECRET));
+			assert.doesNotMatch(
+				await tab.evaluate(() => document.body.innerText),
+				new RegExp(SECRET)
+			);
 			assert.match(tab.url(), /\/stay/);
 		});
-		assert.equal(
-			hits.filter((hit) => hit.endsWith("/stay")).length,
-			stayHitsBefore,
-		);
+		assert.equal(hits.filter((hit) => hit.endsWith("/stay")).length, stayHitsBefore);
 	});
 });
 
 function loadApp(attachment: ReturnType<typeof createAttachment>, allowlistPath: string) {
 	const tools = new Map<string, AnyTool>();
 	let toolCallHandler:
-		| ((event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined>)
+		| ((
+				event: ToolCallEvent,
+				ctx: ExtensionContext
+		  ) => Promise<ToolCallEventResult | undefined>)
 		| undefined;
 	const prompts: string[] = [];
 	const pi = {
@@ -231,11 +289,7 @@ function loadApp(attachment: ReturnType<typeof createAttachment>, allowlistPath:
 		availabilityPath: `${allowlistPath}.availability`,
 	});
 
-	async function call(
-		name: string,
-		params: Record<string, unknown>,
-		select = "Approve once",
-	) {
+	async function call(name: string, params: Record<string, unknown>, select = "Approve once") {
 		assert.ok(toolCallHandler, "tool_call handler was not registered");
 		const blocked = await toolCallHandler(
 			{
@@ -252,7 +306,7 @@ function loadApp(attachment: ReturnType<typeof createAttachment>, allowlistPath:
 						return select;
 					},
 				},
-			} as unknown as ExtensionContext,
+			} as unknown as ExtensionContext
 		);
 		if (blocked?.block) throw new Error(blocked.reason);
 		const tool = tools.get(name);
@@ -272,7 +326,7 @@ function refFor(snapshotText: string, pattern: RegExp): string {
 }
 
 function startApp(
-	handler: (req: IncomingMessage, res: ServerResponse) => void,
+	handler: (req: IncomingMessage, res: ServerResponse) => void
 ): Promise<{ server: Server; port: number }> {
 	const server = createServer(handler);
 	return new Promise((resolve, reject) => {
@@ -286,7 +340,7 @@ function startApp(
 function closeServer(server: Server): Promise<void> {
 	server.closeAllConnections();
 	return new Promise((resolve, reject) =>
-		server.close((error) => (error ? reject(error) : resolve())),
+		server.close((error) => (error ? reject(error) : resolve()))
 	);
 }
 
@@ -316,7 +370,7 @@ async function waitForDebugEndpoint(port: number): Promise<void> {
 
 async function waitForFrame(
 	tab: Page,
-	match: (frame: { url(): string; content(): Promise<string> }) => boolean,
+	match: (frame: { url(): string; content(): Promise<string> }) => boolean
 ) {
 	const deadline = Date.now() + 5_000;
 	while (Date.now() < deadline) {

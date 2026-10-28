@@ -29,7 +29,7 @@ export type OccupancyIo = {
 export class LiveChromeWithoutDebugError extends Error {
 	constructor(userDataDir: string) {
 		super(
-			`The dedicated Chrome at ${userDataDir} is already running without a Debug Port. Quit that window and try again.`,
+			`The dedicated Chrome at ${userDataDir} is already running without a Debug Port. Quit that window and try again.`
 		);
 		this.name = "LiveChromeWithoutDebugError";
 	}
@@ -80,7 +80,7 @@ export function readChromeLock(userDataDir: string, io: OccupancyIo = {}): Chrom
 
 export async function inspectOccupancy(
 	userDataDir: string,
-	options: OccupancyIo & { waitForPort?: (userDataDir: string) => Promise<number> } = {},
+	options: OccupancyIo & { waitForPort?: (userDataDir: string) => Promise<number> } = {}
 ): Promise<DirOccupancy> {
 	const lock = readChromeLock(userDataDir, options);
 	switch (lock.kind) {
@@ -117,7 +117,13 @@ function defaultUnlink(path: string): void {
 export function clearStaleLock(
 	userDataDir: string,
 	unlink: (path: string) => void = defaultUnlink,
+	io: OccupancyIo = {}
 ): void {
+	if (readChromeLock(userDataDir, io).kind !== "stale") {
+		throw new Error(
+			`Refusing to clear a Chrome lock at ${userDataDir} without evidence that its owner exited.`
+		);
+	}
 	for (const name of [
 		SINGLETON_LOCK_FILE,
 		SINGLETON_SOCKET_FILE,

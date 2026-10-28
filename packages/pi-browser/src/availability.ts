@@ -1,12 +1,7 @@
-import {
-	mkdirSync,
-	readFileSync,
-	renameSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
+import { writeJsonAtomic } from "./storage.ts";
 import { getAgentDir } from "./allowlist.ts";
 
 export const AVAILABILITY_FILENAME = "pi-browser.json";
@@ -21,7 +16,7 @@ export function defaultToolAvailability(): ToolAvailability {
 
 export function getAvailabilityPath(
 	env: NodeJS.ProcessEnv = process.env,
-	home: () => string = homedir,
+	home: () => string = homedir
 ): string {
 	return join(getAgentDir(env, home), "extensions", AVAILABILITY_FILENAME);
 }
@@ -45,22 +40,13 @@ export function loadToolAvailability(path: string = getAvailabilityPath()): Tool
 
 export function saveToolAvailability(
 	config: ToolAvailability,
-	path: string = getAvailabilityPath(),
+	path: string = getAvailabilityPath()
 ): boolean {
 	const clean = parseToolAvailability(config);
-	const body = `${JSON.stringify({ available: clean.available }, null, "\t")}\n`;
-	const dir = dirname(path);
-	const tmp = join(dir, `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
 	try {
-		mkdirSync(dir, { recursive: true });
-		writeFileSync(tmp, body, "utf8");
-		renameSync(tmp, path);
+		writeJsonAtomic(path, clean);
 		return true;
 	} catch {
-		try {
-			unlinkSync(tmp);
-		} catch {
-		}
 		return false;
 	}
 }
@@ -71,7 +57,7 @@ export function applyToolAvailability(
 		setActiveTools: (names: string[]) => void;
 	},
 	available: boolean,
-	toolNames: readonly string[],
+	toolNames: readonly string[]
 ): void {
 	const active = pi.getActiveTools();
 	const next = available

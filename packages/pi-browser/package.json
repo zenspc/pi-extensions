@@ -27,12 +27,14 @@
 	"files": [
 		"src/",
 		"!src/**/*.test.ts",
+		"!src/test-support.ts",
 		"README.md",
 		"LICENSE"
 	],
 	"type": "module",
 	"scripts": {
-		"test": "node --experimental-strip-types --test src/*.test.ts",
+		"test": "node --experimental-strip-types --test --test-concurrency=2 src/*.test.ts",
+		"check": "tsc --noEmit",
 		"prepack": "cp --remove-destination ../../LICENSE LICENSE",
 		"postpack": "ln -sfn ../../LICENSE LICENSE"
 	},
@@ -45,11 +47,13 @@
 		"typebox": "*"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-coding-agent": "0.80.10",
+		"@earendil-works/pi-coding-agent": "1.4.0",
+		"@types/node": "26.1.1",
+		"typescript": "5.9.3",
 		"typebox": "1.1.38"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": ">=22.18"
 	},
 	"pi": {
 		"extensions": [
