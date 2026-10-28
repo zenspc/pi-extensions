@@ -1,5 +1,12 @@
 # @zenspc/pi-devtools
 
+## 0.5.0
+
+### Minor Changes
+
+- e06d82f: Replace `/context` and its subcommands with `/ctx`, a context audit attributed by source with ranked findings, calibrated token estimates, and a scrollable report.
+  Extension filters selecting `extensions/context-command.ts` must switch to `extensions/context-audit/index.ts`.
+
 ## 0.4.1
 
 ### Patch Changes
