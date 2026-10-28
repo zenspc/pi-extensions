@@ -18,7 +18,7 @@ const EXTENSION_COMMANDS = new Set(["/poteto-mode", "/setup-pstack", "/pstack"])
 const CURSOR_FRONTMATTER_KEYS = new Set(["mode", "icon", "color", "reminder", "paths"]);
 
 const CURSOR_SLUG_ALT =
-	"grok-4\\.6-fast-xhigh|claude-fable-5-1-thinking-max|gpt-5\\.6-sol-max|claude-opus-5-thinking-xhigh";
+	"grok-4\\.6-fast-xhigh|claude-fable-5-1-thinking-max|gpt-5\\.6-sol-max|claude-opus-5-thinking-xhigh|grok-4\\.7-(?:xhigh|medium)-fast|claude-opus-5-5-(?:xhigh|max|medium)";
 const CURSOR_DEFAULT_SLUGS = new RegExp(
 	"`?(?:" + CURSOR_SLUG_ALT + ")`?(?:\\s*,\\s*`?(?:" + CURSOR_SLUG_ALT + ")`?)*",
 	"g",
@@ -39,8 +39,10 @@ export const CLASS_RULES = [
 	{ pattern: "skills/setup-pstack/SKILL.md", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/check-plan.mjs", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/check-plan.test.mjs", class: "pi-only" },
+	{ pattern: "skills/poteto-mode/scripts/check-plan.test.ts", class: "never-copy" },
 	{ pattern: "skills/poteto-mode/scripts/package.json", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/bun.lock", class: "pi-only" },
+	{ pattern: "skills/statechart/scripts/pnpm-lock.yaml", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/worktree-audit.sh", class: "pi-only" },
 
 	{ pattern: "skills/principle-*/**", class: "copy" },
@@ -75,6 +77,11 @@ export const SEAMS = [
 		id: "models-path",
 		cursor: /~\/\.cursor\/rules\/pstack-models\.mdc/g,
 		pi: "~/.pi/agent/pstack/models.json",
+	},
+	{
+		id: "models-rule",
+		cursor: /`pstack-models\.mdc` rule/g,
+		pi: "injected pstack role table",
 	},
 	{
 		id: "sessions-path",
@@ -121,7 +128,7 @@ export const SEAMS = [
 	{
 		id: "subagent-poteto",
 		cursor: /subagent_type:\s*"poteto-agent"/g,
-		pi: 'subagent({ agent: "poteto-agent", task })',
+		pi: 'agent: "poteto-agent"',
 	},
 	{
 		id: "subagent-sicko",
@@ -130,7 +137,7 @@ export const SEAMS = [
 	},
 	{
 		id: "subagent-worker",
-		cursor: /`subagent_type`:\s*`generalPurpose`|subagent_type:\s*"generalPurpose"|subagent_type:\s*`?generalPurpose`?/g,
+		cursor: /`subagent_type`:\s*`generalPurpose`|subagent_type:\s*"generalPurpose"|subagent_type:\s*`generalPurpose`|subagent_type:\s*generalPurpose/g,
 		pi: 'agent: "worker"',
 	},
 	{
@@ -147,6 +154,31 @@ export const SEAMS = [
 		id: "task-subagent",
 		cursor: /Task subagent/g,
 		pi: "subagent",
+	},
+	{
+		id: "async-launch",
+		cursor: /run_in_background:\s*true/g,
+		pi: "async: true",
+	},
+	{
+		id: "cloud-base",
+		cursor: /cloud_base_branch/g,
+		pi: "baseRef",
+	},
+	{
+		id: "worker-name",
+		cursor: /`generalPurpose`/g,
+		pi: '`worker`',
+	},
+	{
+		id: "task-tool",
+		cursor: /\bTask tool\b|`Task` tool/g,
+		pi: "subagent tool",
+	},
+	{
+		id: "readonly-quoted",
+		cursor: /`readonly: true`/g,
+		pi: "read-only tools",
 	},
 	{
 		id: "task-call",
@@ -176,7 +208,7 @@ export const SEAMS = [
 	{
 		id: "create-skill-builtin",
 		cursor: /the \*\*create-skill\*\* skill \(Cursor's built-in for authoring SKILL\.md files\)/g,
-		pi: "`playbooks/authoring-a-skill.md` and `/skill:unslop`",
+		pi: "the **unslop** skill and Pi's Agent Skills standard",
 	},
 	{
 		id: "create-skill-use",
@@ -197,6 +229,11 @@ export const SEAMS = [
 		id: "create-skill-bare",
 		cursor: /create-skill/g,
 		pi: "authoring-a-skill",
+	},
+	{
+		id: "loop-cadence",
+		cursor: /\/loop 1h/g,
+		pi: "a recurring 1-hour wake",
 	},
 	{
 		id: "under-loop",
@@ -284,8 +321,18 @@ export const SEAMS = [
 		pi: "the standing goal",
 	},
 	{
+		id: "task-name",
+		cursor: /`Task`/g,
+		pi: "`subagent`",
+	},
+	{
+		id: "cloud-agent-name",
+		cursor: /Cursor cloud agent/g,
+		pi: "isolated pi-subagents worker",
+	},
+	{
 		id: "slash-skill",
-		cursor: /(?<![\w/])\/([a-z][a-z0-9-]*)\b/g,
+		cursor: /(?<![\w/.])\/([a-z][a-z0-9-]*)\b/g,
 		pi: (m, name) => {
 			if (EXTENSION_COMMANDS.has(`/${name}`)) return m;
 			if (!skillNamesForSlash.has(name)) return m;
@@ -400,7 +447,7 @@ function skillDirsAfter(to, actions) {
 	const dir = join(to, "skills");
 	const dirs = new Set(
 		readdirSync(dir, { withFileTypes: true })
-			.filter((ent) => ent.isDirectory())
+			.filter((ent) => ent.isDirectory() && existsSync(join(dir, ent.name, "SKILL.md")))
 			.map((ent) => ent.name),
 	);
 	for (const action of actions) {
@@ -472,12 +519,42 @@ const POTETO_INTRO = [
 const SUBAGENT_DEFAULTS =
 	"**Defaults for every `subagent()` launch.** file pointers not inlined context. The default for every role is the parent session model (`inherit-parent`; omit `model`). `/setup-pstack` writes `~/.pi/agent/pstack/models.json` and overrides per role. Pass a configured real slug as `model:`. `inherit-parent` and `auto` mean omit `model`. Code delegates tier by difficulty. The hardest changes (cross-cutting design, gnarly concurrency, subtle algorithms) go to the model configured for `hardest tasks`, else the parent model, when the task needs judgment or the intent is vague, and to your strongest instruction-following model when the work is a precisely specified sequence of steps to execute to the letter; trivial mechanical edits go to your fast code model. Per-role lines in the injected pstack role table override these defaults and the model choices in the routed skills (`how`, `why`, `arena`, `swarm`, `architect`, `interrogate`, `reflect`); a role with no line keeps its default.";
 
+function patchPotetoHelpPi(text) {
+	return text
+		.replace(/and mention once that a Custom Mode keeps it on\./, "and mention once that `/poteto-mode` stays on until `/poteto-mode off`.")
+		.replace(/give the user the file's public copy:[^\n]+/, "link the Pi port at `https://github.com/zenspc/pi-extensions/blob/master/packages/pi-pstack/` followed by its path.")
+		.replace(/ and a reasoning budget/g, "")
+		.replace(/If the need is also unclear, ask both questions together\./, "Ask one question at a time.")
+		.replace(/1\. Install with[^\n]+/, "1. Install with `pi install npm:@zenspc/pi-pstack` and install `pi-subagents` for delegation.")
+		.replace(/2\. Run \[`\/setup-pstack`\][^\n]+/, "2. Run [`/setup-pstack`](../setup-pstack/SKILL.md) to map available Pi models to roles. Roles inherit the parent model unless configured. Choices live in `~/.pi/agent/pstack/models.json` and take effect on the next task.")
+		.replace(/Installing changes nothing[^\n]+/, "Only `how`, `why`, `unslop`, and `typescript-best-practices` are Discoverable. All skills remain available as `/skill:<name>`. `/pstack off` hides the four from the Skill catalog. The [README](../../README.md) has the details. Read [`references/prompting.md`](references/prompting.md) before helping word a first prompt.")
+		.replace(/pick a smaller budget or cheaper models/, "pick cheaper models")
+		.replace(/when the chat runs on Auto or a cheaper model/, "when the chat uses a cheaper model")
+		.replace(/pstack is built for Cursor,[\s\S]*?## Start a task/, "This package ports Cursor pstack to Pi. Delegation uses `pi-subagents`. Cursor Custom Modes, automations, and built-in recurring wakes are not provided.\n\n## Start a task")
+		.replace(/Whether `\/poteto-mode` stays on[\s\S]*?## Pick a skill/, "`/poteto-mode` and `/skill:poteto-mode` enable sticky Poteto Mode for this session. `/poteto-mode off` disables it. Mid-chat, say \"new task\" to match a fresh playbook. For delegated work, use `subagent({ agent: \"poteto-agent\", task })` after enabling pi-subagents.\n\n## Pick a skill")
+		.replace(/^\| Build a page whose buttons[^\n]+\n/m, "")
+		.replace(/- `\/skill:deslop`,[^\n]+/, "- `deslop` is bundled. Use the project's verification harness for CLI or UI checks.")
+		.replace(/- a recurring wake and[^\n]+/, "- Recurring wakes require a scheduler or watcher. Pi skills follow the Agent Skills standard.")
+		.replace(/Without `\/poteto-mode`,[^\n]+?The Playbooks section/, "The Playbooks section")
+		.replace(/`\/principle-<name>`/g, "`/skill:principle-<name>`")
+		.replace(/Cursor's Plan Mode works alongside it\./, "A separate Pi planning extension can work alongside it.")
+		.replace(/It was started with Enter\.[^|]+/, "Run `/poteto-mode` to enable it. It persists until `/poteto-mode off`. ")
+		.replace(/The rule from `\/setup-pstack` applies to new chats\. Start one\./, "Check the configured provider/model ID. Changes apply on the next task.")
+		.replace(/Only `\/setup-pstack` loads from the user's words\.[^|]+/, "Only four skills are Discoverable. Use `/skill:<name>` to load a Hidden skill. ")
+		.replace(/or run them as cloud agents, which each get their own machine/, "and keep one writer per worktree")
+		.replace(/\]\(\.\.\/\.\.\/docs\/([^\s)]+)\)/g, "](https://github.com/cursor/plugins/blob/main/pstack/docs/$1)");
+}
+
 function patchPotetoModePi(text) {
 	if (!text.includes("`/poteto-mode` enables this mode")) {
 		text = text.replace("# Poteto mode\n\n", `# Poteto mode\n\n${POTETO_INTRO}`);
 	}
 	text = text.replace(/\*\*Defaults for every `Task` call\.\*\*[^\n]*/, SUBAGENT_DEFAULTS);
-	text = text.replace(/\*\*Defaults for every `subagent\(\)` launch\.\*\*`run_in_background:[^\n]*/, SUBAGENT_DEFAULTS);
+	text = text.replace(/\*\*Defaults for every `subagent\(\)` launch\.\*\*\s*`run_in_background:[^\n]*/, SUBAGENT_DEFAULTS);
+	text = text.replace(
+		/\*\*Match the model to the job\.\*\*[^\n]*/,
+		"**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit. Do not synthesize effort or speed suffixes in Pi model IDs. Query `subagent({ action: \"models\" })` for valid selectors when a configured model is unavailable.",
+	);
 	return text;
 }
 
@@ -619,11 +696,57 @@ export function renderWrite(action, paths) {
 	if (base === "SKILL.md") {
 		text = applyFrontmatterPolicy(text, skillDir);
 	}
-	if (action.class === "adapt") {
+	if (action.class === "adapt" && action.rel.endsWith(".md")) {
 		text = applyBodyTransforms(text, action.rel);
+	}
+	if (action.rel === "skills/statechart/scripts/run.ts") {
+		text = text.replace("      rules: checked,\n    };", "      rules: checked,\n    } satisfies Partial<CheckResult>;");
+	}
+	if (action.rel === "skills/statechart/scripts/test/cli.test.ts") {
+		text = text
+			.replace("    () =>\n      signalWhile(signal, (fakes) => {", "    async () => {\n      await signalWhile(signal, (fakes) => {")
+			.replace("        return { dir, reached: () => fs.existsSync(drawing) };\n      }),\n  );", "        return { dir, reached: () => fs.existsSync(drawing) };\n      });\n    },\n  );")
+			.replace("    () =>\n      signalWhile(signal, () => ({", "    async () => {\n      await signalWhile(signal, () => ({")
+			.replace("          return false;\n        },\n      })),\n  );", "          return false;\n        },\n      }));\n    },\n  );");
+	}
+	if (action.rel === "skills/statechart/scripts/test/render.test.ts") {
+		text = text.replace('"--no-audit", "--no-fund", "--save-exact"', '"--no-audit", "--no-fund", "--ignore-scripts", "--save-exact"');
+	}
+	if (action.rel === "skills/statechart/scripts/package.json") {
+		const manifest = JSON.parse(text);
+		manifest.name = "@zenspc/pi-pstack-statechart-tools";
+		manifest.scripts.typecheck = "tsc --noEmit";
+		manifest.devDependencies = { "@types/node": "22.20.5", ...manifest.devDependencies, typescript: "7.0.2" };
+		manifest.version = "0.0.0";
+		manifest.packageManager = "pnpm@9.15.0";
+		text = `${JSON.stringify(manifest, null, 2)}\n`;
 	}
 	if (action.rel === "skills/poteto-mode/SKILL.md") {
 		text = patchPotetoModePi(text);
+	}
+	if (action.rel === "skills/poteto-help/SKILL.md") {
+		text = patchPotetoHelpPi(text);
+	}
+	if (action.rel === "skills/swarm/SKILL.md") {
+		text = text.replace(/Spawn all N workers[^\n]+/, 'Spawn all N workers through pi-subagents, with `agent: "worker"`, `async: true`, `worktree: true` for code-writing lanes, and the step 3 model, left unset for `auto` or `inherit-parent`. Keep one writer per worktree. Read the pi-subagents skill for local processes, worktree setup, and delegation limits.');
+	}
+	if (action.rel === "skills/poteto-mode/playbooks/orchestrate.md") {
+		text = text.replace(/\(nesting works to depth 3,[^)]+\)/, "(only when the parent authorized nested delegation and the child's tools include subagent; obey pi-subagents depth limits)");
+		text = text.replace(/- \*\*Worker \/ verifier\.\*\*[^\n]+/, '- **Worker / verifier.** Use pi-subagents with `worktree: true` for code-writing lanes. Use an explicit `cwd` when a verifier needs the local runtime, transcripts, simulator, or credentials. Keep one writer per worktree. Run a unit\'s verifier on a different model family from its worker.');
+		text = text.replace(/the cloud agent's status in the Cursor dashboard/, '`subagent({ action: "status", id })`');
+		text = text.replace(/- After a Cursor restart:[^\n]+/, '- After a Pi restart, inspect retained runs with pi-subagents and inspect their branches and reports before deciding which work survived. Re-read the standing orders and `units.tsv`, recompute the frontier, and replace missing workers from consolidated briefs. `orch` replaces a lock whose holder pid is gone.');
+		text = text.replace(/frontier watcher wake \(arm it via the loop skill, with a long heartbeat fallback\)/, "frontier watcher wake (use an available scheduler or watcher; Pi does not bundle a loop skill)");
+	}
+	if (action.rel === "skills/reflect/SKILL.md") {
+		text = text.replaceAll('agent mode (`readonly: false`)', "read-only tools plus the required MCP tools");
+		text = text.replaceAll("and readonly strips MCPs", "so include those MCP tools explicitly");
+	}
+	if (action.rel === "skills/why/SKILL.md") {
+		text = text.replace(/Every spawn is[^\n]+/, 'Use `agent: "worker"` with the MCP tools each investigator needs. Investigators and the synthesizer are read-only. Select read-only tools and the required MCP tools rather than using Cursor readonly/Ask flags, which Pi does not support.');
+		text = text.replace(/Before spawning investigators,[^\n]+/, 'Before spawning investigators, list the MCP servers and tools available in this Pi session. Pass the required tool names and evidence scope in each brief.');
+	}
+	if (action.rel === "skills/poteto-mode/SKILL.md") {
+		text = text.replace("## Subagents\n", "## Subagents\n\nRead the pi-subagents skill before delegation. Delegate only when the operator's request or applicable user/project instructions authorize it. If only `subagents_enable` is available, call it first, then call `subagent` as a native tool, not through codemode.\n");
 	}
 	return text;
 }
@@ -719,7 +842,7 @@ export function assertNoCursorSeams(destRoot) {
 	for (const rel of rels) {
 		if (matchesAny(rel, DEST_ONLY_NEVER)) continue;
 		const fileClass = classify(rel);
-		if (fileClass === "pi-only" || fileClass === "never-copy") continue;
+		if (fileClass === "pi-only" || fileClass === "never-copy" || !rel.endsWith(".md")) continue;
 		const text = readFileSync(join(destRoot, rel), "utf8");
 		if (text.includes("AskQuestion")) leftover.push(`${rel}: AskQuestion`);
 		if (text.includes("subagent_type")) leftover.push(`${rel}: subagent_type`);

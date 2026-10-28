@@ -31,6 +31,7 @@
 		"extensions/",
 		"!extensions/**/*.test.ts",
 		"skills/",
+		"!skills/**/node_modules/**",
 		"agents/",
 		"README.md",
 		"LICENSE"
@@ -52,6 +53,8 @@
 		}
 	},
 	"scripts": {
-		"test": "node --experimental-strip-types --test extensions/pstack/*.test.ts skills/poteto-mode/scripts/check-plan.test.mjs scripts/reground-from-cursor.test.mjs"
+		"test": "node --experimental-strip-types --test extensions/pstack/*.test.ts skills/poteto-mode/scripts/check-plan.test.mjs scripts/*.test.mjs",
+		"test:tools": "cd skills/poteto-mode/scripts && bun test orch watch-pr",
+		"test:statechart": "pnpm --dir skills/statechart/scripts test"
 	}
 }

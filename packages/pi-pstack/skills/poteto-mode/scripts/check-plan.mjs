@@ -17,7 +17,7 @@ const SUB_BLOCKS = [
 	"Merge.",
 ];
 const PROGRAM_H3 = ["Arm the program", "Spawn owners", "PR mechanics", "Verdict and merge", "Boot recipe"];
-const PROGRAM_MARKERS = ["standing goal", "git show origin/main:", /30[- ]minute/, "status message"];
+const PROGRAM_MARKERS = ["git show origin/main:", /1[- ]hour/, "status message"];
 const HOW_TO_READ_MARKERS = [
 	"One box is one unit of work",
 	"names the evidence",
@@ -44,15 +44,35 @@ if (raw[0] === "---") {
 }
 
 const lines = [];
-let fence = false;
+let fence = null;
+const openingFence = (text) => {
+	const match = text.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+	if (!match || (match[1][0] === "`" && match[2].includes("`"))) return null;
+	return { char: match[1][0], length: match[1].length };
+};
+const closingFence = (text, opening) => {
+	const match = text.match(/^ {0,3}(`+|~+)[ \t]*$/);
+	return Boolean(
+		match &&
+		match[1][0] === opening.char &&
+		match[1].length >= opening.length,
+	);
+};
 for (let i = start; i < raw.length; i++) {
 	const text = raw[i];
 	const n = i + 1;
-	if (/^```/.test(text)) fence = !fence;
-	lines.push({ n, text, code: fence });
-	if (fence) continue;
+	let code = Boolean(fence);
+	if (fence && closingFence(text, fence)) {
+		code = false;
+		fence = null;
+	} else if (!fence) {
+		fence = openingFence(text);
+		code = Boolean(fence);
+	}
+	lines.push({ n, text, code });
+	if (code) continue;
 	const prose = text
-		.replace(/`[^`]*`/g, "`")
+		.replace(/(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)/g, "`")
 		.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
 		.replace(/\]\([^)]*\)/g, "]");
 	if (/[\u2013\u2014]/.test(prose)) fail(n, "long dash");
