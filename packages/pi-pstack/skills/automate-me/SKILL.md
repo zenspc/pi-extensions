@@ -26,7 +26,8 @@ Update mode changes the rest of the flow:
 
 ### 1. Mine their history
 
-Locate the active workspace's transcripts before fanning out. The system prompt names the workspace's `agent-transcripts/` directory. Use only that path. Don't glob across `~/.pi/agent/sessions/`. That crosses workspace boundaries and reads private chats from unrelated projects.
+Locate workspace-scoped Pi sessions and retained pi-subagents runs through [Pi runtime prerequisites](../poteto-mode/references/pi-runtime.md).
+Pass only verified exact paths to mining subagents; if history is unavailable, use the visible conversation and name that limit.
 
 Survey recent agent conversations within that scope for recurring patterns. Run multiple parallel subagents across slices of history (e.g. last 2-4 weeks, split into 3 slices so each has enough material). Pick each subagent's reasoning level and fast or standard speed for the job, per the Subagents section of the **poteto-mode** skill. Each slice mining subagent reads transcripts from the workspace-scoped path the parent provides, looks for the signals below, and returns a short structured list of patterns it saw with evidence pointers. Default signals worth hunting:
 

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+
+import { configPath, defaultConfig, saveConfig } from "./config.ts";
 
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SKILL_PATH = join(PACKAGE_DIR, "skills", "poteto-mode", "SKILL.md");
@@ -78,6 +80,34 @@ test("Poteto Mode lifecycle through real Pi sessions", async (t) => {
 	const manager = SessionManager.create(work, join(work, "sessions"));
 	let session = await create(manager);
 	await prompt(session, "Initial ordinary turn");
+	await t.test("mixed panels reach the real provider prompt without dropping inherited seats", async () => {
+		const config = defaultConfig();
+		config.roles["arena runners"] = ["inherit-parent", "pstack-test/capture", "auto"];
+		assert.ok(saveConfig(config));
+		await prompt(session, "Turn with a mixed panel");
+		assert.match(latest().system, /arena runners: inherit-parent, pstack-test\/capture, auto/);
+		const before = readFileSync(configPath(), "utf8");
+		const calls = captures.length;
+		await session.prompt("/pstack status");
+		assert.equal(captures.length, calls, "status does not invoke a model");
+		const status = session.messages.findLast(message => message.role === "custom" && message.customType === "pstack-status");
+		assert.ok(status && status.role === "custom");
+		assert.match(String(status.content), /arena runners: pstack-test\/capture \(inherited\), pstack-test\/capture, pstack-test\/capture \(inherited\) \[same-model panel\]/);
+		assert.equal(readFileSync(configPath(), "utf8"), before);
+		assert.ok(saveConfig(defaultConfig()));
+	});
+	await t.test("invalid config warns once in real JSON sessions and remains untouched", async () => {
+		writeFileSync(configPath(), "{private-invalid-config");
+		await prompt(session, "Turn with invalid config");
+		await prompt(session, "Another turn with invalid config");
+		const warnings = session.messages.filter(message => message.role === "custom" && message.customType === "pstack-status" && String(message.content).includes("Using defaults for rejected settings"));
+		assert.equal(warnings.length, 1);
+		assert.doesNotMatch(JSON.stringify(warnings), /private-invalid-config/);
+		await session.prompt("/pstack off");
+		assert.equal(readFileSync(configPath(), "utf8"), "{private-invalid-config");
+		assert.ok(session.messages.some(message => message.role === "custom" && String(message.content).includes("Refusing to overwrite")));
+		assert.ok(saveConfig(defaultConfig()));
+	});
 	const offLeaf = manager.getLeafId()!;
 	await prompt(session, "/poteto-mode Investigate the parser");
 	const onLeaf = manager.getLeafId()!;

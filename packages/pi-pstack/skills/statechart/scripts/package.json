@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "test:offline": "node test-offline.mjs",
+    "test:renderers": "node --disable-warning=ExperimentalWarning --test test/render.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

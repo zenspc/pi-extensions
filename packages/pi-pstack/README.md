@@ -50,7 +50,23 @@ View modules execute local code, so use only trusted models and views.
 `/setup-pstack` writes role choices to `~/.pi/agent/pstack/models.json`.
 Use exact Pi `provider/modelId` selectors.
 `inherit-parent` and `auto` mean omit the subagent model override.
-No role table is injected when all roles inherit.
+Default scalar inheritance injects no role table.
+Explicit panels preserve every seat and its order, including inherited seats and repeated models.
+A one-entry array explicitly selects one seat; scalar inheritance leaves the workflow's default panel size.
+The cross-judge pool is a set of choices for one judge, not a panel of judges.
+
+Default Arena candidates and Interrogate reviewers use two parent-model samples, not a diverse-model panel.
+`/pstack status` resolves inherited selectors against the current parent model, labels same-model panels, and lists configured selectors unavailable in the session registry.
+These are configured choices, not a guarantee of which physical model a delegated run will use.
+Review workflows report actual models from run metadata and disclose fallback or reduced diversity.
+Use `/setup-pstack` to opt into a diverse panel of confirmed available models; no additional paid provider is selected automatically.
+
+`/pstack status` shows the config path, load status (`missing`, `loaded`, `partial`, or `invalid`), and rejected fields.
+A missing file quietly uses defaults.
+An existing broken file warns once per distinct diagnostic in the extension runtime, including in non-interactive sessions.
+Valid settings in a partially rejected config still apply; rejected settings fall back to defaults, which enable catalog visibility and inherit the parent model.
+Setup and catalog toggles refuse to overwrite a broken file.
+Repair it or move it aside yourself before retrying; status never changes it.
 
 Poteto Mode is recorded in session entries and restored from the active branch on session start and tree navigation.
 The model receives explicit on/off state after you select the mode.
@@ -71,10 +87,13 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
   The bundled `poteto-agent` has read/search/shell/edit/write tools, not automatic MCP access.
   MCP-dependent work needs a configured agent definition that selects the required tools and loads their providers.
   Naming tools in a task brief does not grant access.
-- Sessions live under `~/.pi/agent/sessions/`, with the active file exposed as `$PI_SESSION_FILE`.
+- Sessions default to `~/.pi/agent/sessions/`, with the active file exposed as `$PI_SESSION_FILE` when available.
+  Transcript workflows verify the session ID and workspace, use exact retained pi-subagents records for delegates, and never scan unrelated private chats.
 - The Pi-specific `deslop` skill, JSON model configuration, plan checker, and worktree audit are preserved on sync.
 - Cursor Custom Modes, recurring wakes, the benny automation pack, and `make-bot-ui` are not provided.
-  Use a scheduler or watcher for recurring work and the project's verification harness for UI or CLI checks.
+  Before unattended work, follow the [Pi runtime prerequisites](skills/poteto-mode/references/pi-runtime.md) to verify actual wake delivery and record cancellation.
+  Without a working scheduler or watcher, playbooks continue in the active session and checkpoint external waits instead of promising unattended continuation.
+  Use the project's verification harness for UI or CLI checks.
 
 ## Upstream sync and development
 
@@ -102,18 +121,22 @@ pnpm --filter @zenspc/pi-pstack test
 # Bun toolchain uses the existing bun.lock.
 cd packages/pi-pstack/skills/poteto-mode/scripts
 bun install --frozen-lockfile --ignore-scripts
+bun run typecheck
 bun test orch watch-pr
 
 # Statechart has its own pnpm development toolchain.
 cd ../../statechart/scripts
 pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
 pnpm typecheck
-pnpm test
+pnpm test:offline
+pnpm test:renderers
 ```
 
+CI gates both nested toolchains, with statechart's offline/recorded tests and network-dependent renderer tests in separate jobs.
+`pnpm test` in the statechart toolchain runs both suites.
 Statechart's recorded-corpus tests run without Java or TLC.
 Renderer tests fetch pinned renderer packages into the user cache with lifecycle scripts disabled and require network access.
-Optional differential tests require `TLA2TOOLS` pointing to `tla2tools.jar` and a Java runtime.
+Optional live TLC tests are skipped unless `TLA2TOOLS` points to `tla2tools.jar` and a Java runtime is available.
 
 ## License
 
