@@ -115,9 +115,13 @@ Response speed and cache freshness still track assistant responses separately.
 
 Replaces the stock TUI header with the pi logo, key tips, the active model, and loaded resources (context, skills, prompts, extensions, themes).
 Stock resource-panel sections are hidden so they are not listed twice.
+Collapsed lists adapt to the terminal's available height, showing previews and `+N more` counts instead of making the welcome screen scroll.
+Short terminals use a smaller logo and fewer tips to leave room for the resource summary, editor, and footer.
+Resource diagnostics remain visible.
 
 TUI mode only.
-Use the expand-tools binding (`ctrl+o` by default) to show the full resource lists.
+Use the expand-tools binding (`ctrl+o` by default) to show the full resource lists, which may scroll.
+Press it again to return to the compact welcome screen.
 
 ### Dracula theme
 

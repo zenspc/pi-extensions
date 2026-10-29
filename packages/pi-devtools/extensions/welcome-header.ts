@@ -17,7 +17,6 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import {
-  captureIsComplete,
   getSectionHeading,
   isSectionId,
   parseResourceSections,
@@ -27,8 +26,6 @@ const GAP = 4;
 const MIN_TIPS_WIDTH = 28;
 const SIDE_PAD = 1;
 const COLLAPSED_ITEM_LINES = 3;
-const RESOURCE_POLL_MS = 50;
-const MAX_RESOURCE_RETRIES = 3;
 const RESOURCE_PANEL_INDEX = 1;
 const RESOURCE_PAIRS = [
   ["Context", "Prompts"],
@@ -57,6 +54,7 @@ type WelcomeOptions = {
   modelLabel?: string;
   resources?: WelcomeResources;
   expanded?: boolean;
+  maxHeight?: number;
 };
 
 type ResourcePanel = {
@@ -85,13 +83,17 @@ function isResourcePanel(value: unknown): value is ResourcePanel {
   );
 }
 
-function isCollapsible(
-  value: unknown,
-): value is { getCollapsedText: () => string } {
-  return (
-    isRecord(value) &&
-    typeof value.getCollapsedText === "function"
-  );
+function collapsedResourceText(value: unknown, expanded: boolean): string | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.getCollapsedText === "function") return value.getCollapsedText();
+  // Pi 1.4 replaced getCollapsedText() with a theme-aware builder.
+  if (typeof value.build !== "function" || typeof value.setExpanded !== "function") return undefined;
+  value.setExpanded(false);
+  try {
+    return value.build();
+  } finally {
+    value.setExpanded(expanded);
+  }
 }
 
 function padVisible(text: string, width: number): string {
@@ -229,14 +231,18 @@ export function renderResourceSection(options: {
   theme: Theme;
   expanded: boolean;
   columnWidth: number;
+  itemLimit?: number;
 }): string[] {
-  const { title, items, theme, expanded, columnWidth } = options;
+  const { title, items, theme, expanded, columnWidth, itemLimit = COLLAPSED_ITEM_LINES } = options;
   if (items.length === 0 || columnWidth <= 0) return [];
 
+  if (!expanded && itemLimit === 0) {
+    return [truncateToWidth(theme.fg("mdHeading", `[${title}] +${items.length} more`), columnWidth, "…")];
+  }
   const lines = [
     truncateToWidth(theme.fg("mdHeading", `[${title}]`), columnWidth, "…"),
   ];
-  const visible = expanded ? items : items.slice(0, COLLAPSED_ITEM_LINES);
+  const visible = expanded ? items : items.slice(0, itemLimit);
   for (const item of visible) {
     lines.push(
       truncateToWidth(theme.fg("dim", `  ${item}`), columnWidth, "…"),
@@ -296,91 +302,54 @@ function pairResourceSections(
   return pairs;
 }
 
-function sectionOverflows(
-  sections: Array<{ items: string[] }>,
-  expanded: boolean,
-): boolean {
-  if (expanded) return false;
-  return sections.some((section) => section.items.length > COLLAPSED_ITEM_LINES);
-}
-
 export function renderResourceGrid(options: {
   resources: WelcomeResources;
   theme: Theme;
   expanded: boolean;
   width: number;
+  maxHeight?: number;
 }): string[] {
-  const { resources, theme, expanded, width } = options;
+  const { resources, theme, expanded, width, maxHeight = Infinity } = options;
   const sections = resourceEntries(resources);
-  if (sections.length === 0 || width <= 0) return [];
+  if (sections.length === 0 || width <= 0 || maxHeight <= 0) return [];
 
-  const hintKey = expandHint();
   const twoColumn = width >= MIN_TIPS_WIDTH * 2 + GAP && sections.length >= 2;
-  const columnWidth = twoColumn
-    ? Math.floor((width - GAP) / 2)
-    : width;
+  const columnWidth = twoColumn ? Math.floor((width - GAP) / 2) : width;
+  const pairs = twoColumn
+    ? pairResourceSections(sections)
+    : sections.map((section) => [section, undefined] as const);
 
-  const renderSection = (
-    section: { title: SectionId; items: string[] },
-    sectionWidth: number,
-  ) =>
-    renderResourceSection({
-      title: section.title,
-      items: section.items,
-      theme,
-      expanded,
-      columnWidth: sectionWidth,
-    });
-
-  const lines: string[] = [];
-  const append = (block: string[]) => {
-    if (lines.length > 0) lines.push("");
-    lines.push(...block);
-  };
-
-  if (twoColumn) {
-    for (const [left, right] of pairResourceSections(sections)) {
-      if (right) {
-        append(
-          joinFixedColumns(
-            renderSection(left, columnWidth),
-            renderSection(right, columnWidth),
-            columnWidth,
-            GAP,
-          ),
-        );
-      } else {
-        append(renderSection(left, width));
-      }
+  for (let itemLimit = COLLAPSED_ITEM_LINES; itemLimit >= 0; itemLimit -= 1) {
+    const renderSection = (section: { title: SectionId; items: string[] }, sectionWidth: number) =>
+      renderResourceSection({ ...section, theme, expanded, itemLimit, columnWidth: sectionWidth });
+    const lines: string[] = [];
+    for (const [left, right] of pairs) {
+      if (lines.length > 0 && itemLimit > 0) lines.push("");
+      lines.push(...(right
+        ? joinFixedColumns(renderSection(left, columnWidth), renderSection(right, columnWidth), columnWidth, GAP)
+        : renderSection(left, width)));
     }
-  } else {
-    for (const section of sections) append(renderSection(section, width));
+    const hidden = sections.some((section) => section.items.length > itemLimit);
+    if (expanded || hidden) {
+      lines.push("", theme.fg("dim", `${expandHint()}  show ${expanded ? "less" : "all"}`));
+    }
+    if (expanded || lines.length <= maxHeight) return lines;
   }
 
-  if (sectionOverflows(sections, expanded)) {
-    lines.push(
-      "",
-      theme.fg("dim", `${hintKey}  show all`),
-    );
-  } else if (
-    expanded &&
-    sections.some((section) => section.items.length > COLLAPSED_ITEM_LINES)
-  ) {
-    lines.push(
-      "",
-      theme.fg("dim", `${hintKey}  show less`),
-    );
-  }
-
-  return lines;
+  const total = sections.reduce((sum, section) => sum + section.items.length, 0);
+  return maxHeight >= 2
+    ? [theme.fg("muted", `[Resources] +${total} more`), theme.fg("dim", `${expandHint()}  show all`)]
+    : [theme.fg("dim", `${expandHint()} show all (${total})`)];
 }
 
 function renderBrand(options: {
   contentWidth: number;
   theme: Theme;
   modelLabel?: string;
+  maxHeight: number;
 }): string[] {
-  const { contentWidth, theme, modelLabel } = options;
+  const { contentWidth, theme, modelLabel, maxHeight } = options;
+  if (maxHeight <= 0) return [];
   const tips = renderTips(theme, modelLabel);
   const tipsWidth = Math.max(
     MIN_TIPS_WIDTH,
@@ -389,9 +358,21 @@ function renderBrand(options: {
   const scale = contentWidth >= 20 + GAP + tipsWidth ? 5 : 3;
   const logo = renderLogo(theme, scale);
   const sideBySideWidth = iconWidth(logo) + GAP + tipsWidth;
-  return contentWidth >= sideBySideWidth
+  const full = contentWidth >= sideBySideWidth
     ? joinColumns(logo, tips, GAP)
     : [...logo, "", ...tips];
+  if (full.length <= maxHeight) return full;
+
+  const shortTips = tips.slice(0, modelLabel ? 2 : 1);
+  const shortWidth = Math.max(...shortTips.map((line) => visibleWidth(line)));
+  for (const smallScale of [3, 1]) {
+    const smallLogo = renderLogo(theme, smallScale);
+    const compact = contentWidth >= iconWidth(smallLogo) + GAP + shortWidth
+      ? joinColumns(smallLogo, shortTips, GAP)
+      : [...smallLogo, "", ...shortTips];
+    if (compact.length <= maxHeight) return compact;
+  }
+  return shortTips.slice(0, maxHeight);
 }
 
 export function renderWelcome({
@@ -400,27 +381,32 @@ export function renderWelcome({
   modelLabel,
   resources,
   expanded = false,
+  maxHeight = Infinity,
 }: WelcomeOptions): string[] {
-  if (width <= 0) return [];
+  const height = expanded ? Infinity : Math.max(0, Math.floor(maxHeight));
+  if (width <= 0 || height <= 0) return [];
 
   const sidePad = Math.min(SIDE_PAD, Math.max(0, Math.floor((width - 1) / 2)));
   const contentWidth = Math.max(1, width - sidePad * 2);
-  const body = renderBrand({ contentWidth, theme, modelLabel });
+  const padding = height >= 6 ? [""] : [];
+  const available = height - padding.length * 2;
+  const resourceSpace = hasResources(resources) ? Math.min(2, available) : 0;
+  const separator = resourceSpace > 0 && available >= 6
+    ? ["", theme.fg("dim", "─".repeat(contentWidth))]
+    : [];
+  const body = renderBrand({
+    contentWidth, theme, modelLabel,
+    maxHeight: Math.max(0, available - resourceSpace - separator.length),
+  });
   if (hasResources(resources)) {
-    body.push(
-      "",
-      theme.fg("dim", "─".repeat(contentWidth)),
-      ...renderResourceGrid({
-        resources,
-        theme,
-        expanded,
-        width: contentWidth,
-      }),
-    );
+    body.push(...separator, ...renderResourceGrid({
+      resources, theme, expanded, width: contentWidth,
+      maxHeight: available - body.length - separator.length,
+    }));
   }
 
   const prefix = " ".repeat(sidePad);
-  return ["", ...body, ""].map((line) =>
+  return [...padding, ...body, ...padding].map((line) =>
     padVisible(truncateToWidth(prefix + line, width, ""), width),
   );
 }
@@ -447,15 +433,15 @@ function findResourcePanel(tui: TUI): ResourcePanel | undefined {
   return undefined;
 }
 
-function inspectResourceTexts(panel: ResourcePanel): {
+function inspectResourceTexts(panel: ResourcePanel, expanded: boolean): {
   texts: string[];
   knownChildren: Component[];
 } {
   const texts: string[] = [];
   const knownChildren: Component[] = [];
   for (const child of panel.children) {
-    if (!isCollapsible(child)) continue;
-    const text = child.getCollapsedText();
+    const text = collapsedResourceText(child, expanded);
+    if (!text) continue;
     const heading = getSectionHeading(text);
     if (!heading || !isSectionId(heading)) continue;
     knownChildren.push(child);
@@ -505,7 +491,6 @@ class WelcomeHeader implements Component {
   private resources: WelcomeResources | undefined;
   private hidden: HiddenChild[] = [];
   private panel: ResourcePanel | undefined;
-  private timer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
   private readonly tui: TUI;
   private readonly theme: Theme;
@@ -515,7 +500,6 @@ class WelcomeHeader implements Component {
     this.tui = tui;
     this.theme = theme;
     this.modelLabel = modelLabel;
-    this.timer = setTimeout(() => this.capture(0), 0);
   }
 
   setExpanded(expanded: boolean): void {
@@ -523,13 +507,30 @@ class WelcomeHeader implements Component {
   }
 
   render(width: number): string[] {
+    this.capture();
     return renderWelcome({
       width,
       theme: this.theme,
       modelLabel: this.modelLabel,
       resources: this.resources,
       expanded: this.expanded,
+      maxHeight: this.availableHeight(width),
     });
+  }
+
+  private availableHeight(width: number): number {
+    const first = this.tui.children[0];
+    const header = isResourcePanel(first) ? first.children[0] : undefined;
+    const nested = isResourcePanel(header) && header.children.includes(this);
+    const headerContainer = nested ? header : first;
+    const siblings = [
+      ...this.tui.children.slice(1),
+      ...(nested && isResourcePanel(first) ? first.children.slice(1) : []),
+      ...(isResourcePanel(headerContainer) ? headerContainer.children.filter((child) => child !== this) : []),
+    ];
+    // Leave the editor, footer, header spacers, and diagnostics their actual rendered height.
+    const occupied = siblings.reduce((sum, child) => sum + child.render(width).length, 0);
+    return Math.max(0, this.tui.terminal.rows - occupied);
   }
 
   invalidate(): void {}
@@ -537,39 +538,21 @@ class WelcomeHeader implements Component {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.timer) clearTimeout(this.timer);
     if (this.panel) restoreKnownChildren(this.panel, this.hidden);
     this.hidden = [];
   }
 
-  private capture(attempt: number): void {
+  private capture(): void {
     if (this.disposed) return;
-
     const panel = findResourcePanel(this.tui);
-    if (panel) {
-      const { texts, knownChildren } = inspectResourceTexts(panel);
-      const resources = parseResourceSections(texts);
-      const complete = captureIsComplete(resources);
-      if (
-        hasResources(resources) &&
-        (complete || attempt >= MAX_RESOURCE_RETRIES)
-      ) {
-        this.panel = panel;
-        this.hidden = hideKnownChildren(panel, knownChildren);
-        this.resources = resources;
-        this.tui.requestRender();
-      }
-    }
-
-    if (attempt >= MAX_RESOURCE_RETRIES) {
-      this.timer = undefined;
-      return;
-    }
-
-    this.timer = setTimeout(
-      () => this.capture(attempt + 1),
-      RESOURCE_POLL_MS,
-    );
+    if (!panel) return;
+    const { texts, knownChildren } = inspectResourceTexts(panel, this.expanded);
+    const resources = parseResourceSections(texts);
+    if (!hasResources(resources)) return;
+    // Capture during rendering so late discovery and /reload do not depend on a startup timer.
+    this.panel = panel;
+    this.hidden = hideKnownChildren(panel, knownChildren);
+    this.resources = resources;
   }
 }
 
