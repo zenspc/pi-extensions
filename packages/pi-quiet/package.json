@@ -1,6 +1,6 @@
 {
 	"name": "@zenspc/pi-quiet",
-	"version": "0.4.2",
+	"version": "0.5.0",
 	"description": "Grok Build-inspired terminal presentation for Pi: welcome, boxed prompt, status, and compact tool activity.",
 	"type": "module",
 	"license": "MIT",
