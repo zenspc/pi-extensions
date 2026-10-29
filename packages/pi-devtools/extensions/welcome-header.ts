@@ -6,7 +6,11 @@
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { VERSION, keyText } from "@earendil-works/pi-coding-agent";
 import {
+  backgroundAnsi,
   type Component,
+  foregroundAnsi,
+  isAppleTerminalSession,
+  rgbColor,
   Spacer,
   type TUI,
   truncateToWidth,
@@ -32,28 +36,10 @@ const RESOURCE_PAIRS = [
   ["Themes", undefined],
 ] as const;
 
-const PI_LARGE = [
-  "████████████████████████",
-  "████████████████████████",
-  "████                ████",
-  "      ████    ████",
-  "      ████    ████",
-  "      ████    ████",
-  "      ████    ████",
-  "      ████    ████",
-  "      ████    ████",
-  "      ████    ████",
-];
-
-const PI_COMPACT = [
-  "████████████",
-  "████████████",
-  "███      ███",
-  "   ██  ██",
-  "   ██  ██",
-  "   ██  ██",
-  "   ██  ██",
-];
+const CORAL = rgbColor(228, 138, 122);
+const BLUE = rgbColor(79, 142, 179);
+const YELLOW = rgbColor(234, 182, 93);
+const RESET = "\x1b[0m";
 
 type SectionId = "Context" | "Skills" | "Prompts" | "Extensions" | "Themes";
 
@@ -117,8 +103,33 @@ function iconWidth(icon: readonly string[]): number {
   return Math.max(0, ...icon.map((line) => visibleWidth(line)));
 }
 
-function paintIcon(icon: readonly string[], theme: Theme): string[] {
-  return icon.map((line) => theme.bold(theme.fg("accent", line)));
+function renderLogo(theme: Theme, scale: number): string[] {
+  const mode = theme.getColorMode();
+  const fg = (color: typeof CORAL) => foregroundAnsi(color, mode);
+  if (isAppleTerminalSession()) {
+    return [`${fg(CORAL)}P${RESET}${fg(YELLOW)}i${RESET}`];
+  }
+  // Pi's four pixel rows, scaled before pairing into terminal half-block cells.
+  const pixels = [
+    [CORAL, CORAL, CORAL, undefined],
+    [BLUE, undefined, CORAL, undefined],
+    [BLUE, BLUE, undefined, YELLOW],
+    [BLUE, undefined, undefined, YELLOW],
+  ];
+  const lines: string[] = [];
+  for (let y = 0; y < pixels.length * scale; y += 2) {
+    const top = pixels[Math.floor(y / scale)];
+    const bottom = pixels[Math.floor((y + 1) / scale)];
+    lines.push(top.map((upper, x) => {
+      const lower = bottom[x];
+      if (!upper && !lower) return " ".repeat(scale);
+      const color = upper && lower
+        ? fg(upper) + backgroundAnsi(lower, mode)
+        : fg((upper ?? lower)!);
+      return color + (upper ? "▀" : "▄").repeat(scale) + RESET;
+    }).join(""));
+  }
+  return lines;
 }
 
 function joinColumns(left: string[], right: string[], gap: number): string[] {
@@ -192,11 +203,6 @@ function renderTips(theme: Theme, modelLabel: string | undefined): string[] {
     );
   }
   return lines;
-}
-
-function pickIcon(contentWidth: number, tipsWidth: number): readonly string[] {
-  const largeNeeds = iconWidth(PI_LARGE) + GAP + tipsWidth;
-  return contentWidth >= largeNeeds ? PI_LARGE : PI_COMPACT;
 }
 
 function hasResources(
@@ -380,12 +386,12 @@ function renderBrand(options: {
     MIN_TIPS_WIDTH,
     ...tips.map((line) => visibleWidth(line)),
   );
-  const icon = pickIcon(contentWidth, tipsWidth);
-  const painted = paintIcon(icon, theme);
-  const sideBySideWidth = iconWidth(icon) + GAP + tipsWidth;
+  const scale = contentWidth >= 20 + GAP + tipsWidth ? 5 : 3;
+  const logo = renderLogo(theme, scale);
+  const sideBySideWidth = iconWidth(logo) + GAP + tipsWidth;
   return contentWidth >= sideBySideWidth
-    ? joinColumns(painted, tips, GAP)
-    : [...painted, "", ...tips];
+    ? joinColumns(logo, tips, GAP)
+    : [...logo, "", ...tips];
 }
 
 export function renderWelcome({
