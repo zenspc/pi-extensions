@@ -19,24 +19,49 @@ const SLUG_CONFIG = parseConfig({
 });
 
 describe("systemPromptInjection", () => {
-	it("injects only the Poteto Mode one-liner when the mode is on", () => {
-		assert.equal(systemPromptInjection(defaultConfig(), true), POTETO_ONE_LINER);
+	it("keeps active mode lightweight and recoverable after compaction", () => {
+		const prompt = systemPromptInjection(defaultConfig(), true);
+		assert.match(prompt, /Poteto Mode is ON/);
+		assert.ok(prompt.includes(POTETO_ONE_LINER));
+		assert.ok(prompt.includes(join(SKILLS_DIR, "poteto-mode", "SKILL.md")));
+		assert.match(prompt, /read the full skill/);
+		assert.doesNotMatch(prompt, /## Non-negotiables/);
 	});
 
-	it("injects no Poteto Mode text when the mode is off", () => {
-		assert.equal(systemPromptInjection(defaultConfig(), false), "");
-		assert.equal(systemPromptInjection(SLUG_CONFIG, false), "bug-fix: anthropic/claude-opus-4-6");
+	it("communicates explicit off state but injects nothing before first use", () => {
+		assert.equal(systemPromptInjection(defaultConfig(), undefined), "");
+		assert.equal(systemPromptInjection(SLUG_CONFIG, undefined), "bug-fix: anthropic/claude-opus-4-6");
+		assert.match(systemPromptInjection(defaultConfig(), false), /Poteto Mode is OFF.*Ignore earlier Poteto Mode activation/);
+		assert.doesNotMatch(systemPromptInjection(defaultConfig(), false), /New task\? Playbook match/);
 	});
 
 	it("still injects a configured role slug with Poteto Mode on", () => {
 		assert.equal(
 			systemPromptInjection(SLUG_CONFIG, true),
-			`bug-fix: anthropic/claude-opus-4-6\n\n${POTETO_ONE_LINER}`,
+			`bug-fix: anthropic/claude-opus-4-6\n\n${systemPromptInjection(defaultConfig(), true)}`,
 		);
 	});
 });
 
 describe("Pi 1.4 structured prompt integration", () => {
+	it("updates the TUI status when tree navigation changes the active branch", async () => {
+		const handlers = new Map<string, (event: never, ctx: ExtensionContext) => unknown>();
+		const statuses: unknown[][] = [];
+		let enabled = true;
+		pstackExtension({
+			on: (name: string, handler: (event: never, ctx: ExtensionContext) => unknown) => handlers.set(name, handler),
+			registerCommand: () => {},
+		} as unknown as ExtensionAPI);
+		const context = {
+			mode: "tui", ui: { setStatus: (...args: unknown[]) => statuses.push(args) },
+			sessionManager: { getBranch: () => [{ type: "custom", customType: "pstack-mode", data: { enabled } }] },
+		} as unknown as ExtensionContext;
+		await handlers.get("session_tree")!({} as never, context);
+		enabled = false;
+		await handlers.get("session_tree")!({} as never, context);
+		assert.deepEqual(statuses, [["pstack-mode", "pstack: poteto mode"], ["pstack-mode", undefined]]);
+	});
+
 	it("loads the extension and all skills through the Pi resource loader", async (t) => {
 		const dir = mkdtempSync(join(tmpdir(), "pstack-load-"));
 		t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -71,16 +96,21 @@ describe("Pi 1.4 structured prompt integration", () => {
 		const commands = new Map<string, RegisteredCommand>();
 		const sent: unknown[][] = [];
 		const entries: unknown[][] = [];
+		const branch = [{ type: "custom", customType: "pstack-mode", data: { enabled: true } }];
 		pstackExtension({
 			on: (name: string, handler: (event: never, ctx: ExtensionContext) => unknown) => handlers.set(name, handler),
 			registerCommand: (name: string, command: RegisteredCommand) => commands.set(name, command),
-			appendEntry: (...args: unknown[]) => entries.push(args),
+			appendEntry: (customType: string, data: { enabled: boolean }) => {
+				entries.push([customType, data]);
+				branch.push({ type: "custom", customType, data });
+			},
+			getCommands: () => [{ name: "skill:poteto-mode", source: "skill" }],
 			sendUserMessage: (...args: unknown[]) => sent.push(args),
 		} as unknown as ExtensionAPI);
 		const context = {
 			mode: "json", hasUI: false, isIdle: () => true,
 			ui: { notify: () => {}, setStatus: () => assert.fail("JSON mode must not set TUI status") },
-			sessionManager: { getBranch: () => [{ type: "custom", customType: "pstack-mode", data: { enabled: true } }] },
+			sessionManager: { getBranch: () => branch },
 		} as unknown as Parameters<RegisteredCommand["handler"]>[1];
 		await handlers.get("session_start")!({} as never, context);
 		const loaded = loadSkillsFromDir({ dir: SKILLS_DIR, source: "test" });
@@ -103,7 +133,7 @@ describe("Pi 1.4 structured prompt integration", () => {
 		assert.equal(await handlers.get("before_agent_start")!(hidden as never, context), undefined);
 		assert.deepEqual(hidden.systemPromptOptions.skills, [foreign]);
 		assert.equal(hidden.systemPromptOptions.sections.other_extension, "Keep me");
-		assert.equal(hidden.systemPromptOptions.sections.pstack, `bug-fix: anthropic/claude-opus-4-6\n\n${POTETO_ONE_LINER}`);
+		assert.equal(hidden.systemPromptOptions.sections.pstack, systemPromptInjection(config, true));
 		assert.equal(hidden.systemPrompt, "Do not replace this prompt");
 		assert.equal(skills.length, loaded.skills.length + 1, "resource registry stays intact for explicit skill commands");
 		assert.doesNotMatch(formatSkillsForPrompt(hidden.systemPromptOptions.skills), /<name>how<\/name>/);
@@ -118,7 +148,7 @@ describe("Pi 1.4 structured prompt integration", () => {
 		assert.ok(saveConfig(defaultConfig()));
 		const off = event();
 		await handlers.get("before_agent_start")!(off as never, context);
-		assert.equal(off.systemPromptOptions.sections.pstack, undefined);
+		assert.match(off.systemPromptOptions.sections.pstack!, /Poteto Mode is OFF/);
 		assert.equal(off.systemPromptOptions.sections.other_extension, "Keep me");
 
 		await commands.get("poteto-mode")!.handler("fix the bug", context);

@@ -34,7 +34,9 @@ Pre-1.0 APIs may change.
   Config is untrusted input (size caps, symlink refusal).
   Does not change tool execution, permissions, model-facing messages, or saved theme settings.
 - **pi-sticky-editor**: presentation-only TUI layout change (fixed editor region). Patches private Pi TUI internals; no network, credentials, or tool-execution changes. Unmaintained; functionality is now officially supported by Pi.
-- **pi-pstack**: markdown skills and agent definitions only. No executable extension code; bundled scripts run under bun when a playbook calls them. Skills instruct the model to spawn subagents and run project commands; review before installing.
+- **pi-pstack**: executable extension code manages mode state, model roles, and skill visibility.
+  Bundled skills, agent definitions, and scripts can instruct the model to delegate work and run project commands.
+  Review before installing.
 - **pi-browser**: launches a dedicated Chrome against its own User Data Dir and acts on approved domains. `browser_evaluate` runs arbitrary page JavaScript; snapshots and screenshots can capture sensitive page content.
 - **pi-autopilot**: executes unattended worker and verification commands with your user permissions and creates local Git checkpoints.
   Worktrees and file reservations gate publication but are not an OS sandbox.

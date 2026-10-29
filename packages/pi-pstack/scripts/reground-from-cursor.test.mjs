@@ -79,6 +79,17 @@ test("adapts commands without changing relative links or script contents", (t) =
 	assert.equal(applyBodyTransforms("grok-4.7-xhigh-fast, claude-opus-5-5-xhigh"), "inherit-parent");
 });
 
+test("adapts why discovery without deleting the code anchor", (t) => {
+	const paths = fixture(t);
+	const anchor = "Before spawning investigators, build the seed context inline: file paths and key symbols. Run `git blame` and `git log`, then read PR discussions. This anchor goes to every investigator.";
+	paths.put(paths.from, "skills/why/SKILL.md", `---\nname: why\ndescription: Why.\n---\n## Step 2. Establish the Code Anchor\n\n${anchor}\n\n## Step 3. Spawn Parallel Investigators\n\n### Discovery\n\nBefore spawning investigators, list the available MCPs from the Cursor environment. Otherwise inspect the \`mcps/\` directory Cursor exposes for enabled MCP servers.\n`);
+	plan(paths);
+	const rendered = renderWrite({ rel: "skills/why/SKILL.md", class: "adapt" }, paths);
+	assert.ok(rendered.includes(anchor));
+	assert.match(rendered, /### Discovery\n\nBefore spawning investigators, list the MCP servers and tools available in this Pi session/);
+	assert.doesNotMatch(rendered, /Cursor environment|directory Cursor exposes/);
+});
+
 test("preserves the independent statechart toolchain on re-sync", (t) => {
 	const paths = fixture(t);
 	paths.put(paths.from, "skills/statechart/scripts/package.json", JSON.stringify({
@@ -96,12 +107,13 @@ test("preserves the independent statechart toolchain on re-sync", (t) => {
 
 test("keeps the Pi sticky-mode and model-selection contracts on re-sync", (t) => {
 	const paths = fixture(t);
-	paths.put(paths.from, "skills/poteto-mode/SKILL.md", `---\nname: poteto-mode\ndescription: Mode.\n---\n# Poteto mode\n\n## Subagents\n\n**Defaults for every \`Task\` call.** \`run_in_background: true\`, use grok-4.7-xhigh-fast.\n\n**Match the model to the job.** Synthesize suffixes.\n`);
+	paths.put(paths.from, "skills/poteto-mode/SKILL.md", `---\nname: poteto-mode\ndescription: Mode.\n---\n# Poteto mode\n\n## Subagents\n\n**Defaults for every \`Task\` call.** \`run_in_background: true\`, agent mode (readonly strips MCP), use grok-4.7-xhigh-fast.\n\n**Match the model to the job.** Synthesize suffixes.\n`);
 	plan(paths);
 	const rendered = renderWrite({ rel: "skills/poteto-mode/SKILL.md", class: "adapt" }, paths);
 	assert.match(rendered, /`\/poteto-mode off` disables it/);
 	assert.match(rendered, /subagents_enable/);
 	assert.match(rendered, /Do not synthesize effort or speed suffixes/);
 	assert.match(rendered, /omit `model`/);
-	assert.doesNotMatch(rendered, /run_in_background|grok-4\.7|Synthesize suffixes/);
+	assert.match(rendered, /does not inherit MCP tools automatically/);
+	assert.doesNotMatch(rendered, /run_in_background|grok-4\.7|Synthesize suffixes|readonly strips MCP/);
 });

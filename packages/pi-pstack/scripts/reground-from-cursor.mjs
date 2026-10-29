@@ -546,6 +546,8 @@ function patchPotetoHelpPi(text) {
 }
 
 function patchPotetoModePi(text) {
+	text = text.replaceAll("agent mode (readonly strips MCP)", "an explicit task-appropriate tool allowlist");
+	text = text.replaceAll("omit Task `model`", "omit `model`");
 	if (!text.includes("`/poteto-mode` enables this mode")) {
 		text = text.replace("# Poteto mode\n\n", `# Poteto mode\n\n${POTETO_INTRO}`);
 	}
@@ -743,10 +745,10 @@ export function renderWrite(action, paths) {
 	}
 	if (action.rel === "skills/why/SKILL.md") {
 		text = text.replace(/Every spawn is[^\n]+/, 'Use `agent: "worker"` with the MCP tools each investigator needs. Investigators and the synthesizer are read-only. Select read-only tools and the required MCP tools rather than using Cursor readonly/Ask flags, which Pi does not support.');
-		text = text.replace(/Before spawning investigators,[^\n]+/, 'Before spawning investigators, list the MCP servers and tools available in this Pi session. Pass the required tool names and evidence scope in each brief.');
+		text = text.replace(/Before spawning investigators, list the available MCPs from the Cursor environment\.[^\n]*/, 'Before spawning investigators, list the MCP servers and tools available in this Pi session. Pass the required tool names and evidence scope in each brief.');
 	}
 	if (action.rel === "skills/poteto-mode/SKILL.md") {
-		text = text.replace("## Subagents\n", "## Subagents\n\nRead the pi-subagents skill before delegation. Delegate only when the operator's request or applicable user/project instructions authorize it. If only `subagents_enable` is available, call it first, then call `subagent` as a native tool, not through codemode.\n");
+		text = text.replace("## Subagents\n", "## Subagents\n\nRead the pi-subagents skill before delegation. Delegate only when the operator's request or applicable user/project instructions authorize it. If only `subagents_enable` is available, call it first, then call `subagent` as a native tool, not through codemode.\n\nThe bundled `poteto-agent` does not inherit MCP tools automatically.\nFor an MCP-dependent step, use an agent definition that selects the required tools and loads their providers.\nNaming tools in a brief does not grant access.\n");
 	}
 	return text;
 }

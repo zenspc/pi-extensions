@@ -5,8 +5,31 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+test("workspace manifest exposes pstack skills and agents alongside its extension", () => {
+	const root = join(packageDir, "..", "..");
+	const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+	assert.ok(manifest.pi.skills.includes("./packages/pi-pstack/skills"));
+	assert.ok(manifest.pi.subagents.agents.includes("./packages/pi-pstack/agents"));
+});
+
+test("loading the workspace package discovers all pstack skills", async (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "pstack-workspace-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const loader = new DefaultResourceLoader({
+		cwd: dir, agentDir: dir,
+		settingsManager: SettingsManager.inMemory({ packages: [join(packageDir, "..", "..")] }),
+		noExtensions: true, noContextFiles: true, noThemes: true, noPromptTemplates: true,
+	});
+	await loader.reload();
+	const skills = loader.getSkills().skills.filter(skill => skill.filePath.startsWith(join(packageDir, "skills")));
+	assert.equal(skills.length, 58);
+	assert.ok(skills.some(skill => skill.name === "poteto-mode"));
+	assert.deepEqual(loader.getSkills().diagnostics, []);
+});
 
 test("published resources exclude nested development dependencies and extension tests", (t) => {
 	const dir = mkdtempSync(join(tmpdir(), "pstack-package-"));
