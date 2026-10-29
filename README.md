@@ -18,6 +18,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-sticky-editor`](./packages/pi-sticky-editor) | `pi install npm:@zenspc/pi-sticky-editor` | Keep the editor and footer fixed while the transcript scrolls (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-pstack`](./packages/pi-pstack) | `pi install npm:@zenspc/pi-pstack` | pstack skills + subagents: poteto-mode playbooks, engineering principles, multi-model review panels |
 | [`@zenspc/pi-browser`](./packages/pi-browser) | `pi install npm:@zenspc/pi-browser` | Drive a dedicated Chrome with per-domain approval |
+| [`@zenspc/pi-autopilot`](./packages/pi-autopilot) | `pi install npm:@zenspc/pi-autopilot` | Autonomous task DAGs, isolated workers, verification, review, and quota recovery |
 
 Pre-1.0 APIs may change.
 
@@ -35,6 +36,9 @@ Pre-1.0 APIs may change.
 - **pi-sticky-editor**: presentation-only TUI layout change (fixed editor region). Patches private Pi TUI internals; no network, credentials, or tool-execution changes. Unmaintained; functionality is now officially supported by Pi.
 - **pi-pstack**: markdown skills and agent definitions only. No executable extension code; bundled scripts run under bun when a playbook calls them. Skills instruct the model to spawn subagents and run project commands; review before installing.
 - **pi-browser**: launches a dedicated Chrome against its own User Data Dir and acts on approved domains. `browser_evaluate` runs arbitrary page JavaScript; snapshots and screenshots can capture sensitive page content.
+- **pi-autopilot**: executes unattended worker and verification commands with your user permissions and creates local Git checkpoints.
+  Worktrees and file reservations gate publication but are not an OS sandbox.
+  Use a disposable repository for your first run; see the package README for model configuration and recovery.
 
 See each package README and [SECURITY.md](./SECURITY.md) for details.
 
@@ -54,6 +58,7 @@ pi -e ./packages/pi-quiet
 pi -e ./packages/pi-sticky-editor
 pi -e ./packages/pi-pstack
 pi -e ./packages/pi-browser
+pi -e ./packages/pi-autopilot
 
 # install from path into user settings
 pi install ./packages/pi-safety
@@ -66,6 +71,7 @@ pi install ./packages/pi-quiet
 pi install ./packages/pi-sticky-editor
 pi install ./packages/pi-pstack
 pi install ./packages/pi-browser
+pi install ./packages/pi-autopilot
 ```
 
 ## Pick pieces from a package
