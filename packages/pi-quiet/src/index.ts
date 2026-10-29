@@ -1,168 +1,112 @@
-/**
- * @zenspc/pi-quiet - Quiet Display for pi tools.
- *
- * Default once installed: Quiet Display (verb-first rows + Verb Groups).
- * Sticky Preference: ~/.pi/agent/extensions/quiet.json
- *
- * Commands:
- *   /quiet           Toggle Quiet Display
- *   /quiet on|off    Set Sticky Preference
- *   /quiet status    Show preference + config path
- *   /quiet help
- *
- * Scope: all tools when Pi exposes registerToolRenderer (built-ins + Foreign Tools).
- * Fallback without the hook: built-in read/bash/edit/write/find/grep/ls only.
- * Assistant prose and thinking still split Verb Groups.
- */
-
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import {
 	applyQuietCommand,
 	formatQuietHelp,
 	formatQuietStatus,
 	parseQuietCommand,
 } from "./command.ts";
-import { CompactionIndex, shouldRetainResult } from "./compaction.ts";
 import { getConfigPath, loadQuietConfig, saveQuietConfig } from "./config.ts";
-import { classifyQuietTool, textLineCount } from "./classify.ts";
-import { messagesFromBranch, rowsFromMessages } from "./history.ts";
-import {
-	resultIsImageFromUnknown,
-	resultTextFromUnknown,
-} from "./result-content.ts";
-import { registerQuietToolRendererWrapper, registerQuietTools } from "./tools.ts";
-import { toolParticipatesInQuiet } from "./tools-meta.ts";
+import { QuietChrome } from "./chrome.ts";
+import { hasProse, QuietModel } from "./model.ts";
+import { createQuietRenderer } from "./render.ts";
 
-function notify(
-	ctx: ExtensionCommandContext | ExtensionContext,
-	message: string,
-	level: "info" | "warning" | "error" = "info",
-): void {
-	if (ctx.hasUI) ctx.ui.notify(message, level);
-}
-
-export default function quietExtension(pi: ExtensionAPI) {
+export default function quietExtension(pi: ExtensionAPI): void {
 	let enabled = loadQuietConfig().enabled;
-	const configPath = getConfigPath();
-	const index = new CompactionIndex();
+	const model = new QuietModel();
+	const chrome = new QuietChrome(pi);
+	pi.registerToolRenderer(createQuietRenderer(model, () => enabled));
 
-	// Prefer Tool Renderer Wrapper (all tools + Foreign). Else built-in overrides only.
-	const usingRendererHook = registerQuietToolRendererWrapper(pi, () => enabled, index);
-	if (!usingRendererHook) {
-		registerQuietTools(pi, () => enabled, index);
-	}
-
-	const rebuildFromSession = (ctx: ExtensionContext) => {
-		try {
-			const branch = ctx.sessionManager.getBranch();
-			const messages = messagesFromBranch(branch as { type?: string; message?: unknown }[]);
-			index.rebuild(rowsFromMessages(messages));
-		} catch {
-			index.clear();
-		}
+	const rebuild = (ctx: ExtensionContext) => {
+		model.rebuild(
+			ctx.sessionManager
+				.getBranch()
+				.filter((entry) => entry.type === "message")
+				.map((entry) => entry.message)
+		);
 	};
-
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", (_event, ctx) => {
 		enabled = loadQuietConfig().enabled;
-		rebuildFromSession(ctx);
+		rebuild(ctx);
+		if (enabled) chrome.install(ctx);
+		else chrome.restore();
 	});
-
-	// Strict transcript neighbors: user/assistant prose splits Compaction Groups.
-	pi.on("message_start", async (event) => {
-		const role = (event.message as { role?: string } | undefined)?.role;
-		if (role === "user" || role === "assistant") {
-			index.addSplitter();
-		}
+	pi.on("session_tree", (_event, ctx) => {
+		rebuild(ctx);
+		chrome.refresh();
 	});
-
-	pi.on("tool_execution_start", async (event) => {
-		index.onStart({
-			toolCallId: event.toolCallId,
-			toolName: event.toolName,
-			args:
-				event.args && typeof event.args === "object"
-					? (event.args as Record<string, unknown>)
-					: undefined,
-		});
+	pi.on("session_compact", (_event, ctx) => {
+		rebuild(ctx);
+		chrome.refresh();
 	});
-
-	pi.on("tool_execution_end", async (event) => {
-		if (!toolParticipatesInQuiet(event.toolName)) {
-			index.onEnd({
-				toolCallId: event.toolCallId,
-				toolName: event.toolName,
-				outcomeKind: event.isError ? "hard" : "success",
-				isError: event.isError,
-			});
-			return;
-		}
-
-		const args =
-			// args are not on end event; keep whatever onStart stored
-			index.getRow(event.toolCallId)?.args ?? {};
-		const text = resultTextFromUnknown(event.result);
-		const details = (event.result as { details?: { diff?: string } } | undefined)?.details;
-		const content = typeof args.content === "string" ? args.content : "";
-		const outcome = classifyQuietTool({
-			toolName: event.toolName,
-			isPartial: false,
-			isError: event.isError,
-			text,
-			isImage: resultIsImageFromUnknown(event.result),
-			diff: details?.diff,
-			contentLineCount: textLineCount(content),
-		});
-		if (outcome.kind === "pending") return;
-
-		const keepResult = shouldRetainResult(event.toolName, outcome.kind);
-		const resultContent = keepResult && Array.isArray((event.result as { content?: unknown })?.content)
-			? ((event.result as { content: unknown[] }).content)
-			: [];
-
-		index.onEnd({
-			toolCallId: event.toolCallId,
-			toolName: event.toolName,
-			args,
-			outcomeKind: outcome.kind,
-			chip: outcome.chip,
-			result: keepResult
-				? {
-						content: resultContent,
-						details: (event.result as { details?: unknown })?.details,
-				  }
-				: undefined,
-			isError: event.isError,
-		});
+	pi.on("session_shutdown", () => {
+		chrome.restore();
+		model.clear();
 	});
+	pi.on("message_start", (event) => {
+		if (event.message.role === "user") model.boundary();
+	});
+	pi.on("message_end", (event) => {
+		if (event.message.role === "assistant" && hasProse(event.message))
+			model.boundary();
+		chrome.refresh();
+	});
+	pi.on("tool_execution_start", (event) => {
+		if (!event.parentToolCallId)
+			model.start(
+				event.toolCallId,
+				event.toolName,
+				event.args as Record<string, unknown>
+			);
+	});
+	pi.on("tool_execution_end", (event) => {
+		if (!event.parentToolCallId)
+			model.end(
+				event.toolCallId,
+				event.toolName,
+				event.result,
+				event.isError
+			);
+	});
+	pi.on("agent_start", () => chrome.refresh());
+	pi.on("agent_settled", () => chrome.refresh());
+	pi.on("model_select", () => chrome.refresh());
+	pi.on("thinking_level_select", () => chrome.refresh());
 
 	pi.registerCommand("quiet", {
-		description: usingRendererHook
-			? "Toggle Quiet Display for tool rows (built-in + Foreign Tools)"
-			: "Toggle Quiet Display for built-in tool rows",
+		description: "Toggle Grok Build-inspired terminal presentation",
 		handler: async (args, ctx) => {
-			const cmd = parseQuietCommand(args);
-			const result = applyQuietCommand(cmd, enabled);
-
+			const command = parseQuietCommand(args);
+			const result = applyQuietCommand(command, enabled);
 			if (result.kind === "help") {
-				notify(ctx, formatQuietHelp(configPath), cmd.action === "unknown" ? "warning" : "info");
+				if (ctx.hasUI)
+					ctx.ui.notify(
+						formatQuietHelp(getConfigPath()),
+						command.action === "unknown" ? "warning" : "info"
+					);
 				return;
 			}
-
-			if (result.kind === "status") {
-				notify(ctx, formatQuietStatus(enabled, configPath));
-				return;
-			}
-
-			// kind === "set"
-			if (result.changed) {
+			if (result.kind === "set" && result.changed) {
 				if (!saveQuietConfig({ enabled: result.enabled })) {
-					notify(ctx, `Failed to save Sticky Preference to ${configPath}`, "error");
+					if (ctx.hasUI)
+						ctx.ui.notify(
+							`Could not save Quiet preference to ${getConfigPath()}`,
+							"error"
+						);
 					return;
 				}
 				enabled = result.enabled;
+				if (enabled) chrome.install(ctx);
+				else chrome.restore();
+				model.invalidate();
 			}
-
-			notify(ctx, formatQuietStatus(enabled, configPath));
+			if (ctx.hasUI)
+				ctx.ui.notify(
+					formatQuietStatus(enabled, getConfigPath()),
+					"info"
+				);
 		},
 	});
 }

@@ -70,14 +70,15 @@ export function formatQuietHelp(configPath?: string): string {
 		"Usage: /quiet [on|off|status|help]",
 		"",
 		"  (no args)  Toggle Quiet Display",
-		"  on         Quiet Display (dense tool rows)",
-		"  off        Stock Display (pi's normal tool UI)",
+		"  on         Quiet Display (terminal chrome and compact tool activity)",
+		"  off        Stock Display (Pi's native terminal UI)",
 		"  status     Show Sticky Preference and config path",
 		"  help       Show this help",
 		"",
 		"Default when installed: Quiet Display on.",
 		"Momentary expand does not change the Sticky Preference.",
-		"Toggle applies to new tool rows only (scrollback unchanged).",
+		"Toggle redraws tool activity and restores or replaces terminal chrome.",
+		"Pi's models, permissions, execution, and keyboard bindings stay unchanged.",
 	];
 	if (configPath) {
 		lines.push("", `Config: ${configPath}`);

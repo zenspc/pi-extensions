@@ -92,6 +92,13 @@ describe("classifyReadOutcome", () => {
 });
 
 describe("classifyExploreOutcome", () => {
+	it("recognizes Pi's textual empty-result markers instead of counting them as a match", () => {
+		for (const [tool, text] of [["grep", "No matches found"], ["find", "No files found matching pattern"], ["ls", "(empty directory)"]] as const) {
+			assert.deepEqual(classifyExploreOutcome({ tool, text, isPartial: false, isError: false }), {
+				kind: "soft", chip: tool === "ls" ? "empty" : "no matches",
+			});
+		}
+	});
 	it("soft breakthrough on zero matches", () => {
 		assert.deepEqual(
 			classifyExploreOutcome({
