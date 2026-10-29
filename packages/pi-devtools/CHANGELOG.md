@@ -1,5 +1,12 @@
 # @zenspc/pi-devtools
 
+## 0.5.1
+
+### Patch Changes
+
+- 8dba984: Refresh the welcome header with an enlarged default Pi logo and responsive sizing.
+  Keep collapsed resource lists within the available terminal height, avoid duplicate stock lists, and preserve diagnostics and opt-in expansion.
+
 ## 0.5.0
 
 ### Minor Changes
