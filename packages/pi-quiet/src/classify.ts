@@ -85,7 +85,9 @@ export function classifyExploreOutcome(input: {
 	if (input.isPartial) return { kind: "pending" };
 	if (input.isError) return hard("failed", input.text);
 
-	const n = textLineCount(input.text);
+	const emptyMarker = input.tool === "grep" ? "No matches found"
+		: input.tool === "find" ? "No files found matching pattern" : "(empty directory)";
+	const n = input.text.trim() === emptyMarker ? 0 : textLineCount(input.text);
 	const label =
 		input.tool === "grep"
 			? n === 1
@@ -186,6 +188,7 @@ export function classifyQuietTool(input: ClassifyToolInput): QuietOutcome {
 				isImage: input.isImage,
 			});
 		case "bash":
+		case "powershell":
 			return classifyBashOutcome({
 				isPartial: input.isPartial,
 				isError: input.isError,

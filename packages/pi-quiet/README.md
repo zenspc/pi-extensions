@@ -1,8 +1,8 @@
 # @zenspc/pi-quiet
 
-Quiet Display for the [Pi coding agent](https://pi.dev): verb-first dense rows for tool activity, so new (and tired) users are not drowned in tool chrome and stdout.
-
-Once installed, **Quiet Display is on by default**. Turn it off anytime with `/quiet off` (Sticky Preference).
+A Grok Build-inspired terminal presentation for the [Pi coding agent](https://pi.dev).
+Quiet replaces the welcome header, prompt, footer, palette, and tool activity display while keeping Pi's execution and keyboard controls.
+It is on by default.
 
 ## Install
 
@@ -10,108 +10,108 @@ Once installed, **Quiet Display is on by default**. Turn it off anytime with `/q
 pi install npm:@zenspc/pi-quiet
 ```
 
-Local development from this monorepo:
+Requires Pi 1.4 or newer, including its public tool-renderer hook.
+For local development:
 
 ```bash
 pi -e ./packages/pi-quiet
-pi install ./packages/pi-quiet
 ```
 
-## What you see
+Extensions that replace the same header, footer, editor, or working indicator are last-writer-wins.
+For the closest match, disable overlapping presentation extensions in `pi config`.
+Quiet preserves an editor factory already installed when Quiet takes over, and restores it when disabled.
 
-| Tool | Collapsed success | Notes |
-|---|---|---|
-| `read` | `📖 Read main.rs (40 lines)` | Requested range chips as `(start-end)`; images as `(image)` |
-| `grep` / `find` | `🔍 Searched "pat" (3 matches)` | Zero hits = Soft Breakthrough `(no matches)` |
-| `ls` | `📂 Listed src (12 entries)` | Empty dir = Soft `(empty)` |
-| `edit` | `✏️ Edited main.rs (+3 -1)` | Diff body on expand |
-| `write` | `📝 Wrote main.rs (12 lines)` | |
-| `bash` | `💻 $ cmd` | Clean success omits chip; non-zero = Hard Breakthrough |
-| Foreign Tools | `🧩 Called name peek` | Generic Kind Formatter when Pi exposes `registerToolRenderer` |
+## Presentation
 
-Running rows use present tense (`📖 Reading main.rs`). Settled rows use past tense.
-
-### Verb Groups
-
-Adjacent settled successes (and Soft Breakthroughs) of the **same Verb Group Kind** fold into one group:
+- A restrained neutral palette with violet accents, warm file targets, and muted details.
+- A responsive Pi welcome card that becomes a compact location header once a conversation starts.
+- A boxed prompt with a model/reasoning label, native autocomplete, multiline input, paste, history, and IME support.
+- A compact footer showing git branch, context use, configured keyboard hints, and other extensions' status messages.
+- Verb-first tool activity without emoji or success-background panels.
 
 ```text
-📖 Read 3 files
-  • a.ts (40 lines)
-  • b.ts (12 lines)
-  • c.ts (8 lines)
+• Read 4 files
+  │ … 1 earlier
+  ├ src/index.ts (40 lines)
+  ├ src/model.ts (120 lines)
+  ├ src/render.ts (90 lines)
+
+• Searched 2 patterns
+  ├ QuietModel (3 matches)
+  ├ *.test.ts (8 files)
+
+• Edited src/index.ts (+3 -1)
+• Ran pnpm test
+× Ran pnpm build (exit 1)
+  Error: missing export
 ```
 
-Kinds:
+Running tools use present tense and suppress live stdout.
+Failures remain separate and show the last 12 logical output lines automatically, capped at 8,000 characters.
+Commands, edits, writes, unknown tools, and image results never fold.
+Adjacent completed reads, searches, and listings fold only within their semantic kind and never across visible user, assistant, or thinking content.
+Collapsed groups show the three most recent members; expansion shows every retained member with its own original tool renderer.
 
-| Kind | Tools | Folds? |
-|---|---|---|
-| File | `read` | yes |
-| Search | `grep`, `find` | yes (together) |
-| Dir | `ls` | yes |
-| Command | `bash` | no (singleton) |
-| EditFile | `edit`, `write` | no (singleton) |
-| Other | Foreign Tools | yes (together, not by exact name) |
-
-- **Strict neighbors only** - assistant/user prose or a different kind splits groups.
-- **Hard Breakthrough** never joins a group and splits runs before/after.
-- **Pending never joins** - a running tool stays a present-tense singleton Quiet Row. Already-settled same-kind neighbors **stay** grouped while a trailing same-kind tool is still running; the Verb Group grows only after that tool settles successfully (or soft).
-- **Expand** expands the whole group to stacked Stock Display bodies.
-- Groups are **rebuilt from session history** after reload.
-- Path targets use **basename**; collisions inside a group disambiguate with a parent segment.
-
-## Behavior notes
-
-- **While running:** present-tense singleton, no live stdout firehose.
-- **Tool Shell Background:** visible Quiet Rows and Verb Groups keep Stock's pending/success/error strip with **compact** (zero) padding. Hidden group members stay zero-height.
-- **Hard Breakthrough:** failed edit/write, bash non-zero / thrown error, Foreign `failed` - chip + capped error tail without you expanding.
-- **Expand** (pi's normal expand gesture): full Stock Display body for that row (or whole Verb Group), including the original Foreign Tool renderer. Expand does **not** change the Sticky Preference.
-- **`/quiet`:** Sticky Preference only; renders follow the current preference when components redraw.
+Pi's configured expand gesture, normally `Ctrl+O`, reveals full output without changing the preference.
+Inline images remain owned by Pi and stay separate from groups.
+Session resume, branch navigation, and compaction reconstruct grouping from the active transcript.
+Parallel tools retain call order rather than completion order.
 
 ## Commands
 
-| Command | Description |
+| Command | Effect |
 |---|---|
-| `/quiet` | Toggle Quiet Display |
-| `/quiet on` | Quiet Display |
-| `/quiet off` | Stock Display (pi's normal tool UI) |
-| `/quiet status` | Show preference + config path |
-| `/quiet help` | Help |
+| `/quiet` | Toggle Quiet presentation |
+| `/quiet on` | Enable Quiet presentation |
+| `/quiet off` | Restore native header, footer, editor, and palette |
+| `/quiet status` | Show preference and config path |
+| `/quiet help` | Show help |
 
-## Config
+Toggling redraws existing tool activity as well as terminal chrome.
+Turning Quiet off restores the previous theme unless you deliberately selected another theme while Quiet was active.
+The Quiet palette is transient and does not overwrite your saved theme setting.
+Missing header/footer/working-indicator getters in Pi mean those surfaces restore to native defaults, not another extension's previous replacements.
 
-Package-local Sticky Preference:
+## Preference
+
+The existing preference file remains compatible:
 
 ```text
 ~/.pi/agent/extensions/quiet.json
 ```
 
-(or `$PI_CODING_AGENT_DIR/extensions/quiet.json`)
+With `PI_CODING_AGENT_DIR`, the path is `$PI_CODING_AGENT_DIR/extensions/quiet.json`.
 
 ```json
 {
-	"enabled": true
+  "enabled": true
 }
 ```
 
-Missing or invalid file → Quiet Display **on**.
+Missing or invalid configuration defaults to on.
+Preference writes are atomic with mode `0600`; oversized files, symlinks, and non-regular paths are rejected.
 
-## Scope
+## Fidelity and scope
 
-**In (always):** built-in `read`, `bash`, `edit`, `write`, `find`, `grep`, `ls` (specialized Kind Formatters + Verb Groups).
+This is inspired by Grok Build's terminal interface, not a replacement agent or a copy of its branding.
+Quiet keeps Pi's models, permissions, tools, cancellation, message queueing, and configured shortcuts.
+It does not claim Grok's dashboard, cloud features, agent orchestration, or per-entry keyboard navigation.
+Pi's native user and assistant message layouts remain, styled by the shared palette, because Pi does not expose replacement hooks for those messages.
+The terminal's own default background remains under terminal control.
 
-**In (when Pi has `registerToolRenderer`):** Foreign Tools - extension tools, MCP gateways, SDK custom tools - via the Generic Kind Formatter (`🧩`, Called/Calling, arg peek) and Verb Group Kind Other.
+No tool definitions are overridden, no transcript is rewritten, and no model-facing arguments or results are changed.
+Quiet makes no network requests.
+Terminal-only chrome is installed only in TUI mode; RPC and print execution stay native.
+Unknown-tool summaries show only known descriptive fields, never arbitrary argument values.
 
-**Out:** assistant prose, thinking, startup header, second density preference, durations on chips, Quiet-native expanded bodies (Stock-on-expand for now).
+## Development
 
-Without the upstream Tool Renderer Wrapper seam (`registerToolRenderer` on Pi's ExtensionAPI), Foreign Tools stay on Stock Display (built-ins still Quiet).
+```bash
+pnpm --filter @zenspc/pi-quiet test
+pnpm check
+```
 
-## Security notes
-
-- Config is untrusted input: size-capped, regular-file only (no symlinks), atomic `0o600` writes.
-- TUI chrome only. No network. Does not change tool execution semantics - only presentation.
-- Foreign arg peeks skip secret-ish keys (`token`, `password`, `api_key`, …).
-- Overriding built-ins (fallback path without the renderer hook) makes pi show its normal tool-override warning once; that is expected. With the hook, Quiet does not replace tools.
+Tests cover transcript ordering, group boundaries, cancellation history, mixed-tool expansion, delegated renderer state, preference compatibility, Unicode widths, IME markers, native editor shortcuts, and restoration.
 
 ## License
 

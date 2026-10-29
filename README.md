@@ -14,7 +14,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-preferred-thinking`](./packages/pi-preferred-thinking) | `pi install npm:@zenspc/pi-preferred-thinking` | Per-model thinking level preferences (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-copilot-discovery`](./packages/pi-copilot-discovery) | `pi install npm:@zenspc/pi-copilot-discovery` | Live GitHub Copilot model discovery (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-spinner`](./packages/pi-spinner) | `pi install npm:@zenspc/pi-spinner` | Customize the spinner animation and rotate the loader message |
-| [`@zenspc/pi-quiet`](./packages/pi-quiet) | `pi install npm:@zenspc/pi-quiet` | Quiet Display - dense built-in tool rows |
+| [`@zenspc/pi-quiet`](./packages/pi-quiet) | `pi install npm:@zenspc/pi-quiet` | Grok Build-inspired terminal presentation and compact tool activity |
 | [`@zenspc/pi-sticky-editor`](./packages/pi-sticky-editor) | `pi install npm:@zenspc/pi-sticky-editor` | Keep the editor and footer fixed while the transcript scrolls (**unmaintained**, now built into Pi) |
 | [`@zenspc/pi-pstack`](./packages/pi-pstack) | `pi install npm:@zenspc/pi-pstack` | pstack skills + subagents: poteto-mode playbooks, engineering principles, multi-model review panels |
 | [`@zenspc/pi-browser`](./packages/pi-browser) | `pi install npm:@zenspc/pi-browser` | Drive a dedicated Chrome with per-domain approval |
@@ -29,7 +29,9 @@ Pre-1.0 APIs may change.
 - **pi-safety**: best-effort confirmation for known risky patterns. It is not a sandbox or a complete deny-list.
 - **pi-workflow**: plan mode is a workflow aid, not a hard security boundary.
 - **pi-spinner**: treats config files as untrusted input (size caps, symlink refusal, ANSI stripping). Local TUI chrome only; no network or credentials.
-- **pi-quiet**: presentation-only override of built-in tool rendering. Config is untrusted input (size caps, symlink refusal). Does not change tool execution.
+- **pi-quiet**: presentation-only terminal chrome and tool-renderer wrappers using public Pi hooks.
+  Config is untrusted input (size caps, symlink refusal).
+  Does not change tool execution, permissions, model-facing messages, or saved theme settings.
 - **pi-sticky-editor**: presentation-only TUI layout change (fixed editor region). Patches private Pi TUI internals; no network, credentials, or tool-execution changes. Unmaintained; functionality is now officially supported by Pi.
 - **pi-pstack**: markdown skills and agent definitions only. No executable extension code; bundled scripts run under bun when a playbook calls them. Skills instruct the model to spawn subagents and run project commands; review before installing.
 - **pi-browser**: launches a dedicated Chrome against its own User Data Dir and acts on approved domains. `browser_evaluate` runs arbitrary page JavaScript; snapshots and screenshots can capture sensitive page content.

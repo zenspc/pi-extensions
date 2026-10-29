@@ -1,7 +1,7 @@
 {
 	"name": "@zenspc/pi-quiet",
 	"version": "0.4.2",
-	"description": "Quiet Display for Pi: verb-first tool rows (built-in + Foreign), Verb Groups, sticky on/off.",
+	"description": "Grok Build-inspired terminal presentation for Pi: welcome, boxed prompt, status, and compact tool activity.",
 	"type": "module",
 	"license": "MIT",
 	"author": "dhairyaar",
@@ -33,8 +33,8 @@
 		"LICENSE"
 	],
 	"peerDependencies": {
-		"@earendil-works/pi-coding-agent": "*",
-		"@earendil-works/pi-tui": "*"
+		"@earendil-works/pi-coding-agent": ">=1.4.0",
+		"@earendil-works/pi-tui": ">=1.4.0"
 	},
 	"pi": {
 		"extensions": [
