@@ -32,6 +32,14 @@
       "./packages/pi-sticky-editor/src/index.ts",
       "./packages/pi-pstack/extensions/pstack/index.ts",
       "./packages/pi-autopilot/src/index.ts"
-    ]
+    ],
+    "skills": [
+      "./packages/pi-pstack/skills"
+    ],
+    "subagents": {
+      "agents": [
+        "./packages/pi-pstack/agents"
+      ]
+    }
   }
 }

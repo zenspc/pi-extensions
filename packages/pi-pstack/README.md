@@ -52,7 +52,13 @@ Use exact Pi `provider/modelId` selectors.
 `inherit-parent` and `auto` mean omit the subagent model override.
 No role table is injected when all roles inherit.
 
-Poteto Mode is recorded in session entries and restored from the active branch on session start.
+Poteto Mode is recorded in session entries and restored from the active branch on session start and tree navigation.
+The model receives explicit on/off state after you select the mode.
+While enabled, a lightweight instruction retains the absolute skill path so the agent can reload the full instructions after compaction.
+The full skill body is not injected into every system prompt.
+Only an exact `off`, `disable`, or `stop` argument disables the mode; longer arguments remain task text.
+Missing skill resources produce an error rather than forwarding an unexpanded command.
+
 The extension uses Pi's structured prompt options for its own `pstack` section and Skill catalog filtering.
 It does not replace or parse the complete rendered prompt, mutate the skill registry, or remove other extensions' sections.
 
@@ -62,6 +68,9 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
 - Hidden skills use `disable-model-invocation: true` but remain available through explicit commands.
 - Delegation uses pi-subagents, not Cursor's Task tool or cloud-agent parameters.
   Read the pi-subagents skill for activation, isolated worktrees, retained runs, and model discovery.
+  The bundled `poteto-agent` has read/search/shell/edit/write tools, not automatic MCP access.
+  MCP-dependent work needs a configured agent definition that selects the required tools and loads their providers.
+  Naming tools in a task brief does not grant access.
 - Sessions live under `~/.pi/agent/sessions/`, with the active file exposed as `$PI_SESSION_FILE`.
 - The Pi-specific `deslop` skill, JSON model configuration, plan checker, and worktree audit are preserved on sync.
 - Cursor Custom Modes, recurring wakes, the benny automation pack, and `make-bot-ui` are not provided.
@@ -70,6 +79,10 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
 ## Upstream sync and development
 
 Synced from Cursor pstack `0.15.34` at [`519d36aa98955bf680db01bcde5fdfba686dc901`](https://github.com/cursor/plugins/commit/519d36aa98955bf680db01bcde5fdfba686dc901).
+
+For local development, load the complete package with `pi -e ./packages/pi-pstack`, not just `extensions/pstack/index.ts`.
+The monorepo package also exposes Pstack's skills and agents alongside its extension.
+Install pi-subagents before testing delegation.
 
 Review a sync before applying it:
 
