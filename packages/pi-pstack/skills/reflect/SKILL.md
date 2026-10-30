@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Reflect
 
+Before delegation, read [Pi delegation controls](../poteto-mode/references/pi-delegation.md) for read-only acceptance and per-child launch parameters.
+
 Mine the current conversation for durable learnings, then route them into skill edits.
 
 Invoke when the user says "reflect" or "/skill:reflect". Skip when the conversation is trivial, off-topic, or already covered by an existing skill the parent followed correctly. One-offs are not learnings.

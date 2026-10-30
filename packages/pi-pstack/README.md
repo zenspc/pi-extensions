@@ -48,8 +48,26 @@ View modules execute local code, so use only trusted models and views.
 ## Model roles and session state
 
 `/setup-pstack` writes role choices to `~/.pi/agent/pstack/models.json`.
-Use exact Pi `provider/modelId` selectors.
-`inherit-parent` and `auto` mean omit the subagent model override.
+Use exact Pi `provider/modelId` selectors, optionally followed by a native thinking suffix such as `openai/example:high`.
+After selecting a reasoning model, `/setup-pstack` offers its supported thinking levels for each role or panel seat.
+Choose `default` to omit the effort override and keep the delegated agent's normal defaults.
+Levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`, limited by the selected model's Pi metadata.
+The saved strings can also be edited directly in `models.json`, for example:
+
+```json
+{
+  "version": 1,
+  "roles": {
+    "bug-fix": "openai/example:high",
+    "arena runners": ["openai/example:low", "openai/example:high"]
+  }
+}
+```
+
+Delegation passes each suffixed selector unchanged as `model`; the suffix controls effort, not model identity.
+Different efforts on the same base model remain a same-model panel.
+`inherit-parent` and `auto` mean omit the subagent model override and do not pin thinking effort.
+To pin effort on the current parent model, select that concrete model instead of inheritance.
 Default scalar inheritance injects no role table.
 Explicit panels preserve every seat and its order, including inherited seats and repeated models.
 A one-entry array explicitly selects one seat; scalar inheritance leaves the workflow's default panel size.
@@ -75,6 +93,11 @@ The full skill body is not injected into every system prompt.
 Only an exact `off`, `disable`, or `stop` argument disables the mode; longer arguments remain task text.
 Missing skill resources produce an error rather than forwarding an unexpanded command.
 
+On stock Pi 1.4, one-shot JSON/print `/poteto-mode <task>` forwarding can exit before the task runs because the host's extension send API is fire-and-forget.
+Use `/skill:poteto-mode <task>` directly for one-shot invocation, or keep the session open through RPC/TUI.
+Pstack awaits forwarding in one-shot modes when the host exposes an awaitable send; the prepared upstream patch and verification evidence are recorded in this repository's `docs/patches/` and `docs/pi-pstack-verification-results.md`.
+RPC/TUI commands still acknowledge without waiting for model settlement.
+
 The extension uses Pi's structured prompt options for its own `pstack` section and Skill catalog filtering.
 It does not replace or parse the complete rendered prompt, mutate the skill registry, or remove other extensions' sections.
 
@@ -87,6 +110,8 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
   The bundled `poteto-agent` has read/search/shell/edit/write tools, not automatic MCP access.
   MCP-dependent work needs a configured agent definition that selects the required tools and loads their providers.
   Naming tools in a task brief does not grant access.
+  Read [Pi delegation controls](skills/poteto-mode/references/pi-delegation.md) before review-only worker launches or panels with per-child controls.
+  A read-only tool allowlist does not change the worker's writer acceptance role; use a scoped review policy, not a global safety override.
 - Sessions default to `~/.pi/agent/sessions/`, with the active file exposed as `$PI_SESSION_FILE` when available.
   Transcript workflows verify the session ID and workspace, use exact retained pi-subagents records for delegates, and never scan unrelated private chats.
 - The Pi-specific `deslop` skill, JSON model configuration, plan checker, and worktree audit are preserved on sync.

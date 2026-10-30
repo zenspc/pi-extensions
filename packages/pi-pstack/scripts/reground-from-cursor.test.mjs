@@ -136,7 +136,8 @@ test("keeps the Pi sticky-mode and model-selection contracts on re-sync", (t) =>
 	assert.match(rendered, /`\/poteto-mode off` disables it/);
 	assert.match(rendered, /explicit model choices or panel arrays/);
 	assert.match(rendered, /subagents_enable/);
-	assert.match(rendered, /Do not synthesize effort or speed suffixes/);
+	assert.match(rendered, /\[Pi delegation controls\]\(references\/pi-delegation\.md\)/);
+	assert.match(rendered, /supported reasoning controls, read-only acceptance, and per-child panel parameters/);
 	assert.match(rendered, /omit `model`/);
 	assert.match(rendered, /does not inherit MCP tools automatically/);
 	assert.doesNotMatch(rendered, /run_in_background|grok-4\.7|Synthesize suffixes|readonly strips MCP/);

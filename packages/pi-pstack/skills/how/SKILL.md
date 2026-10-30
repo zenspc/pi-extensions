@@ -5,6 +5,8 @@ description: "Use for \"how does X work\", code walkthroughs before changing som
 
 # How
 
+Before delegation, read [Pi delegation controls](../poteto-mode/references/pi-delegation.md) for read-only acceptance and per-child launch parameters.
+
 Explore the codebase to answer "how does X work?" questions. Produce architectural explanations at the level of a senior engineer onboarding onto a subsystem, enough to build a working mental model, not so much that it reads like annotated source code.
 
 Every spawn is a subagent with `agent: "worker"` and read-only tools. Explorers use the `how explorer` line in the injected pstack role table (default inherit-parent), and every explainer uses the `how explainer` line (default inherit-parent). Set `model` to that line's value, or to the default if the rule or the line is missing. Leave `model` unset when the value is `auto` or `inherit-parent`. If the subagent tool rejects a slug, use the default and say so. If it rejects the default, use the closest valid slug of the same family from its error message. Pick each subagent's reasoning level and fast or standard speed for the job, per the Subagents section of the **poteto-mode** skill.

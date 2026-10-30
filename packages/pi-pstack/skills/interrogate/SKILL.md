@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Interrogate
 
+Before delegation, read [Pi delegation controls](../poteto-mode/references/pi-delegation.md) for read-only acceptance and per-child launch parameters.
+
 Read [Pi review models](../poteto-mode/references/pi-models.md) before launching; report effective models and label same-model panels accurately.
 
 Spawn one reviewer per configured model to adversarially review code changes. Different model families can expose different blind spots; default parent-model reviewers provide repeated samples, not model diversity. The deliverable is a synthesized verdict. Do NOT auto-apply changes.

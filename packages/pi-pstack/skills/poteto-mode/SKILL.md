@@ -104,7 +104,9 @@ Naming tools in a brief does not grant access.
 
 **Defaults for every `subagent()` launch.** `async: true`, an explicit task-appropriate tool allowlist, file pointers not inlined context, explicit model per role (configurable via `/setup-pstack`. Defaults inherit-parent for code, inherit-parent for prose and judgment). Code delegates tier by difficulty. The hardest changes (cross-cutting design, gnarly concurrency, subtle algorithms) go to your strongest judgment model (inherit-parent), whether the task needs judgment on vague intent or is a precisely specified sequence of steps to execute to the letter. Trivial mechanical edits go to your fast code model. Per-role lines in the injected pstack role table override these defaults and the model choices in the routed skills (`how`, `why`, `arena`, `swarm`, `architect`, `interrogate`, `reflect`). A role with no line keeps its default, and a role line of `inherit-parent` or `auto` runs that role on the parent chat model (omit `model`). Each code playbook's configured model comes from its line (`feature, refactoring`, `bug-fix`, `perf-issue`, or `hillclimb`), and the hardest changes read `hardest tasks`. Prose and judgment read `judgment and prose`.
 
-**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit. Do not synthesize effort or speed suffixes in Pi model IDs. Query `subagent({ action: "models" })` for valid selectors when a configured model is unavailable.
+**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit.
+Read [Pi delegation controls](references/pi-delegation.md) for supported reasoning controls, read-only acceptance, and per-child panel parameters.
+Query `subagent({ action: "models" })` for valid selectors when a configured model is unavailable.
 
 You own every subagent's work. Review the diff and write your own summary, don't pass through what it said. A second opinion is the same prompt against a different model. Agreement is high-signal.
 

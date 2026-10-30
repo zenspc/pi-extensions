@@ -2,6 +2,11 @@ import { posix } from "node:path";
 
 export function patchRuntimeInstructions(text, rel) {
 	if (rel === "skills/poteto-mode/references/pi-runtime.md") return text;
+	if (["how", "why", "reflect", "interrogate", "arena", "swarm", "maintain-verification-skill"].some((name) => rel === `skills/${name}/SKILL.md`)) {
+		const reference = posix.relative(posix.dirname(rel), "skills/poteto-mode/references/pi-delegation.md");
+		const link = `[Pi delegation controls](${reference})`;
+		if (!text.includes(link)) text = text.replace(/^(# .+\n)/m, `$1\nBefore delegation, read ${link} for read-only acceptance and per-child launch parameters.\n`);
+	}
 	const reference = posix.relative(posix.dirname(rel), "skills/poteto-mode/references/pi-runtime.md");
 	const link = `[Pi runtime prerequisites](${reference})`;
 	if (rel === "skills/reflect/SKILL.md") {
