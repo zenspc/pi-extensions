@@ -2,18 +2,23 @@
 
 ## Layout
 
-Each publishable unit lives under `packages/<name>` and is an independent npm package under the `@zenspc` scope.
+Each maintained publishable unit lives under `packages/<name>` and is an independent npm package under the `@zenspc` scope.
+Unmaintained extensions live in [`packages/archived/`](../packages/archived/README.md) and are excluded from the workspace, routine checks and tests, and releases.
 
 ```text
 packages/
-  pi-safety/
-  pi-workflow/
+  archived/
+    README.md
+    pi-copilot-discovery/
+    pi-preferred-thinking/
+    pi-safety/
+    pi-sticky-editor/
+    pi-workflow/
+  pi-autopilot/
+  pi-browser/
   pi-devtools/
-  pi-preferred-thinking/
-  pi-copilot-discovery/
   pi-spinner/
   pi-quiet/
-  pi-sticky-editor/
   pi-pstack/
 ```
 
@@ -25,17 +30,12 @@ From the monorepo root:
 pnpm check
 
 # load one package for the current run only
-pi -e ./packages/pi-safety
-pi -e ./packages/pi-workflow
 pi -e ./packages/pi-devtools
-pi -e ./packages/pi-preferred-thinking
-pi -e ./packages/pi-copilot-discovery
 pi -e ./packages/pi-spinner
 pi -e ./packages/pi-quiet
-pi -e ./packages/pi-sticky-editor
 
 # install from path into user settings
-pi install ./packages/pi-safety
+pi install ./packages/pi-devtools
 ```
 
 `pnpm test` runs at most two test files concurrently to reduce CPU and memory contention during real Chrome integration tests on CI runners.

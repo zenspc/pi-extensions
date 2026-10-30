@@ -8,12 +8,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
-    "directory": "packages/pi-copilot-discovery"
+    "directory": "packages/archived/pi-copilot-discovery"
   },
   "bugs": {
     "url": "https://github.com/zenspc/pi-extensions/issues"
   },
-  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-copilot-discovery#readme",
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/archived/pi-copilot-discovery#readme",
   "publishConfig": {
     "access": "public"
   },
@@ -39,7 +39,7 @@
     ]
   },
   "scripts": {
-    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
-    "postpack": "ln -sfn ../../LICENSE LICENSE"
+    "prepack": "cp --remove-destination ../../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../../LICENSE LICENSE"
   }
 }

@@ -1,5 +1,8 @@
 # @zenspc/pi-workflow
 
+> **Archived and unmaintained.** No bug fixes, security updates, or compatibility updates are planned.
+> See the [archive README](../README.md).
+
 Plan mode for read-only exploration and tracked plan execution in Pi.
 
 ## Install
@@ -11,8 +14,8 @@ pi install npm:@zenspc/pi-workflow
 Local development:
 
 ```bash
-pi -e ./packages/pi-workflow
-pi install ./packages/pi-workflow
+pi -e ./packages/archived/pi-workflow
+pi install ./packages/archived/pi-workflow
 ```
 
 ## Features

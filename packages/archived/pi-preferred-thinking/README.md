@@ -17,8 +17,8 @@ pi install npm:@zenspc/pi-preferred-thinking
 Local development:
 
 ```bash
-pi -e ./packages/pi-preferred-thinking
-pi install ./packages/pi-preferred-thinking
+pi -e ./packages/archived/pi-preferred-thinking
+pi install ./packages/archived/pi-preferred-thinking
 ```
 
 ## Config

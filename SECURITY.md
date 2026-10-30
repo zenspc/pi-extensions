@@ -4,22 +4,16 @@
 
 This monorepo is pre-1.0.
 
-Security fixes are applied only to the **latest published version** of each package:
+Security fixes are applied only to the **latest published version** of each maintained package listed in the [main README](./README.md#packages).
 
-- `@zenspc/pi-safety`
-- `@zenspc/pi-workflow`
-- `@zenspc/pi-devtools`
-- `@zenspc/pi-preferred-thinking`
-- `@zenspc/pi-copilot-discovery`
-- `@zenspc/pi-spinner`
-- `@zenspc/pi-quiet`
-- `@zenspc/pi-sticky-editor`
+[Archived extensions](./packages/archived/README.md) are unmaintained and receive no security updates.
 
 Older published versions are not maintained with backports unless a release note says otherwise.
 
 ## Reporting a vulnerability
 
-Please report security issues **privately**. Do not open a public GitHub issue for vulnerabilities, secrets, or token leaks.
+Please report security issues **privately**.
+Do not open a public GitHub issue for vulnerabilities, secrets, or token leaks.
 
 Preferred:
 

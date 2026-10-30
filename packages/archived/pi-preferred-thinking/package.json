@@ -14,12 +14,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
-    "directory": "packages/pi-preferred-thinking"
+    "directory": "packages/archived/pi-preferred-thinking"
   },
   "bugs": {
     "url": "https://github.com/zenspc/pi-extensions/issues"
   },
-  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-preferred-thinking#readme",
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/archived/pi-preferred-thinking#readme",
   "publishConfig": {
     "access": "public"
   },
@@ -40,7 +40,7 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test extensions/preferred-thinking-helpers.test.ts",
-    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
-    "postpack": "ln -sfn ../../LICENSE LICENSE"
+    "prepack": "cp --remove-destination ../../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../../LICENSE LICENSE"
   }
 }

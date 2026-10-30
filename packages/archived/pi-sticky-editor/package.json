@@ -9,7 +9,7 @@
     "pi-package",
     "terminal"
   ],
-  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-sticky-editor#readme",
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/archived/pi-sticky-editor#readme",
   "bugs": {
     "url": "https://github.com/zenspc/pi-extensions/issues"
   },
@@ -18,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
-    "directory": "packages/pi-sticky-editor"
+    "directory": "packages/archived/pi-sticky-editor"
   },
   "files": [
     "src/",
@@ -33,8 +33,8 @@
   },
   "scripts": {
     "test": "node --experimental-strip-types --test tests/**/*.test.ts",
-    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
-    "postpack": "ln -sfn ../../LICENSE LICENSE"
+    "prepack": "cp --remove-destination ../../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../../LICENSE LICENSE"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.80.0",

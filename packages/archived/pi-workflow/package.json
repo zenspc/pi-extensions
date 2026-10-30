@@ -13,12 +13,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
-    "directory": "packages/pi-workflow"
+    "directory": "packages/archived/pi-workflow"
   },
   "bugs": {
     "url": "https://github.com/zenspc/pi-extensions/issues"
   },
-  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-workflow#readme",
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/archived/pi-workflow#readme",
   "publishConfig": {
     "access": "public"
   },
@@ -40,7 +40,7 @@
     ]
   },
   "scripts": {
-    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
-    "postpack": "ln -sfn ../../LICENSE LICENSE"
+    "prepack": "cp --remove-destination ../../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../../LICENSE LICENSE"
   }
 }

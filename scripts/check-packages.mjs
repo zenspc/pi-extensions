@@ -30,7 +30,7 @@ if (!existsSync(packagesDir)) {
 }
 
 const packageNames = readdirSync(packagesDir).filter((name) =>
-  statSync(join(packagesDir, name)).isDirectory(),
+  name !== "archived" && statSync(join(packagesDir, name)).isDirectory(),
 );
 
 if (packageNames.length === 0) {

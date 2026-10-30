@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, e.g. @zenspc/pi-safety@0.1.0"
+        description: "Release tag, e.g. @zenspc/pi-devtools@0.1.0"
         required: true
         type: string
       dry_run:
