@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Arena
 
+Before delegation, read [Pi delegation controls](../poteto-mode/references/pi-delegation.md) for read-only acceptance and per-child launch parameters.
+
 Read [Pi review models](../poteto-mode/references/pi-models.md) before launching; report effective models and label same-model panels accurately.
 
 Open a todolist with one entry per phase (Frame, Fan out, Cross-judge, Pick, Graft, Verify) before launching anything.

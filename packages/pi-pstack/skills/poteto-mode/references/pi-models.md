@@ -20,4 +20,5 @@ If a configured selector is unavailable or rejected, name the failed seat and th
 Where the workflow allows a fallback, retry that seat on the parent model by omitting `model`, and report the reduced diversity.
 If the operator required a specific model or model diversity, report that seat blocked instead of substituting.
 Do not infer fallbacks from Cursor-specific prefixes or invent effort/speed suffixes in Pi model IDs.
+For confirmed runtime reasoning controls that preserve the base selector, read [Pi delegation controls](pi-delegation.md).
 A missing reviewer is not a completed reviewer.

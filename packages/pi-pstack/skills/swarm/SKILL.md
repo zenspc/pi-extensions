@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Swarm
 
+Before delegation, read [Pi delegation controls](../poteto-mode/references/pi-delegation.md) for read-only acceptance and per-child launch parameters.
+
 ## Start
 
 Open a todolist with one entry per phase before launching anything.

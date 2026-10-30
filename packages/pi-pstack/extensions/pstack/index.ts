@@ -191,12 +191,14 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 			persistMode(true, ctx);
 			ctx.ui.notify("Poteto Mode on. Stays on until /poteto-mode off.", "info");
 			const payload = `${POTETO_SKILL}${raw ? ` ${raw}` : ""}`;
-			pi.sendUserMessage(
+			const completion = pi.sendUserMessage(
 				payload,
 				ctx.isIdle()
 					? { expandPromptTemplates: true }
 					: { expandPromptTemplates: true, deliverAs: "followUp" },
 			);
+			// One-shot hosts dispose after the handler; RPC and TUI acknowledge commands before settlement.
+			if (ctx.mode === "json" || ctx.mode === "print") await completion;
 		},
 	});
 

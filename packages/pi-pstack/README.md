@@ -75,6 +75,11 @@ The full skill body is not injected into every system prompt.
 Only an exact `off`, `disable`, or `stop` argument disables the mode; longer arguments remain task text.
 Missing skill resources produce an error rather than forwarding an unexpanded command.
 
+On stock Pi 1.4, one-shot JSON/print `/poteto-mode <task>` forwarding can exit before the task runs because the host's extension send API is fire-and-forget.
+Use `/skill:poteto-mode <task>` directly for one-shot invocation, or keep the session open through RPC/TUI.
+Pstack awaits forwarding in one-shot modes when the host exposes an awaitable send; the prepared upstream patch and verification evidence are recorded in this repository's `docs/patches/` and `docs/pi-pstack-verification-results.md`.
+RPC/TUI commands still acknowledge without waiting for model settlement.
+
 The extension uses Pi's structured prompt options for its own `pstack` section and Skill catalog filtering.
 It does not replace or parse the complete rendered prompt, mutate the skill registry, or remove other extensions' sections.
 
@@ -87,6 +92,8 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
   The bundled `poteto-agent` has read/search/shell/edit/write tools, not automatic MCP access.
   MCP-dependent work needs a configured agent definition that selects the required tools and loads their providers.
   Naming tools in a task brief does not grant access.
+  Read [Pi delegation controls](skills/poteto-mode/references/pi-delegation.md) before review-only worker launches or panels with per-child controls.
+  A read-only tool allowlist does not change the worker's writer acceptance role; use a scoped review policy, not a global safety override.
 - Sessions default to `~/.pi/agent/sessions/`, with the active file exposed as `$PI_SESSION_FILE` when available.
   Transcript workflows verify the session ID and workspace, use exact retained pi-subagents records for delegates, and never scan unrelated private chats.
 - The Pi-specific `deslop` skill, JSON model configuration, plan checker, and worktree audit are preserved on sync.

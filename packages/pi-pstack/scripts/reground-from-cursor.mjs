@@ -41,6 +41,7 @@ export const CLASS_RULES = [
 	{ pattern: "skills/poteto-mode/scripts/check-plan.mjs", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/references/pi-runtime.md", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/references/pi-models.md", class: "pi-only" },
+	{ pattern: "skills/poteto-mode/references/pi-delegation.md", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/check-plan.test.mjs", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/check-plan.test.ts", class: "never-copy" },
 	{ pattern: "skills/poteto-mode/scripts/package.json", class: "pi-only" },
@@ -560,7 +561,7 @@ function patchPotetoModePi(text) {
 	text = text.replace(/\*\*Defaults for every `subagent\(\)` launch\.\*\*\s*`run_in_background:[^\n]*/, SUBAGENT_DEFAULTS);
 	text = text.replace(
 		/\*\*Match the model to the job\.\*\*[^\n]*/,
-		"**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit. Do not synthesize effort or speed suffixes in Pi model IDs. Query `subagent({ action: \"models\" })` for valid selectors when a configured model is unavailable.",
+		"**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit.\nRead [Pi delegation controls](references/pi-delegation.md) for supported reasoning controls, read-only acceptance, and per-child panel parameters.\nQuery `subagent({ action: \"models\" })` for valid selectors when a configured model is unavailable.",
 	);
 	return text;
 }
