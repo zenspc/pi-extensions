@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+	chmodSync,
 	lstatSync,
 	mkdtempSync,
 	readFileSync,
@@ -15,10 +16,11 @@ import {
 	configPath,
 	defaultConfig,
 	formatRoleTable,
+	formatPanelStatus,
 	getAgentDir,
 	isSafeModelSelector,
 	legacyMarkdownPath,
-	loadConfig,
+	loadConfig as readConfig,
 	migrateLegacyMarkdownIfNeeded,
 	modelsForRole,
 	parseConfig,
@@ -27,6 +29,7 @@ import {
 } from "./config.ts";
 
 const MAX_CONFIG_BYTES = 100_000;
+const loadConfig = (path: string) => readConfig(path).config;
 
 function tempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -206,6 +209,67 @@ describe("loadConfig / saveConfig", () => {
 	});
 });
 
+describe("configuration diagnostics", () => {
+	it("distinguishes missing, loaded, partial, and invalid without exposing rejected values", (t) => {
+		const dir = tempDir("pstack-diagnostics-");
+		t.after(() => rmSync(dir, { recursive: true, force: true }));
+		const path = join(dir, "models.json");
+		assert.equal(readConfig(path).status, "missing");
+		assert.deepEqual(readConfig(path).diagnostics, []);
+		assert.equal(saveConfig(defaultConfig(), path), true);
+		assert.equal(readConfig(path).status, "loaded");
+		writeFileSync(path, JSON.stringify({ version: 1, skillsEnabled: "secret", roles: {
+			"bug-fix": "openai/good", "arena runners": ["inherit-parent", "secret", "openai/good"],
+			"how explorer": "secret", unknown: "secret",
+		} }));
+		const partial = readConfig(path);
+		assert.equal(partial.path, path);
+		assert.equal(partial.status, "partial");
+		assert.equal(partial.config.roles["bug-fix"], "openai/good");
+		assert.deepEqual(partial.config.roles["arena runners"], ["inherit-parent", "openai/good"]);
+		assert.match(partial.diagnostics.join("\n"), /arena runners.*\[1\]/);
+		assert.match(partial.diagnostics.join("\n"), /how explorer/);
+		assert.match(partial.diagnostics.join("\n"), /unknown role/);
+		assert.match(partial.diagnostics.join("\n"), /skillsEnabled/);
+		assert.doesNotMatch(partial.diagnostics.join("\n"), /secret/);
+		for (const body of ["{secret", "null", '{"version":2,"roles":{}}', '{"version":1,"roles":[]}']) {
+			writeFileSync(path, body);
+			const result = readConfig(path);
+			assert.equal(result.status, "invalid", body);
+			assert.ok(result.diagnostics.length > 0);
+			assert.deepEqual(result.config, defaultConfig());
+			assert.equal(readFileSync(path, "utf8"), body);
+		}
+	});
+
+	it("reports unreadable existing config without exposing its contents", { skip: process.platform === "win32" || process.getuid?.() === 0 }, (t) => {
+		const dir = tempDir("pstack-unreadable-");
+		t.after(() => rmSync(dir, { recursive: true, force: true }));
+		const path = join(dir, "models.json");
+		writeFileSync(path, "private-config");
+		chmodSync(path, 0);
+		const result = readConfig(path);
+		assert.equal(result.status, "invalid");
+		assert.deepEqual(result.diagnostics, ["Cannot read configuration."]);
+	});
+
+	it("reports directories, oversized files, and dangling symlinks as invalid, not missing", (t) => {
+		const dir = tempDir("pstack-invalid-path-");
+		t.after(() => rmSync(dir, { recursive: true, force: true }));
+		assert.equal(readConfig(dir).status, "invalid");
+		const path = join(dir, "models.json");
+		writeFileSync(path, "x".repeat(MAX_CONFIG_BYTES + 1));
+		assert.match(readConfig(path).diagnostics.join(), /100000/);
+		rmSync(path);
+		symlinkSync(join(dir, "absent"), path);
+		assert.equal(readConfig(path).status, "invalid");
+		assert.equal(saveConfig(defaultConfig(), path), false);
+		const regular = join(dir, "regular.json");
+		writeFileSync(regular, "{}");
+		assert.equal(readConfig(join(regular, "child")).status, "invalid");
+	});
+});
+
 describe("parseLegacyMarkdown", () => {
 	it("reads the setup-pstack template shape", () => {
 		const parsed = parseLegacyMarkdown(`
@@ -252,10 +316,36 @@ describe("migrateLegacyMarkdownIfNeeded", () => {
 	});
 });
 
+describe("migration safety", () => {
+	it("never migrates over a broken JSON file or dangling symlink", (t) => {
+		const dir = tempDir("pstack-migration-broken-");
+		t.after(() => rmSync(dir, { recursive: true, force: true }));
+		const jsonPath = join(dir, "models.json");
+		const mdPath = join(dir, "pstack-models.md");
+		writeFileSync(mdPath, "bug-fix: openai/example\n");
+		writeFileSync(jsonPath, "{broken");
+		assert.equal(migrateLegacyMarkdownIfNeeded(jsonPath, mdPath), undefined);
+		assert.equal(readFileSync(jsonPath, "utf8"), "{broken");
+		rmSync(jsonPath);
+		symlinkSync(join(dir, "absent"), jsonPath);
+		assert.equal(migrateLegacyMarkdownIfNeeded(jsonPath, mdPath), undefined);
+		assert.ok(lstatSync(jsonPath).isSymbolicLink());
+	});
+});
+
 describe("formatRoleTable", () => {
 	it("injects nothing when every role inherits", () => {
 		assert.equal(formatRoleTable(defaultConfig()), "");
 		assert.equal(formatRoleTable(parseConfig({ version: 1, roles: { "bug-fix": "auto" } })), "");
+	});
+
+	it("preserves inherited seats, order, and explicit all-inherited panel sizes", () => {
+		const cfg = defaultConfig();
+		cfg.roles["arena runners"] = ["inherit-parent", "openai/example", "auto", "inherit-parent"];
+		cfg.roles["interrogate reviewers"] = ["auto", "inherit-parent", "auto"];
+		assert.equal(formatRoleTable(cfg), "arena runners: inherit-parent, openai/example, auto, inherit-parent\ninterrogate reviewers: auto, inherit-parent, auto");
+		cfg.roles["interrogate reviewers"] = ["inherit-parent"];
+		assert.match(formatRoleTable(cfg), /interrogate reviewers: inherit-parent$/);
 	});
 
 	it("lists only non-default roles", () => {
@@ -273,8 +363,27 @@ describe("formatRoleTable", () => {
 	});
 });
 
+describe("formatPanelStatus", () => {
+	it("resolves default inherited panels without claiming model diversity", () => {
+		const output = formatPanelStatus(defaultConfig(), "openai/parent");
+		assert.match(output, /interrogate reviewers: openai\/parent \(inherited\), openai\/parent \(inherited\) \[same-model panel\]/);
+		assert.match(output, /arena cross-judge pool: .*\[same-model pool; choose one judge\]/);
+		assert.match(formatPanelStatus(defaultConfig()), /parent model unresolved/);
+	});
+
+	it("preserves seats and resolves aliases when describing mixed panels", () => {
+		const cfg = defaultConfig();
+		cfg.roles["interrogate reviewers"] = ["auto", "openai/parent"];
+		assert.match(formatPanelStatus(cfg, "openai/parent"), /interrogate reviewers: .*\[same-model panel\]/);
+		cfg.roles["interrogate reviewers"] = ["inherit-parent", "other/model", "auto"];
+		assert.match(formatPanelStatus(cfg, "openai/parent"), /interrogate reviewers: openai\/parent \(inherited\), other\/model, openai\/parent \(inherited\) \[distinct selectors; family diversity not guaranteed\]/);
+		cfg.roles["interrogate reviewers"] = ["inherit-parent"];
+		assert.match(formatPanelStatus(cfg, "openai/parent"), /interrogate reviewers: openai\/parent \(inherited\) \[single-model panel\]/);
+	});
+});
+
 describe("modelsForRole", () => {
-	it("returns array form and filters inherit-parent and auto", () => {
+	it("returns array form without dropping inherited seats", () => {
 		const cfg = parseConfig({
 			version: 1,
 			roles: {
@@ -283,9 +392,9 @@ describe("modelsForRole", () => {
 				"arena runners": ["anthropic/a", "inherit-parent", "auto", "openai/b"],
 			},
 		});
-		assert.deepEqual(modelsForRole(cfg, "bug-fix"), []);
-		assert.deepEqual(modelsForRole(cfg, "how explorer"), []);
-		assert.deepEqual(modelsForRole(cfg, "arena runners"), ["anthropic/a", "openai/b"]);
-		assert.deepEqual(modelsForRole(cfg, "hillclimb"), []);
+		assert.deepEqual(modelsForRole(cfg, "bug-fix"), ["inherit-parent"]);
+		assert.deepEqual(modelsForRole(cfg, "how explorer"), ["auto"]);
+		assert.deepEqual(modelsForRole(cfg, "arena runners"), ["anthropic/a", "inherit-parent", "auto", "openai/b"]);
+		assert.deepEqual(modelsForRole(cfg, "hillclimb"), ["inherit-parent"]);
 	});
 });

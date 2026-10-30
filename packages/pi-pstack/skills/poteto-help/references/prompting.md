@@ -1,5 +1,7 @@
 # Word the prompt
 
+Read [Pi runtime prerequisites](../../poteto-mode/references/pi-runtime.md) before scheduling work or locating transcripts and durable artifacts.
+
 A prompt states the intent and the check for done. The playbook supplies the steps, so a few plain sentences beat a spec.
 
 ## Put in

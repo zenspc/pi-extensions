@@ -79,6 +79,26 @@ test("adapts commands without changing relative links or script contents", (t) =
 	assert.equal(applyBodyTransforms("grok-4.7-xhigh-fast, claude-opus-5-5-xhigh"), "inherit-parent");
 });
 
+test("re-sync repairs runtime assumptions and retains the local capability contract", (t) => {
+	const paths = fixture(t);
+	const runtime = "# Pi runtime prerequisites\n\nLocal scheduler and transcript contract.\n";
+	paths.put(paths.to, "skills/poteto-mode/references/pi-runtime.md", runtime);
+	paths.put(paths.from, "skills/poteto-mode/references/pi-runtime.md", "Upstream must not replace the Pi contract.\n");
+	paths.put(paths.from, "skills/poteto-mode/playbooks/autonomous-run.md", "### Autonomous run\n\n2. Pick the wake mechanism using Cursor's `/loop` command (a built-in, not a pstack skill).\n");
+	paths.put(paths.from, "skills/poteto-mode/playbooks/session-pickup.md", "### Session pickup\n\n1. Locate the prior trail. A local transcript under the active workspace's `agent-transcripts/` directory (the system prompt names the path), a cloud-agent URL, or a pushed branch. Read the metadata overview first.\n");
+	for (let sync = 0; sync < 2; sync++) {
+		apply(plan(paths));
+		assertNoCursorSeams(paths.to);
+		const wake = readFileSync(join(paths.to, "skills/poteto-mode/playbooks/autonomous-run.md"), "utf8");
+		assert.match(wake, /Without one, work while this session is active/);
+		assert.match(wake, /references\/pi-runtime\.md/);
+		const pickup = readFileSync(join(paths.to, "skills/poteto-mode/playbooks/session-pickup.md"), "utf8");
+		assert.match(pickup, /workspace-verified Pi session/);
+		assert.doesNotMatch(pickup, /cloud-agent URL|agent-transcripts/);
+		assert.equal(readFileSync(join(paths.to, "skills/poteto-mode/references/pi-runtime.md"), "utf8"), runtime);
+	}
+});
+
 test("adapts why discovery without deleting the code anchor", (t) => {
 	const paths = fixture(t);
 	const anchor = "Before spawning investigators, build the seed context inline: file paths and key symbols. Run `git blame` and `git log`, then read PR discussions. This anchor goes to every investigator.";
@@ -101,6 +121,9 @@ test("preserves the independent statechart toolchain on re-sync", (t) => {
 	assert.equal(manifest.version, "0.0.0");
 	assert.equal(manifest.packageManager, "pnpm@9.15.0");
 	assert.equal(manifest.scripts.typecheck, "tsc --noEmit");
+	assert.equal(manifest.scripts["test:offline"], "node test-offline.mjs");
+	assert.match(manifest.scripts["test:renderers"], /test\/render\.test\.ts$/);
+	assert.equal(classify("skills/statechart/scripts/test-offline.mjs"), "pi-only");
 	assert.equal(manifest.devDependencies["@types/node"], "22.20.5");
 	assert.equal(classify("skills/statechart/scripts/pnpm-lock.yaml"), "pi-only");
 });
@@ -111,6 +134,7 @@ test("keeps the Pi sticky-mode and model-selection contracts on re-sync", (t) =>
 	plan(paths);
 	const rendered = renderWrite({ rel: "skills/poteto-mode/SKILL.md", class: "adapt" }, paths);
 	assert.match(rendered, /`\/poteto-mode off` disables it/);
+	assert.match(rendered, /explicit model choices or panel arrays/);
 	assert.match(rendered, /subagents_enable/);
 	assert.match(rendered, /Do not synthesize effort or speed suffixes/);
 	assert.match(rendered, /omit `model`/);

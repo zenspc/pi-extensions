@@ -9,7 +9,8 @@ disable-model-invocation: true
 `/poteto-mode` enables this mode for the rest of the session.
 `/poteto-mode off` disables it.
 `/skill:poteto-mode` also enables it.
-The role table is injected from `~/.pi/agent/pstack/models.json` only when a role has a real model slug.
+The role table is injected from `~/.pi/agent/pstack/models.json` for explicit model choices or panel arrays.
+Scalar inheritance needs no role table.
 
 Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in every `poteto-agent` prompt.
 

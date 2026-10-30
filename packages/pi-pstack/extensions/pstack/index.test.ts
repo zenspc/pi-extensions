@@ -106,6 +106,7 @@ describe("Pi 1.4 structured prompt integration", () => {
 			},
 			getCommands: () => [{ name: "skill:poteto-mode", source: "skill" }],
 			sendUserMessage: (...args: unknown[]) => sent.push(args),
+			sendMessage: () => {},
 		} as unknown as ExtensionAPI);
 		const context = {
 			mode: "json", hasUI: false, isIdle: () => true,

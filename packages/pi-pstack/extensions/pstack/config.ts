@@ -103,12 +103,16 @@ function parseRoleValue(value: unknown): RoleValue | undefined {
 	return selectors;
 }
 
-export function parseConfig(raw: unknown): PstackConfig {
-	const fallback = defaultConfig();
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return fallback;
-
+function isConfigRecord(raw: unknown): raw is { version: 1; roles: Record<string, unknown>; skillsEnabled?: unknown } {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
 	const record = raw as { version?: unknown; roles?: unknown };
-	if (record.version !== 1 || !record.roles || typeof record.roles !== "object" || Array.isArray(record.roles)) {
+	return record.version === 1 && !!record.roles && typeof record.roles === "object" && !Array.isArray(record.roles);
+}
+
+export function parseConfig(raw: unknown, diagnostics: string[] = []): PstackConfig {
+	const fallback = defaultConfig();
+	if (!isConfigRecord(raw)) {
+		diagnostics.push("Expected version 1 and a roles object.");
 		return fallback;
 	}
 
@@ -116,13 +120,27 @@ export function parseConfig(raw: unknown): PstackConfig {
 	for (const role of ROLE_NAMES) {
 		roles[role] = fallback.roles[role];
 	}
-	for (const [key, value] of Object.entries(record.roles as Record<string, unknown>)) {
-		if (!ROLE_NAME_SET.has(key)) continue;
+	for (const [key, value] of Object.entries(raw.roles)) {
+		if (!ROLE_NAME_SET.has(key)) {
+			diagnostics.push("roles: unknown role ignored.");
+			continue;
+		}
 		const parsed = parseRoleValue(value);
-		if (parsed === undefined) continue;
+		if (Array.isArray(value)) {
+			value.forEach((selector, index) => {
+				if (!isSafeModelSelector(selector)) diagnostics.push(`roles.${key}[${index}]: invalid model selector ignored.`);
+			});
+		}
+		if (parsed === undefined) {
+			diagnostics.push(`roles.${key}: invalid role value; using inherit-parent.`);
+			continue;
+		}
 		roles[key] = parsed;
 	}
-	const storedSkillsEnabled = (raw as { skillsEnabled?: unknown }).skillsEnabled;
+	const storedSkillsEnabled = raw.skillsEnabled;
+	if (storedSkillsEnabled !== undefined && typeof storedSkillsEnabled !== "boolean") {
+		diagnostics.push("skillsEnabled: expected a boolean; using true.");
+	}
 	return {
 		version: 1,
 		roles,
@@ -133,18 +151,46 @@ export function parseConfig(raw: unknown): PstackConfig {
 	};
 }
 
-export function loadConfig(path: string = configPath()): PstackConfig {
+export interface ConfigLoadResult {
+	path: string;
+	config: PstackConfig;
+	status: "missing" | "loaded" | "partial" | "invalid";
+	diagnostics: string[];
+}
+
+export function loadConfig(path: string = configPath()): ConfigLoadResult {
+	const result: ConfigLoadResult = { path, config: defaultConfig(), status: "invalid", diagnostics: [] };
+	let text: string;
 	try {
-		if (!existsSync(path)) return defaultConfig();
 		const st = lstatSync(path);
-		if (!st.isFile()) return defaultConfig();
-		if (st.size > MAX_CONFIG_BYTES) return defaultConfig();
-		const text = readFileSync(path, "utf8");
-		if (text.length > MAX_CONFIG_BYTES) return defaultConfig();
-		return parseConfig(JSON.parse(text));
-	} catch {
-		return defaultConfig();
+		if (!st.isFile()) {
+			result.diagnostics.push("Expected a regular file, not a directory or symlink.");
+			return result;
+		}
+		if (st.size > MAX_CONFIG_BYTES) {
+			result.diagnostics.push(`Configuration exceeds ${MAX_CONFIG_BYTES} bytes.`);
+			return result;
+		}
+		text = readFileSync(path, "utf8");
+		if (Buffer.byteLength(text, "utf8") > MAX_CONFIG_BYTES) {
+			result.diagnostics.push(`Configuration exceeds ${MAX_CONFIG_BYTES} bytes.`);
+			return result;
+		}
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") result.status = "missing";
+		else result.diagnostics.push("Cannot read configuration.");
+		return result;
 	}
+	let raw: unknown;
+	try {
+		raw = JSON.parse(text);
+	} catch {
+		result.diagnostics.push("Invalid JSON.");
+		return result;
+	}
+	result.config = parseConfig(raw, result.diagnostics);
+	result.status = !isConfigRecord(raw) ? "invalid" : result.diagnostics.length ? "partial" : "loaded";
+	return result;
 }
 
 export function saveConfig(config: PstackConfig, path: string = configPath()): boolean {
@@ -154,10 +200,8 @@ export function saveConfig(config: PstackConfig, path: string = configPath()): b
 	const tmp = join(dir, `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
 	try {
 		mkdirSync(dir, { recursive: true, mode: 0o700 });
-		if (existsSync(path)) {
-			const st = lstatSync(path);
-			if (!st.isFile()) return false;
-		}
+		const st = lstatSync(path, { throwIfNoEntry: false });
+		if (st && !st.isFile()) return false;
 		writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
 		renameSync(tmp, path);
 		return true;
@@ -204,7 +248,7 @@ export function migrateLegacyMarkdownIfNeeded(
 	jsonPath: string = configPath(),
 	markdownPath: string = legacyMarkdownPath(),
 ): PstackConfig | undefined {
-	if (existsSync(jsonPath)) return undefined;
+	if (loadConfig(jsonPath).status !== "missing") return undefined;
 	if (!isRegularFile(markdownPath)) return undefined;
 	try {
 		const migrated = parseLegacyMarkdown(readFileSync(markdownPath, "utf8"));
@@ -217,16 +261,32 @@ export function migrateLegacyMarkdownIfNeeded(
 
 export function modelsForRole(config: PstackConfig, role: string): string[] {
 	const value = config.roles[role];
-	const list = Array.isArray(value) ? value : value ? [value] : [];
-	return list.filter((selector) => !INHERIT_SELECTORS.has(selector));
+	return Array.isArray(value) ? [...value] : value ? [value] : [];
 }
 
 export function formatRoleTable(config: PstackConfig): string {
 	const lines: string[] = [];
 	for (const role of ROLE_NAMES) {
 		const models = modelsForRole(config, role);
-		if (models.length === 0) continue;
+		if (models.length === 0 || (typeof config.roles[role] === "string" && INHERIT_SELECTORS.has(models[0]))) continue;
 		lines.push(`${role}: ${models.join(", ")}`);
 	}
 	return lines.join("\n");
+}
+
+export function formatPanelStatus(config: PstackConfig, parentModel?: string): string {
+	return [...LIST_ROLES].map((role) => {
+		let selectors = modelsForRole(config, role);
+		if (!Array.isArray(config.roles[role]) && selectors.length === 1 && INHERIT_SELECTORS.has(selectors[0])) {
+			selectors = [selectors[0], selectors[0]];
+		}
+		const effective = selectors.map((selector) => INHERIT_SELECTORS.has(selector) ? parentModel : selector);
+		const labels = selectors.map((selector, index) => INHERIT_SELECTORS.has(selector)
+			? `${effective[index] ?? "parent model unresolved"} (inherited)` : selector);
+		const pool = role === "arena cross-judge pool";
+		const diversity = effective.includes(undefined) ? "parent model unresolved"
+			: new Set(effective).size > 1 ? "distinct selectors; family diversity not guaranteed"
+			: `${effective.length === 1 ? "single" : "same"}-model ${pool ? "pool" : "panel"}`;
+		return `${role}: ${labels.join(", ")} [${diversity}${pool ? "; choose one judge" : ""}]`;
+	}).join("\n");
 }

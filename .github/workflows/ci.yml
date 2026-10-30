@@ -40,3 +40,39 @@ jobs:
 
       - name: Unit and browser integration tests
         run: pnpm test
+
+  pstack-tools:
+    name: Pstack orch and watch-pr
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/pi-pstack/skills/poteto-mode/scripts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run typecheck
+      - run: bun test orch watch-pr
+
+  pstack-statechart:
+    name: Pstack statechart (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [offline, renderers]
+    defaults:
+      run:
+        working-directory: packages/pi-pstack/skills/statechart/scripts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - run: corepack enable
+      - run: corepack prepare --activate
+      - run: pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - run: pnpm typecheck
+      - run: pnpm test:${{ matrix.suite }}

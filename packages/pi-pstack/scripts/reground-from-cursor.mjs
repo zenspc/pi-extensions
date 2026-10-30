@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { patchModelInstructions, patchRuntimeInstructions, runtimeInstructionIssues } from "./pi-runtime.mjs";
 
 export const DISCOVERABLE = ["how", "typescript-best-practices", "unslop", "why"];
 
@@ -38,11 +39,14 @@ export const CLASS_RULES = [
 	{ pattern: "skills/deslop/**", class: "pi-only" },
 	{ pattern: "skills/setup-pstack/SKILL.md", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/check-plan.mjs", class: "pi-only" },
+	{ pattern: "skills/poteto-mode/references/pi-runtime.md", class: "pi-only" },
+	{ pattern: "skills/poteto-mode/references/pi-models.md", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/check-plan.test.mjs", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/check-plan.test.ts", class: "never-copy" },
 	{ pattern: "skills/poteto-mode/scripts/package.json", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/bun.lock", class: "pi-only" },
 	{ pattern: "skills/statechart/scripts/pnpm-lock.yaml", class: "pi-only" },
+	{ pattern: "skills/statechart/scripts/test-offline.mjs", class: "pi-only" },
 	{ pattern: "skills/poteto-mode/scripts/worktree-audit.sh", class: "pi-only" },
 
 	{ pattern: "skills/principle-*/**", class: "copy" },
@@ -282,8 +286,8 @@ export const SEAMS = [
 	},
 	{
 		id: "cloud-agent",
-		cursor: /, cloud-agent URL,/g,
-		pi: ", an async run record,",
+		cursor: /cloud-agent URL/g,
+		pi: "retained pi-subagents run record",
 	},
 	{
 		id: "cursor-restart",
@@ -511,7 +515,8 @@ const POTETO_INTRO = [
 	"`/poteto-mode` enables this mode for the rest of the session.",
 	"`/poteto-mode off` disables it.",
 	"`/skill:poteto-mode` also enables it.",
-	"The role table is injected from `~/.pi/agent/pstack/models.json` only when a role has a real model slug.",
+	"The role table is injected from `~/.pi/agent/pstack/models.json` for explicit model choices or panel arrays.",
+	"Scalar inheritance needs no role table.",
 	"",
 	"",
 ].join("\n");
@@ -683,7 +688,7 @@ export function applyBodyTransforms(text, _rel) {
 		for (const seam of SEAMS) {
 			next = next.replace(seam.cursor, seam.pi);
 		}
-		if (next === text) return next;
+		if (next === text) return _rel ? patchRuntimeInstructions(patchModelInstructions(next, _rel), _rel) : next;
 		text = next;
 	}
 	throw new Error("seam fixpoint did not converge");
@@ -718,6 +723,8 @@ export function renderWrite(action, paths) {
 		const manifest = JSON.parse(text);
 		manifest.name = "@zenspc/pi-pstack-statechart-tools";
 		manifest.scripts.typecheck = "tsc --noEmit";
+		manifest.scripts["test:offline"] = "node test-offline.mjs";
+		manifest.scripts["test:renderers"] = "node --disable-warning=ExperimentalWarning --test test/render.test.ts";
 		manifest.devDependencies = { "@types/node": "22.20.5", ...manifest.devDependencies, typescript: "7.0.2" };
 		manifest.version = "0.0.0";
 		manifest.packageManager = "pnpm@9.15.0";
@@ -846,6 +853,7 @@ export function assertNoCursorSeams(destRoot) {
 		const fileClass = classify(rel);
 		if (fileClass === "pi-only" || fileClass === "never-copy" || !rel.endsWith(".md")) continue;
 		const text = readFileSync(join(destRoot, rel), "utf8");
+		for (const issue of runtimeInstructionIssues(text, rel)) leftover.push(`${rel}: ${issue}`);
 		if (text.includes("AskQuestion")) leftover.push(`${rel}: AskQuestion`);
 		if (text.includes("subagent_type")) leftover.push(`${rel}: subagent_type`);
 		if (text.includes("~/.cursor/rules/pstack-models.mdc")) leftover.push(`${rel}: pstack-models.mdc`);

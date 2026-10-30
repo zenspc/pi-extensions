@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -11,6 +10,8 @@ import {
 	configPath,
 	defaultConfig,
 	formatRoleTable,
+	formatPanelStatus,
+	modelsForRole,
 	isSafeModelSelector,
 	loadConfig,
 	migrateLegacyMarkdownIfNeeded,
@@ -88,12 +89,30 @@ function modelChoices(ctx: ExtensionCommandContext): string[] {
 	return ["inherit-parent", "auto", ...ids];
 }
 
-function isInheritSelector(value: string): boolean {
-	return value === "inherit-parent" || value === "auto";
-}
-
 export default function pstackExtension(pi: ExtensionAPI): void {
 	let potetoMode: PotetoMode;
+	const configWarnings = new Set<string>();
+
+	function report(ctx: ExtensionContext, message: string, type: "info" | "warning" | "error" = "info"): void {
+		if (ctx.hasUI) ctx.ui.notify(message, type);
+		else pi.sendMessage({ customType: "pstack-status", content: message, display: true });
+	}
+
+	function readConfig(ctx: ExtensionContext) {
+		const result = loadConfig();
+		const warning = `${result.path}\n${result.diagnostics.join("\n")}`;
+		if (result.diagnostics.length && !configWarnings.has(warning)) {
+			configWarnings.add(warning);
+			report(ctx, `Pstack config ${result.status}: ${warning}\nUsing defaults for rejected settings; the file was not changed. Run /pstack status for details.`, "warning");
+		}
+		return result;
+	}
+
+	function canWriteConfig(ctx: ExtensionContext, result: ReturnType<typeof loadConfig>): boolean {
+		if (result.status === "loaded" || result.status === "missing") return true;
+		report(ctx, `Refusing to overwrite ${result.path}. Repair or move the existing configuration, then retry.`, "error");
+		return false;
+	}
 
 	function setStatus(ctx: ExtensionContext): void {
 		if (ctx.mode !== "tui") return;
@@ -126,6 +145,7 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 		} catch {
 			// ignore migration errors
 		}
+		readConfig(ctx);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => restoreMode(ctx));
@@ -140,7 +160,7 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		restoreMode(ctx);
-		const config = loadConfig();
+		const { config } = readConfig(ctx);
 		const options = event.systemPromptOptions;
 		if (!config.skillsEnabled) {
 			options.skills = options.skills.filter((skill) => !skill.filePath.startsWith(`${SKILLS_DIR}${sep}`));
@@ -188,14 +208,15 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 			} catch {
 				// ignore
 			}
-			const path = configPath();
-			const config = loadConfig();
+			const loaded = readConfig(ctx);
+			if (!canWriteConfig(ctx, loaded)) return;
+			const { path, config } = loaded;
 			if (!ctx.hasUI) {
-				if (!existsSync(path) && !saveConfig(defaultConfig(), path)) {
-					ctx.ui.notify(`Failed to write ${path}`, "error");
+				if (loaded.status === "missing" && !saveConfig(defaultConfig(), path)) {
+					report(ctx, `Failed to write ${path}`, "error");
 					return;
 				}
-				ctx.ui.notify(`Wrote ${path}`, "info");
+				report(ctx, `${loaded.status === "missing" ? "Wrote" : "Using"} ${path}`);
 				return;
 			}
 
@@ -226,11 +247,24 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 		},
 		handler: async (args, ctx) => {
 			const token = args.trim().toLowerCase();
-			const config = loadConfig();
+			const loaded = readConfig(ctx);
+			const { config } = loaded;
 			if (token === "" || token === "status") {
 				const state = config.skillsEnabled ? "on" : "off";
 				const hint = config.skillsEnabled ? "" : " Skills are hidden from the model; /skill:<name> still works.";
-				ctx.ui.notify(`pstack is ${state}.${hint}`, "info");
+				const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+				const available = new Set(ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`));
+				const unavailable = [...new Set(ROLE_NAMES.flatMap((role) => modelsForRole(config, role)))].filter(
+					(selector) => selector !== "inherit-parent" && selector !== "auto" && !available.has(selector),
+				);
+				report(ctx, [
+					`pstack is ${state}.${hint}`, `Config: ${loaded.path}`, `Load status: ${loaded.status}`,
+					...loaded.diagnostics,
+					`Parent session model: ${parent ?? "unresolved"}`,
+					"Effective panel selectors (not a dispatch guarantee):", formatPanelStatus(config, parent),
+					unavailable.length ? `Unavailable in this session: ${unavailable.join(", ")}` : "Configured model selectors are available in this session.",
+					"Same-model panels are repeated samples, not cross-model review. For opt-in diversity, choose confirmed available models with /setup-pstack; no extra provider is selected automatically.",
+				].join("\n"));
 				return;
 			}
 			const enabled = token === "on" || token === "enable";
@@ -238,14 +272,15 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 				ctx.ui.notify("Usage: /pstack [on|off|status]", "error");
 				return;
 			}
+			if (!canWriteConfig(ctx, loaded)) return;
 			if (enabled !== config.skillsEnabled) {
 				config.skillsEnabled = enabled;
 				if (!saveConfig(config)) {
-					ctx.ui.notify(`Failed to write ${configPath()}`, "error");
+					report(ctx, `Failed to write ${configPath()}`, "error");
 					return;
 				}
 			}
-			ctx.ui.notify(
+			report(ctx,
 				enabled ? "pstack skills on." : "pstack skills off. Hidden from the model; /skill:<name> still works.",
 				"info",
 			);
@@ -273,15 +308,11 @@ async function pickListRole(
 	const first = await ctx.ui.select(`Model for ${role}`, labeledChoices(choices, current));
 	if (!first) return undefined;
 	const selected = stripCurrentMark(first);
-	if (isInheritSelector(selected)) return selected;
-
 	const picked = [selected];
 	while (true) {
 		const next = await ctx.ui.select("Add another model for this role?", ["done", ...choices]);
 		if (!next) return undefined;
 		if (next === "done") return picked;
-		const value = stripCurrentMark(next);
-		if (isInheritSelector(value)) return value;
-		picked.push(value);
+		picked.push(stripCurrentMark(next));
 	}
 }
