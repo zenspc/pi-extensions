@@ -1,5 +1,12 @@
 # @zenspc/pi-pstack
 
+## 0.8.0
+
+### Minor Changes
+
+- b32be3d: Add per-role and per-panel-seat thinking effort selection to `/setup-pstack` using native Pi model suffixes.
+  Check model availability and panel diversity against base selectors while preserving effort in saved configuration and delegation prompts.
+
 ## 0.7.2
 
 ### Patch Changes
