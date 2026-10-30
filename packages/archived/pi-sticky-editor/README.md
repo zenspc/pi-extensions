@@ -21,8 +21,8 @@ pi install npm:@zenspc/pi-sticky-editor
 Local development:
 
 ```bash
-pi -e ./packages/pi-sticky-editor
-pi install ./packages/pi-sticky-editor
+pi -e ./packages/archived/pi-sticky-editor
+pi install ./packages/archived/pi-sticky-editor
 ```
 
 ## What it does

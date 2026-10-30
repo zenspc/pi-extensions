@@ -70,23 +70,13 @@ Install only this package from a local checkout:
 
 ```bash
 git clone https://github.com/zenspc/pi-extensions.git
-pi install ./pi-extensions/packages/pi-copilot-discovery
+pi install ./pi-extensions/packages/archived/pi-copilot-discovery
 # or one-shot:
-pi -e ./pi-extensions/packages/pi-copilot-discovery
+pi -e ./pi-extensions/packages/archived/pi-copilot-discovery
 ```
 
-Or install the whole monorepo and filter to this extension:
-
-```json
-{
-  "packages": [
-    {
-      "source": "git:github.com/zenspc/pi-extensions",
-      "extensions": ["packages/pi-copilot-discovery/src/index.ts"]
-    }
-  ]
-}
-```
+Archived extensions are not loaded by the root monorepo package.
+Use an explicit local path as shown above.
 
 Restart pi (or run `/reload`) and the live model list takes effect.
 
@@ -261,7 +251,7 @@ Caveats:
 
 This package lives in the [`zenspc/pi-extensions`](https://github.com/zenspc/pi-extensions) monorepo.
 
-See [docs/publishing.md](../../docs/publishing.md) for monorepo publish steps.
+See [docs/publishing.md](../../../docs/publishing.md) for monorepo publish steps.
 
 ## Layout
 
@@ -284,4 +274,4 @@ See [docs/publishing.md](../../docs/publishing.md) for monorepo publish steps.
 
 ## License
 
-MIT. See the monorepo [LICENSE](../../LICENSE).
+MIT. See the monorepo [LICENSE](../../../LICENSE).

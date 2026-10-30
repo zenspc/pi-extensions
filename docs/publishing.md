@@ -41,7 +41,7 @@ Rules that do not change without a new plan:
 ```bash
 npm whoami
 # Optional availability checks (404 means not published yet):
-npm view @zenspc/pi-safety version || true
+npm view @zenspc/pi-devtools version || true
 ```
 
 ## Contributor flow (version automation)
@@ -63,10 +63,8 @@ On push to `master`, `.github/workflows/release-pr.yml` does one of two things:
    Each tag push (via `RELEASE_TOKEN`) starts `publish.yml` once.
 
 ```text
-@zenspc/pi-safety@0.1.0
-@zenspc/pi-workflow@0.1.0
 @zenspc/pi-devtools@0.1.0
-@zenspc/pi-copilot-discovery@0.3.2
+@zenspc/pi-spinner@0.1.0
 ```
 
 Do not also `gh workflow run publish.yml` after the tag push.
@@ -114,7 +112,7 @@ For each tag it:
 Dry-run from Actions UI:
 
 - Workflow: **Publish package**
-- Input tag: `@zenspc/pi-safety@0.1.0`
+- Input tag: `@zenspc/pi-devtools@0.1.0`
 - `dry_run`: true
 
 ## Tarball sanity
@@ -137,9 +135,9 @@ Prefer CI. If you must publish locally:
 ```bash
 npm login
 pnpm check
-pnpm --filter @zenspc/pi-safety publish --access public
-git tag -a @zenspc/pi-safety@0.1.0 -m "Release @zenspc/pi-safety 0.1.0"
-git push origin @zenspc/pi-safety@0.1.0
+pnpm --filter @zenspc/pi-devtools publish --access public
+git tag -a @zenspc/pi-devtools@0.1.0 -m "Release @zenspc/pi-devtools 0.1.0"
+git push origin @zenspc/pi-devtools@0.1.0
 ```
 
 Caution: `pnpm -r publish` attempts every non-private package. Prefer per-package or tag-driven CI.
@@ -154,12 +152,13 @@ Caution: `pnpm -r publish` attempts every non-private package. Prefer per-packag
 node scripts/tag-packages.mjs --apply --push
 ```
 
-Suggested first-publish order: `pi-safety`, `pi-devtools`, `pi-workflow`, then `pi-copilot-discovery`.
+Only maintained workspace packages are released.
+Packages under [`packages/archived/`](../packages/archived/README.md) are excluded from versioning, tagging, and publishing.
 
 4. Confirm each tag's **Publish package** run, npm page, and:
 
 ```bash
-pi install npm:@zenspc/pi-safety
+pi install npm:@zenspc/pi-devtools
 ```
 
 5. Later releases use changesets + Version PR only.

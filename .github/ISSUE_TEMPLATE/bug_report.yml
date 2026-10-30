@@ -9,14 +9,9 @@ body:
       label: Package
       description: Which package is affected?
       options:
-        - pi-safety
-        - pi-workflow
         - pi-devtools
-        - pi-preferred-thinking
-        - pi-copilot-discovery
         - pi-spinner
         - pi-quiet
-        - pi-sticky-editor
         - monorepo
     validations:
       required: true

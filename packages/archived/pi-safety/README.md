@@ -1,5 +1,8 @@
 # @zenspc/pi-safety
 
+> **Archived and unmaintained.** No bug fixes, security updates, or compatibility updates are planned.
+> See the [archive README](../README.md).
+
 Confirm destructive bash and git actions before Pi runs them.
 
 ## Install
@@ -11,8 +14,8 @@ pi install npm:@zenspc/pi-safety
 Local development:
 
 ```bash
-pi -e ./packages/pi-safety
-pi install ./packages/pi-safety
+pi -e ./packages/archived/pi-safety
+pi install ./packages/archived/pi-safety
 ```
 
 ## What it does

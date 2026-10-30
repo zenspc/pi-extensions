@@ -12,12 +12,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zenspc/pi-extensions.git",
-    "directory": "packages/pi-safety"
+    "directory": "packages/archived/pi-safety"
   },
   "bugs": {
     "url": "https://github.com/zenspc/pi-extensions/issues"
   },
-  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/pi-safety#readme",
+  "homepage": "https://github.com/zenspc/pi-extensions/tree/master/packages/archived/pi-safety#readme",
   "publishConfig": {
     "access": "public"
   },
@@ -38,7 +38,7 @@
   },
   "type": "module",
   "scripts": {
-    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
-    "postpack": "ln -sfn ../../LICENSE LICENSE"
+    "prepack": "cp --remove-destination ../../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../../LICENSE LICENSE"
   }
 }
