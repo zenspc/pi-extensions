@@ -27,6 +27,10 @@ Keep the complete model, tools, context, and acceptance policy on each child; do
 Use native async completion delivery, not polling or manual Pi subprocesses.
 
 Dispatch-level `thinking` is ignored by pi-subagents 0.84.
-For this runtime, use a confirmed supported model thinking suffix or an agent's settings-level `thinking` override, and verify the effective level in terminal metadata.
+For this runtime, pass a configured `provider/modelId:level` selector unchanged as the child's `model`, or use an agent's settings-level `thinking` override, and verify the effective level in terminal metadata.
+`/setup-pstack` offers the selected model's supported levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
+Its `default` choice stores no suffix and leaves effort to the delegated agent's defaults.
+Unsuffixed `inherit-parent` and `auto` still omit `model` and do not pin effort.
 A thinking suffix is a runtime control, not a different model ID or permission to change the configured base selector.
+Different efforts on the same base model do not supply model diversity.
 Do not invent speed suffixes or enable paid fast mode without authorization.

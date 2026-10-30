@@ -1,5 +1,6 @@
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	LIST_ROLES,
@@ -8,6 +9,7 @@ import {
 	type RoleName,
 	type RoleValue,
 	configPath,
+	baseModelSelector,
 	defaultConfig,
 	formatRoleTable,
 	formatPanelStatus,
@@ -69,7 +71,7 @@ function stripCurrentMark(choice: string): string {
 }
 
 function labeledChoices(choices: string[], current: RoleValue | undefined): string[] {
-	const currents = new Set(Array.isArray(current) ? current : current ? [current] : []);
+	const currents = new Set((Array.isArray(current) ? current : current ? [current] : []).map(baseModelSelector));
 	return choices.map((choice) => (currents.has(choice) ? `${choice} (current)` : choice));
 }
 
@@ -203,7 +205,7 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("setup-pstack", {
-		description: "Map pstack delegation roles to models available in this Pi session.",
+		description: "Map pstack delegation roles to available models and thinking effort.",
 		handler: async (_args, ctx) => {
 			try {
 				migrateLegacyMarkdownIfNeeded();
@@ -257,7 +259,7 @@ export default function pstackExtension(pi: ExtensionAPI): void {
 				const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
 				const available = new Set(ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`));
 				const unavailable = [...new Set(ROLE_NAMES.flatMap((role) => modelsForRole(config, role)))].filter(
-					(selector) => selector !== "inherit-parent" && selector !== "auto" && !available.has(selector),
+					(selector) => selector !== "inherit-parent" && selector !== "auto" && !available.has(baseModelSelector(selector)),
 				);
 				report(ctx, [
 					`pstack is ${state}.${hint}`, `Config: ${loaded.path}`, `Load status: ${loaded.status}`,
@@ -298,7 +300,26 @@ async function pickScalarRole(
 ): Promise<RoleValue | undefined> {
 	const choice = await ctx.ui.select(`Model for ${role}`, labeledChoices(choices, current));
 	if (!choice) return undefined;
-	return stripCurrentMark(choice);
+	return pickThinking(ctx, role, stripCurrentMark(choice), typeof current === "string" ? current : undefined);
+}
+
+async function pickThinking(
+	ctx: ExtensionCommandContext,
+	role: RoleName,
+	selector: string,
+	current?: string,
+): Promise<string | undefined> {
+	if (selector === "inherit-parent" || selector === "auto") return selector;
+	const model = [...ctx.scopedModels.map((entry) => entry.model), ...ctx.modelRegistry.getAvailable()]
+		.find((model) => `${model.provider}/${model.id}` === selector);
+	if (!model?.reasoning) return selector;
+	const previous = current && baseModelSelector(current) === selector ? current.slice(selector.length + 1) : "";
+	const levels = ["default", ...getSupportedThinkingLevels(model)];
+	const choice = await ctx.ui.select(`Thinking effort for ${role} (${selector})`,
+		levels.map((level) => level === (previous || "default") ? `${level} (current)` : level));
+	if (!choice) return undefined;
+	const level = stripCurrentMark(choice);
+	return level === "default" ? selector : `${selector}:${level}`;
 }
 
 async function pickListRole(
@@ -309,12 +330,16 @@ async function pickListRole(
 ): Promise<RoleValue | undefined> {
 	const first = await ctx.ui.select(`Model for ${role}`, labeledChoices(choices, current));
 	if (!first) return undefined;
-	const selected = stripCurrentMark(first);
+	const previous = Array.isArray(current) ? current : current ? [current] : [];
+	const selected = await pickThinking(ctx, role, stripCurrentMark(first), previous[0]);
+	if (selected === undefined) return undefined;
 	const picked = [selected];
 	while (true) {
 		const next = await ctx.ui.select("Add another model for this role?", ["done", ...choices]);
 		if (!next) return undefined;
 		if (next === "done") return picked;
-		picked.push(stripCurrentMark(next));
+		const selected = await pickThinking(ctx, role, stripCurrentMark(next), previous[picked.length]);
+		if (selected === undefined) return undefined;
+		picked.push(selected);
 	}
 }

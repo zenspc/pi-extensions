@@ -74,20 +74,25 @@ export function defaultConfig(): PstackConfig {
 	return { version: 1, roles, skillsEnabled: true };
 }
 
+export function baseModelSelector(selector: string): string {
+	return selector.replace(/:(off|minimal|low|medium|high|xhigh|max)$/, "");
+}
+
 export function isSafeModelSelector(value: unknown): value is string {
 	if (typeof value !== "string") return false;
 	if (INHERIT_SELECTORS.has(value)) return true;
 	if (!value || value.length > MAX_MODEL_KEY_LENGTH) return false;
 	if (/[\u0000-\u001f\u007f\\]/.test(value)) return false;
 
-	const slash = value.indexOf("/");
-	if (slash <= 0 || slash === value.length - 1) return false;
+	const base = baseModelSelector(value);
+	const slash = base.indexOf("/");
+	if (slash <= 0 || slash === base.length - 1) return false;
 
-	const provider = value.slice(0, slash);
-	const id = value.slice(slash + 1);
+	const provider = base.slice(0, slash);
+	const id = base.slice(slash + 1);
 	if (!provider || !id) return false;
 
-	for (const part of value.split("/")) {
+	for (const part of base.split("/")) {
 		if (!part || DANGEROUS_KEY_PARTS.has(part)) return false;
 	}
 	return true;
@@ -280,7 +285,7 @@ export function formatPanelStatus(config: PstackConfig, parentModel?: string): s
 		if (!Array.isArray(config.roles[role]) && selectors.length === 1 && INHERIT_SELECTORS.has(selectors[0])) {
 			selectors = [selectors[0], selectors[0]];
 		}
-		const effective = selectors.map((selector) => INHERIT_SELECTORS.has(selector) ? parentModel : selector);
+		const effective = selectors.map((selector) => INHERIT_SELECTORS.has(selector) ? parentModel : baseModelSelector(selector));
 		const labels = selectors.map((selector, index) => INHERIT_SELECTORS.has(selector)
 			? `${effective[index] ?? "parent model unresolved"} (inherited)` : selector);
 		const pool = role === "arena cross-judge pool";

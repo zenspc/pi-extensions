@@ -48,8 +48,26 @@ View modules execute local code, so use only trusted models and views.
 ## Model roles and session state
 
 `/setup-pstack` writes role choices to `~/.pi/agent/pstack/models.json`.
-Use exact Pi `provider/modelId` selectors.
-`inherit-parent` and `auto` mean omit the subagent model override.
+Use exact Pi `provider/modelId` selectors, optionally followed by a native thinking suffix such as `openai/example:high`.
+After selecting a reasoning model, `/setup-pstack` offers its supported thinking levels for each role or panel seat.
+Choose `default` to omit the effort override and keep the delegated agent's normal defaults.
+Levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`, limited by the selected model's Pi metadata.
+The saved strings can also be edited directly in `models.json`, for example:
+
+```json
+{
+  "version": 1,
+  "roles": {
+    "bug-fix": "openai/example:high",
+    "arena runners": ["openai/example:low", "openai/example:high"]
+  }
+}
+```
+
+Delegation passes each suffixed selector unchanged as `model`; the suffix controls effort, not model identity.
+Different efforts on the same base model remain a same-model panel.
+`inherit-parent` and `auto` mean omit the subagent model override and do not pin thinking effort.
+To pin effort on the current parent model, select that concrete model instead of inheritance.
 Default scalar inheritance injects no role table.
 Explicit panels preserve every seat and its order, including inherited seats and repeated models.
 A one-entry array explicitly selects one seat; scalar inheritance leaves the workflow's default panel size.

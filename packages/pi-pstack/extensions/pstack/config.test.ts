@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
 	ROLE_NAMES,
+	baseModelSelector,
 	configPath,
 	defaultConfig,
 	formatRoleTable,
@@ -91,6 +92,18 @@ describe("isSafeModelSelector", () => {
 		assert.equal(isSafeModelSelector("auto"), true);
 		assert.equal(isSafeModelSelector("anthropic/claude-opus-4-6"), true);
 		assert.equal(isSafeModelSelector("anthropic/claude-opus-4-6[high]"), true);
+	});
+
+	it("recognizes native thinking suffixes without stripping model-id tags", () => {
+		for (const level of ["off", "minimal", "low", "medium", "high", "xhigh", "max"]) {
+			const selector = `openrouter/owner/model:${level}`;
+			assert.equal(isSafeModelSelector(selector), true);
+			assert.equal(baseModelSelector(selector), "openrouter/owner/model");
+		}
+		assert.equal(baseModelSelector("ollama/model:latest"), "ollama/model:latest");
+		assert.equal(baseModelSelector("ollama/model:7b:high"), "ollama/model:7b");
+		assert.equal(isSafeModelSelector("openai/:high"), false);
+		assert.equal(isSafeModelSelector("inherit-parent:high"), false);
 	});
 
 	it("rejects empty, no slash, __proto__/x, and control chars", () => {
@@ -182,7 +195,7 @@ describe("loadConfig / saveConfig", () => {
 				version: 1,
 				roles: {
 					"bug-fix": "anthropic/claude-opus-4-6",
-					"arena runners": ["anthropic/a", "openai/b"],
+					"arena runners": ["anthropic/a:off", "openai/b:max", "inherit-parent"],
 				},
 			});
 			assert.equal(saveConfig(cfg, path), true);
@@ -364,6 +377,13 @@ describe("formatRoleTable", () => {
 });
 
 describe("formatPanelStatus", () => {
+	it("shows thinking effort without counting it as model diversity", () => {
+		const cfg = defaultConfig();
+		cfg.roles["arena runners"] = ["openai/parent:low", "openai/parent:high", "inherit-parent"];
+		assert.match(formatPanelStatus(cfg, "openai/parent"), /arena runners: openai\/parent:low, openai\/parent:high, openai\/parent \(inherited\) \[same-model panel\]/);
+		assert.equal(formatRoleTable(cfg), "arena runners: openai/parent:low, openai/parent:high, inherit-parent");
+	});
+
 	it("resolves default inherited panels without claiming model diversity", () => {
 		const output = formatPanelStatus(defaultConfig(), "openai/parent");
 		assert.match(output, /interrogate reviewers: openai\/parent \(inherited\), openai\/parent \(inherited\) \[same-model panel\]/);

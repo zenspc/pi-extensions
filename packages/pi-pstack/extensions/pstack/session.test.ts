@@ -82,17 +82,17 @@ test("Poteto Mode lifecycle through real Pi sessions", async (t) => {
 	await prompt(session, "Initial ordinary turn");
 	await t.test("mixed panels reach the real provider prompt without dropping inherited seats", async () => {
 		const config = defaultConfig();
-		config.roles["arena runners"] = ["inherit-parent", "pstack-test/capture", "auto"];
+		config.roles["arena runners"] = ["inherit-parent", "pstack-test/capture:high", "auto"];
 		assert.ok(saveConfig(config));
 		await prompt(session, "Turn with a mixed panel");
-		assert.match(latest().system, /arena runners: inherit-parent, pstack-test\/capture, auto/);
+		assert.match(latest().system, /arena runners: inherit-parent, pstack-test\/capture:high, auto/);
 		const before = readFileSync(configPath(), "utf8");
 		const calls = captures.length;
 		await session.prompt("/pstack status");
 		assert.equal(captures.length, calls, "status does not invoke a model");
 		const status = session.messages.findLast(message => message.role === "custom" && message.customType === "pstack-status");
 		assert.ok(status && status.role === "custom");
-		assert.match(String(status.content), /arena runners: pstack-test\/capture \(inherited\), pstack-test\/capture, pstack-test\/capture \(inherited\) \[same-model panel\]/);
+		assert.match(String(status.content), /arena runners: pstack-test\/capture \(inherited\), pstack-test\/capture:high, pstack-test\/capture \(inherited\) \[same-model panel\]/);
 		assert.equal(readFileSync(configPath(), "utf8"), before);
 		assert.ok(saveConfig(defaultConfig()));
 	});
