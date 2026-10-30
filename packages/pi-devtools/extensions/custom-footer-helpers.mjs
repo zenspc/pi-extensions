@@ -26,7 +26,7 @@ export function resolveFooterThinkingLevel(getThinkingLevel) {
 
 /**
  * @param {string} level
- * @returns {string}
+ * @returns {import("@earendil-works/pi-coding-agent").ThemeColor}
  */
 export function thinkingLevelColorToken(level) {
 	return THINKING_LEVEL_COLORS[level] || "accent";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import footerExtension from "../../extensions/custom-footer.ts";
+import { createCustomFooter } from "../../extensions/footer/custom.ts";
 
 function usage(cost: number) {
 	return { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15,
@@ -20,6 +20,7 @@ async function footer(session: SessionManager) {
 		for (const handler of handlers.get(name) ?? []) await handler(event, ctx);
 	};
 	const ctx = {
+		isIdle: () => true,
 		sessionManager: session, getContextUsage: () => undefined,
 		ui: { setFooter(factory: Function) {
 			component = factory({ requestRender() {} }, { fg: (_color: string, text: string) => text }, {
@@ -28,11 +29,15 @@ async function footer(session: SessionManager) {
 			});
 		} },
 	};
-	footerExtension({
-		on(name: string, fn: Function) { handlers.set(name, [...(handlers.get(name) ?? []), fn]); },
+	const factory = createCustomFooter({
+		on(name: string, fn: Function) {
+			handlers.set(name, [...(handlers.get(name) ?? []), fn]);
+			return () => handlers.set(name, (handlers.get(name) ?? []).filter((handler) => handler !== fn));
+		},
 		getThinkingLevel: () => "off",
-	} as any);
-	await emit("session_start");
+	} as any, ctx as any);
+	ctx.ui.setFooter(factory);
+	handlers.set("session_shutdown", [() => component.dispose()]);
 	return { emit, branchChange: () => branchChange(), render: () => component.render(200).join("\n") };
 }
 

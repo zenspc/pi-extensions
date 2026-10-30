@@ -102,9 +102,33 @@ Limits:
 - TUI mode only.
 - Read-only; overlay content is never added to the model context.
 
-### Custom footer
+### `/footer`
 
-Richer footer status for the active session, including response timing and cache-freshness heuristics.
+Choose a footer layout from a picker, or switch directly:
+
+```text
+/footer
+/footer custom-footer
+/footer context-bar
+```
+
+- **custom-footer** - the original stats layout with token usage, cost, context usage, response speed, cache freshness, model, thinking level, and git branch.
+- **context-bar** - a compact layout with provider/model, thinking level, git branch, a colored context bar, session cost, and a cache-freshness timer.
+
+The selected layout takes effect immediately and is saved globally in `~/.pi/agent/footer.json` (or `$PI_CODING_AGENT_DIR/footer.json`).
+New sessions and projects restore that choice.
+Without a saved preference, the original `custom-footer` is used.
+Canceling the picker leaves the current layout unchanged.
+TUI mode only.
+
+Both layouts are included; the standalone `context-bar` package is not required.
+If it is already installed, disable its extension with `pi config` or remove it with `pi remove npm:context-bar` so it cannot override the picker.
+If you previously disabled `extensions/custom-footer.ts` in pi-devtools, re-enable it with `pi config`.
+Other extensions that replace the footer can also override the selection.
+
+Both layouts show time since the last assistant response, or `live` while the agent is responding.
+The timer updates every second, changes from green to yellow halfway through the cache TTL, and freezes red at expiry (5 minutes by default, 1 hour with `PI_CACHE_RETENTION=long`).
+The custom layout also includes response speed.
 Cumulative token and cost totals cover the whole session, including abandoned branches, assistant and tool-result usage, standalone usage, compaction, and branch summaries.
 Nested tool usage is counted only through its recorded parent result, matching Pi's accounting.
 Response speed and cache freshness still track assistant responses separately.
@@ -206,7 +230,8 @@ extensions/cd-helpers.mjs
 extensions/context-audit/index.ts
 extensions/context-audit/          # report analysis, rendering, and viewer modules
 extensions/context-scroll.mjs     # shared by /preview
-extensions/custom-footer.ts
+extensions/custom-footer.ts       # picker and global preference
+extensions/footer/                # built-in layouts and upstream license
 extensions/preview-command.ts
 extensions/welcome-header.ts
 extensions/welcome-header-helpers.mjs
