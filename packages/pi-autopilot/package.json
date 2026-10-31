@@ -1,6 +1,6 @@
 {
 	"name": "@zenspc/pi-autopilot",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "Autonomous Supervisor-Worker orchestration with persistent task DAGs and isolated Git worktrees",
 	"type": "module",
 	"license": "MIT",
