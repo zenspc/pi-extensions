@@ -7,6 +7,7 @@ Make reasonable assumptions and finish without asking for input. Do not deploy, 
 Delegate all repository changes through the orchestration tools. Workers have isolated contexts; give each a complete specification and acceptance criteria.
 First use run_scouts (1-3 parallel read-only scouts). Only after scouting, create the persistent DAG with save_or_update_plan.
 Choose each task's explicit provider/model, thinking level, and least-privilege tool list from the supplied authenticated catalog. Prefer cheap tiers for routine work and deep for difficult reasoning.
+Configured tier thinking levels take precedence over per-task choices, including for scouts, reviewers, and deep-tier retries.
 Use exact repository-relative filesToTouch entries, not directories or globs. Include tests and lockfiles when needed. Order tasks with overlapping files or cross-cutting integration requirements using dependencies.
 A verificationCommand runs in a fresh Git worktree: install dependencies non-interactively if needed, then run real tests/lint/typechecking. Do not use a no-op verification for coding tasks.
 Dispatch ready non-overlapping batches with dispatch_subagents until every task is verified. Verification, independent review, rollback, escalation, quota fallback, checkpoints, and retries are enforced by the extension.

@@ -1,10 +1,13 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import { join } from "node:path";
 import { Type } from "typebox";
 import { Key, matchesKey } from "@earendil-works/pi-tui";
 import { discoverModels } from "./models.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { supervisorPrompt } from "./prompts.ts";
-import { TaskInputSchema } from "./schema.ts";
+import { TaskInputSchema, ThinkingLevelSchema, thinkingLevels, tiers, validate } from "./schema.ts";
+import { atomicJson } from "./state.ts";
 
 const tools = ["run_scouts", "save_or_update_plan", "dispatch_subagents"];
 const result = (value: unknown) => ({
@@ -65,13 +68,40 @@ export default function autopilotExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.registerCommand("autopilot-models", {
-		description: "Discover authenticated Pi model IDs and update .pi/autopilot/models.json",
+		description: "Discover authenticated Pi models and select a model and thinking level for each autopilot tier",
 		handler: async (_args, ctx) => command(ctx, async (current) => {
 			if (current.enabled || current.busy) throw new Error("Pause autopilot before changing its routing configuration");
+			if (!ctx.hasUI) throw new Error("Run /autopilot-models with a UI to select models");
 			current.store.acquire();
 			try {
 				const models = await discoverModels(current.store);
-				ctx.ui.notify(`Discovered ${models.available.length} models. Routes saved to .pi/autopilot/models.json; review the tier choices before your first run.`, "info");
+				for (const tier of tiers) {
+					const route = models.tiers[tier];
+					const selected = await ctx.ui.select(`Model for ${tier} (current: ${route.primary})`,
+						[route.primary, ...models.available.filter((id) => id !== route.primary)]);
+					if (selected === undefined) {
+						ctx.ui.notify("Model selection cancelled. Routing configuration unchanged.", "info");
+						return;
+					}
+					if (!models.available.includes(selected)) throw new Error(`Undiscovered model: ${selected}`);
+					const slash = selected.indexOf("/");
+					const model = ctx.modelRegistry.find(selected.slice(0, slash), selected.slice(slash + 1));
+					const levels = model ? getSupportedThinkingLevels(model) : [...thinkingLevels];
+					const previous = route.thinkingLevel ?? (tier === "deep" ? "high" : "low");
+					const preferred = model ? clampThinkingLevel(model, previous) : previous;
+					const thinking = await ctx.ui.select(`Thinking level for ${tier} (${selected})`,
+						[preferred, ...levels.filter((level) => level !== preferred)]);
+					if (thinking === undefined) {
+						ctx.ui.notify("Model selection cancelled. Routing configuration unchanged.", "info");
+						return;
+					}
+					if (!levels.some((level) => level === thinking)) throw new Error(`Unsupported thinking level: ${thinking}`);
+					route.primary = selected;
+					route.thinkingLevel = validate(ThinkingLevelSchema, thinking);
+					route.fallbacks = route.fallbacks.filter((id) => id !== selected);
+				}
+				atomicJson(join(current.store.dir, "models.json"), models);
+				ctx.ui.notify(`Selected models saved to .pi/autopilot/models.json (${models.available.length} available).`, "info");
 			} finally { current.store.release(); }
 		}),
 	});

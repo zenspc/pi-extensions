@@ -34,7 +34,10 @@ Do not load two different copies of the package at once.
 
 ## Model configuration
 
-`/autopilot-models` runs `pi --list-models` with unrelated extensions/MCP/skills disabled and writes `.pi/autopilot/models.json`.
+`/autopilot-models` runs `pi --list-models` with unrelated extensions/MCP/skills disabled, then asks you to select a primary model and thinking level for each tier: scout, fast, standard, deep, and reviewer.
+It saves `.pi/autopilot/models.json` only after all model and thinking selections are complete.
+Cancel any selection to leave the existing configuration unchanged.
+The command requires a UI, either interactive Pi or a compatible RPC client.
 It only discovers models available to your authenticated Pi CLI, not unauthenticated catalog entries.
 Built-in providers and providers configured through Pi's `models.json` are supported; providers that require another executable extension are not loaded into workers.
 Log in through Pi before discovery if no models are available.
@@ -42,8 +45,14 @@ No credential is stored in autopilot's configuration.
 
 Initial routing prefers fast/mini/flash/haiku models for scouting, routine coding, and review, and reasoning/pro/opus models for deep work.
 These are name-based suggestions, not a claim about price or capability.
-Review the generated choices once before your first run.
-Repeated discovery preserves still-available choices and removes unavailable fallback IDs.
+Each model picker lists the current primary first, or a suggested primary if the previous choice is no longer available.
+The following thinking picker lists the saved level first, clamped to the selected model’s supported levels when Pi has its metadata.
+Non-reasoning models offer only `off`; reasoning models can also offer `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`, depending on support.
+If model metadata is unavailable, all Pi levels are offered and workers clamp the choice at execution.
+Initial thinking suggestions are `low`, or `high` for the deep tier.
+Repeated discovery preserves still-available choices and saved thinking levels, and removes unavailable fallback IDs.
+Selecting a fallback as the primary removes it from that tier’s fallback list.
+Edit `models.json` to customize fallback order.
 
 The format is below.
 The IDs are illustrative: replace them with exact IDs from the generated `available` array, including the provider prefix.
@@ -54,11 +63,11 @@ The IDs are illustrative: replace them with exact IDs from the generated `availa
   "discoveredAt": "2026-01-01T00:00:00.000Z",
   "available": ["provider-a/fast-model", "provider-a/deep-model", "provider-b/backup-model"],
   "tiers": {
-    "scout": { "primary": "provider-a/fast-model", "fallbacks": ["provider-b/backup-model"] },
-    "fast": { "primary": "provider-a/fast-model", "fallbacks": ["provider-b/backup-model"] },
-    "standard": { "primary": "provider-a/fast-model", "fallbacks": ["provider-b/backup-model"] },
-    "deep": { "primary": "provider-a/deep-model", "fallbacks": ["provider-b/backup-model"] },
-    "reviewer": { "primary": "provider-a/fast-model", "fallbacks": ["provider-b/backup-model"] }
+    "scout": { "primary": "provider-a/fast-model", "thinkingLevel": "low", "fallbacks": ["provider-b/backup-model"] },
+    "fast": { "primary": "provider-a/fast-model", "thinkingLevel": "low", "fallbacks": ["provider-b/backup-model"] },
+    "standard": { "primary": "provider-a/fast-model", "thinkingLevel": "medium", "fallbacks": ["provider-b/backup-model"] },
+    "deep": { "primary": "provider-a/deep-model", "thinkingLevel": "high", "fallbacks": ["provider-b/backup-model"] },
+    "reviewer": { "primary": "provider-a/fast-model", "thinkingLevel": "low", "fallbacks": ["provider-b/backup-model"] }
   }
 }
 ```
@@ -66,7 +75,9 @@ The IDs are illustrative: replace them with exact IDs from the generated `availa
 Use another provider for quota fallbacks; changing models within an exhausted provider will not bypass its quota.
 The supervisor explicitly chooses each task's model from this catalog.
 Workers never inherit the main model implicitly.
+Configured thinking levels apply to the tier’s workers, including scouts, reviewers, quota fallbacks, and deep-tier retries.
 Pi clamps thinking levels to each model's supported capabilities.
+Existing configurations without `thinkingLevel` remain valid and retain task-selected levels, low-thinking scouts/reviewers, and high-thinking deep retries.
 Pause the run before refreshing or editing routing configuration, then resume to reload it.
 
 ## First autonomous test
@@ -107,7 +118,7 @@ The test consumes authenticated model usage; automated package tests use fake wo
 | `/autopilot-resume` | Recover the current journal/DAG and continue unverified tasks. |
 | `/autopilot-resume --auto-wait` | Also wait 15 minutes and retry when configured providers exhaust their quota. |
 | `/autopilot-status` | Show Scouted, Pending, Running, Verified, Retrying, Paused, Failed, spawn totals, and active worker model IDs. |
-| `/autopilot-models` | Discover authenticated models and create/update routing configuration. |
+| `/autopilot-models` | Discover authenticated models, select each tier’s primary and thinking level, and save routing configuration. |
 | `/autopilot-pause` | Finish the current batch, including tests/review, but launch no retry or subsequent batch. |
 | `/autopilot-stop` | Abort active workers and verification commands, terminate process groups with SIGTERM then SIGKILL, discard isolated changes, and save resumable state. |
 
@@ -120,7 +131,7 @@ A fresh goal requires the preceding run to be completed or explicitly stopped.
 
 ## Execution and recovery
 
-1. `run_scouts` launches 1-3 parallel read-only scouts using `read,grep,find,ls` and low thinking, returning a combined brief bounded to about 500 tokens.
+1. `run_scouts` launches 1-3 parallel read-only scouts using `read,grep,find,ls` and the scout tier’s thinking level (low by default), returning a combined brief bounded to about 500 tokens.
 2. `save_or_update_plan` validates a nonempty acyclic DAG with explicit models, tools, detailed acceptance criteria, test commands, and exact repository-relative file reservations.
 3. `dispatch_subagents` accepts only pending tasks with verified dependencies and non-overlapping reservations, with at most three coders running in parallel.
 4. Each worker runs `pi --mode json --no-session --model ... --thinking ... --tools ... -p ...` with `CI=true` and `GIT_TERMINAL_PROMPT=0`.
@@ -130,7 +141,7 @@ A fresh goal requires the preceding run to be completed or explicitly stopped.
 6. A task is verified only after its command exits zero, a separate read-only reviewer accepts the actual diff, and publication creates a local checkpoint.
    Publication checks for concurrent user changes and will not overwrite them.
 7. Failed attempts retain a bounded error trace and diff, remove the entire isolated worktree, and retry from a clean checkpoint.
-   Attempts 2/3 for fast or standard tasks use the deep tier with high thinking.
+   Attempts 2/3 for fast or standard tasks use the deep tier’s model and thinking level (high by default).
 8. Provider quota errors switch to configured fallback providers without consuming verification retries.
    Exhaustion saves unresolved tasks as `paused_quota` and pauses or enters 15-minute auto-wait.
 

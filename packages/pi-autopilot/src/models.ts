@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { runProcess } from "./process.ts";
-import { atomicJson, readJson, type Store } from "./state.ts";
+import { readJson, type Store } from "./state.ts";
 import { ModelsSchema, tiers, validate, type Models, type Tier } from "./schema.ts";
 
 export function parseModelList(output: string): string[] {
@@ -36,11 +36,9 @@ export async function discoverModels(store: Store, binary = "pi"): Promise<Model
 		const fallbacks = old ? old.tiers[tier].fallbacks.filter((id) => available.includes(id) && id !== primary)
 			: order.filter((id) => id.split("/")[0] !== primary.split("/")[0])
 				.filter((id, i, all) => all.findIndex((other) => other.split("/")[0] === id.split("/")[0]) === i).slice(0, 3);
-		return [tier, { primary, fallbacks }];
+		return [tier, { ...old?.tiers[tier], primary, fallbacks }];
 	}));
-	const models = validate(ModelsSchema, { version: 1, discoveredAt: new Date().toISOString(), available, tiers: routes });
-	atomicJson(path, models);
-	return models;
+	return validate(ModelsSchema, { version: 1, discoveredAt: new Date().toISOString(), available, tiers: routes });
 }
 
 export function candidates(models: Models, tier: Tier, assigned?: string): string[] {
