@@ -140,5 +140,40 @@ test("keeps the Pi sticky-mode and model-selection contracts on re-sync", (t) =>
 	assert.match(rendered, /supported reasoning controls, read-only acceptance, and per-child panel parameters/);
 	assert.match(rendered, /omit `model`/);
 	assert.match(rendered, /does not inherit MCP tools automatically/);
+	assert.match(rendered, /launches, steers, and resumes asynchronous/);
+	assert.match(rendered, /Record rejected selectors and never retry them/);
 	assert.doesNotMatch(rendered, /run_in_background|grok-4\.7|Synthesize suffixes|readonly strips MCP/);
+});
+
+test("sync retires orch and Interrogate references while adapting agentic Orchestrate", (t) => {
+	const paths = fixture(t);
+	for (const rel of ["orch.ts", "store.ts", "orch.test.ts"]) {
+		paths.put(paths.to, `skills/poteto-mode/scripts/orch/${rel}`, "// retired\n");
+	}
+	paths.put(paths.to, "skills/interrogate/references/rubric.md", "Retired rubric.\n");
+	paths.put(paths.from, "skills/poteto-mode/playbooks/orchestrate.md", `### Orchestrate
+
+Run it with your own tools. Spawn workers with \`Task\`. Keep the program's state in the Project tracker (\`notes.md\`) and the Project store. Watch each PR with PR and CI event subscriptions when your harness has them. Call no scripts, run no polling loops, and never relay messages or status between agents.
+
+- **A fresh worker for each independent task.** Run workers on a new cloud VM (\`environment: "cloud"\`) unless the work needs this machine: a \`control-ui\` or \`control-cli\` runtime check (from \`cursor-team-kit\`), local transcripts, a simulator, or auth that exists only here.
+- **A sub-coordinator only when needed.** Stop at three levels: you, sub-coordinators, and workers.
+- **Fork when new work needs a worker's built state,** such as its checkout. Message a worker only for a follow-up on the same work.
+- **Each PR gets a verifier that isn't its author,** on a different model family. The owner merges only on that verifier's pass at the current head.
+`);
+	for (let sync = 0; sync < 2; sync++) {
+		apply(plan(paths));
+		assertNoCursorSeams(paths.to);
+		assert.equal(existsSync(join(paths.to, "skills/poteto-mode/scripts/orch/orch.ts")), false);
+		assert.equal(existsSync(join(paths.to, "skills/interrogate/references/rubric.md")), false);
+		const rendered = readFileSync(join(paths.to, "skills/poteto-mode/playbooks/orchestrate.md"), "utf8");
+		assert.match(rendered, /Spawn workers through pi-subagents/);
+		assert.match(rendered, /task-scoped artifact directory/);
+		assert.match(rendered, /one writer per worktree/);
+		assert.match(rendered, /checkpoint external waits/);
+		assert.match(rendered, /child's tools include subagent/);
+		assert.match(rendered, /Resume a retained worker/);
+		assert.match(rendered, /operator's merge authority/);
+		assert.match(rendered, /report verification blocked/);
+		assert.doesNotMatch(rendered, /`Task`|environment:|cloud VM|Project tracker|Project store|\borch\b/);
+	}
 });

@@ -38,7 +38,8 @@ All other skills are Hidden and load when invoked explicitly or routed to by a w
 - Verification skills, including `benchmark-checklist`, `create-formal-verification-skill`, `maintain-formal-verification-skill`, and `statechart`.
 - Two pi-subagents definitions, `poteto-agent` and the read-only `comment-sicko` reviewer.
   The parent chat runs the playbook; `poteto-agent` handles an assigned step.
-- The bundled `orch` coordination CLI and `watch-pr` watcher, which run under [Bun](https://bun.sh).
+- The bundled `watch-pr` watcher, which runs under [Bun](https://bun.sh).
+  Orchestrate coordinates workers through Pi tools and task-scoped artifacts, without a coordination CLI.
 
 The `statechart` skill checks TLA+ models and produces Mermaid charts and reports.
 Its launcher supports Node 22.18-22.x, Node 23.6 or later, Bun 1.1.5 or later, or Deno 2.0 or later.
@@ -71,9 +72,14 @@ To pin effort on the current parent model, select that concrete model instead of
 Default scalar inheritance injects no role table.
 Explicit panels preserve every seat and its order, including inherited seats and repeated models.
 A one-entry array explicitly selects one seat; scalar inheritance leaves the workflow's default panel size.
-The cross-judge pool is a set of choices for one judge, not a panel of judges.
+The cross-judge pool is an ordered set of choices for one judge, not a panel of judges.
+Arena tries only approved, available entries from a model family other than the parent's.
+`auto` and `inherit-parent` never judge.
+If none runs, or the parent's family cannot be verified, Arena skips the judge and the parent picks the base alone.
 
-Default Arena candidates and Interrogate reviewers use two parent-model samples, not a diverse-model panel.
+Default Arena candidates and Interrogate adversaries use two parent-model samples, not a diverse-model panel.
+The default inherited cross-judge pool therefore skips the judge until a different-family model is configured.
+Interrogate keeps only findings reproduced by a run, and the lead reruns each finding before reporting it.
 `/pstack status` resolves inherited selectors against the current parent model, labels same-model panels, and lists configured selectors unavailable in the session registry.
 These are configured choices, not a guarantee of which physical model a delegated run will use.
 Review workflows report actual models from run metadata and disclose fallback or reduced diversity.
@@ -122,7 +128,7 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
 
 ## Upstream sync and development
 
-Synced from Cursor pstack `0.15.34` at [`519d36aa98955bf680db01bcde5fdfba686dc901`](https://github.com/cursor/plugins/commit/519d36aa98955bf680db01bcde5fdfba686dc901).
+Synced from Cursor pstack `0.15.36` at [`c742dd61706fbacc1b95f1a20b7b988cf096ce6c`](https://github.com/cursor/plugins/commit/c742dd61706fbacc1b95f1a20b7b988cf096ce6c).
 
 For local development, load the complete package with `pi -e ./packages/pi-pstack`, not just `extensions/pstack/index.ts`.
 The monorepo package also exposes Pstack's skills and agents alongside its extension.
@@ -147,7 +153,7 @@ pnpm --filter @zenspc/pi-pstack test
 cd packages/pi-pstack/skills/poteto-mode/scripts
 bun install --frozen-lockfile --ignore-scripts
 bun run typecheck
-bun test orch watch-pr
+bun test watch-pr
 
 # Statechart has its own pnpm development toolchain.
 cd ../../statechart/scripts
