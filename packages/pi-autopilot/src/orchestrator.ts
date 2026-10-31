@@ -261,6 +261,7 @@ export class Orchestrator {
 		});
 	}
 	private async withModel<T>(task: Task, tier: Tier, run: () => Promise<T>): Promise<T> {
+		task.thinkingLevel = this.models!.tiers[tier].thinkingLevel ?? task.thinkingLevel;
 		for (const model of candidates(this.models!, tier, task.model || undefined)) {
 			if (this.exhausted.has(model.split("/")[0])) continue;
 			task.model = model;

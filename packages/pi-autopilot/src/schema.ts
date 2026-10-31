@@ -7,6 +7,8 @@ const text = (maxLength = 24_000) => Type.String({ minLength: 1, maxLength });
 export const tiers = ["scout", "fast", "standard", "deep", "reviewer"] as const;
 export type Tier = (typeof tiers)[number];
 export const ModelId = Type.String({ pattern: "^[a-zA-Z0-9_.-]+/[^\\s]+$", maxLength: 300 });
+export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const ThinkingLevelSchema = choice([...thinkingLevels]);
 export const TaskInputSchema = Type.Object({
 	id: Type.String({ pattern: "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" }),
 	title: text(300),
@@ -15,7 +17,7 @@ export const TaskInputSchema = Type.Object({
 	role: choice(["scout", "coder", "reviewer"]),
 	complexityTier: choice(["scout", "fast", "standard", "deep"]),
 	model: ModelId,
-	thinkingLevel: choice(["off", "minimal", "low", "medium", "high"]),
+	thinkingLevel: ThinkingLevelSchema,
 	allowedTools: text(200),
 	filesToTouch: Type.Array(text(500), { maxItems: 200, uniqueItems: true }),
 	verificationCommand: text(4000),
@@ -58,6 +60,7 @@ export const PlanSchema = Type.Object({
 export type Plan = Static<typeof PlanSchema>;
 const RouteSchema = Type.Object({
 	primary: ModelId,
+	thinkingLevel: Type.Optional(ThinkingLevelSchema),
 	fallbacks: Type.Array(ModelId, { maxItems: 10, uniqueItems: true }),
 }, { additionalProperties: false });
 export const ModelsSchema = Type.Object({

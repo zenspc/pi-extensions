@@ -111,6 +111,39 @@ test("failed verification rolls back to a clean checkpoint and escalates attempt
 	assert.equal(readFileSync(join(root, "task-1.txt"), "utf8"), "correct\n");
 });
 
+test("configured thinking levels survive reload and apply to every tier, quota fallback, and escalation", async (t) => {
+	let attempts = 0;
+	const { engine, calls } = await fixture(t, async ({ policy, options, args }) => {
+		if (policy.role !== "coder" || policy.files[0] !== "fast-task.txt") return;
+		if (args[args.indexOf("--model") + 1] === "cheap/fast") throw new QuotaError("429 quota");
+		writeFileSync(join(options.cwd, "fast-task.txt"), ++attempts === 1 ? "broken\n" : "correct\n");
+		return ok("Implemented candidate");
+	});
+	const configured = structuredClone(models);
+	configured.tiers.scout.thinkingLevel = "minimal";
+	configured.tiers.fast.thinkingLevel = "medium";
+	configured.tiers.standard.thinkingLevel = "high";
+	configured.tiers.deep.thinkingLevel = "xhigh";
+	configured.tiers.reviewer.thinkingLevel = "max";
+	atomicJson(join(engine.store.dir, "models.json"), configured);
+	await engine.pause();
+	await engine.resume(false);
+	await engine.scout(["tests"]);
+	await engine.savePlan([
+		input("fast-task", { thinkingLevel: "off", verificationCommand: "grep -q correct fast-task.txt" }),
+		input("standard-task", { complexityTier: "standard", thinkingLevel: "off", dependencies: ["fast-task"], verificationCommand: "test -f standard-task.txt" }),
+	]);
+	await engine.dispatch(["fast-task"]);
+	await engine.dispatch(["standard-task"]);
+	assert.equal(engine.plan!.status, "completed");
+	const thinking = (call: Call) => call.args[call.args.indexOf("--thinking") + 1];
+	assert.deepEqual(calls.filter((call) => call.policy.role === "scout").map(thinking), ["minimal"]);
+	assert.deepEqual(calls.filter((call) => call.policy.role === "coder").map(thinking), ["medium", "medium", "xhigh", "high"]);
+	assert.deepEqual(calls.filter((call) => call.policy.role === "reviewer").map(thinking), ["max", "max"]);
+	assert.equal(engine.store.load()!.tasks[0].thinkingLevel, "xhigh");
+	assert.equal(engine.store.load()!.tasks[1].thinkingLevel, "high");
+});
+
 test("reviewer rejection triggers rollback and retry even when tests passed", async (t) => {
 	let reviews = 0;
 	const { root, engine } = await fixture(t, async ({ policy }) => {
