@@ -77,6 +77,32 @@ test("sync preserves effective model reporting and replaces Cursor-family fallba
 	for (const required of [/one seat per array entry/, /actual run metadata/, /same-model panel/, /confirmed available selectors/, /Do not silently select another paid provider/, /report that seat blocked/]) assert.match(contract, required);
 });
 
+test("Arena cross-judge skips unavailable diversity instead of inheriting the parent", () => {
+	const rel = "skills/arena/SKILL.md";
+	const source = "# Arena\n\n## Phase C: Cross-judge\n\nAfter all Phase B candidates complete, choose one model from the `arena cross-judge pool` line. If the Task tool rejects an entry, try the default pool. The judge sees the rubric and the candidates by path label.\n";
+	const rendered = applyBodyTransforms(source, rel);
+	assert.match(rendered, /other than the parent's, in pool order/);
+	assert.match(rendered, /`auto` and `inherit-parent` never judge/);
+	assert.match(rendered, /including any thinking suffix/);
+	assert.match(rendered, /never a rejected selector/);
+	assert.match(rendered, /Do not add an unconfigured paid provider or fall back to the parent model/);
+	assert.match(rendered, /skip the judge, pick the base alone in Phase D/);
+	assert.match(rendered, /family cannot be verified, skip the judge/);
+	assert.match(rendered, /The judge sees the rubric and the candidates/);
+	assert.doesNotMatch(rendered, /try the default pool|same-model judge/);
+	assert.equal(applyBodyTransforms(rendered, rel), rendered);
+});
+
+test("Interrogate adversaries can run isolated repros without application-fix authority", () => {
+	const rel = "skills/interrogate/SKILL.md";
+	const rendered = applyBodyTransforms("# Interrogate\n\nSpawn each adversary as `generalPurpose`.\n", rel);
+	assert.match(rendered, /agent: "worker"/);
+	assert.match(rendered, /shell and repro-writing tools in its isolated worktree/);
+	assert.match(rendered, /scoped review acceptance policy/);
+	assert.match(rendered, /application fixes and writes to the original checkout are not/);
+	assert.equal(applyBodyTransforms(rendered, rel), rendered);
+});
+
 test("historical upstream references are not executable capability failures", () => {
 	assert.deepEqual(runtimeInstructionIssues("This port replaces Cursor's built-in babysit skill. Cursor Custom Modes are not provided.", "skills/how/SKILL.md"), []);
 });

@@ -13,6 +13,9 @@ export function patchRuntimeInstructions(text, rel) {
 		text = text.replace(/Before fanning out, find this conversation's transcript[\s\S]*?(?=\n## 2\.)/,
 			`Before fanning out, locate the active Pi session or retained pi-subagents run through ${link}.\nUse only the verified workspace-scoped file or a bounded digest when it is unavailable.\n`);
 	}
+	if (rel === "skills/interrogate/SKILL.md") {
+		text = text.replace("Spawn each adversary as `worker`.", 'Spawn each adversary with `agent: "worker"`. Give it shell and repro-writing tools in its isolated worktree, plus the scoped review acceptance policy from Pi delegation controls. Repro creation is allowed; application fixes and writes to the original checkout are not.');
+	}
 	if (rel === "skills/automate-me/SKILL.md") {
 		text = text.replace(/Locate the active workspace's transcripts[^\n]*/,
 			`Locate workspace-scoped Pi sessions and retained pi-subagents runs through ${link}.\nPass only verified exact paths to mining subagents; if history is unavailable, use the visible conversation and name that limit.`);
@@ -28,6 +31,14 @@ export function patchRuntimeInstructions(text, rel) {
 	if (rel === "skills/poteto-mode/playbooks/session-pickup.md") {
 		text = text.replace(/A local transcript under[^\n]*?(?= Read the metadata overview)/,
 			`Use ${link} to locate a workspace-verified Pi session, a retained pi-subagents run record, or a pushed branch.`);
+	}
+	if (rel === "skills/poteto-mode/playbooks/orchestrate.md") {
+		text = text
+			.replace(/Run it with your own tools\.[^\n]+/, "Run it with your own tools. Spawn workers through pi-subagents after reading the pi-subagents skill and confirming delegation authority. Keep the program's state in a task-scoped artifact directory recorded per the Pi runtime prerequisites, using the host task tracker when available. Watch PR and CI events only with verified delivery; otherwise checkpoint external waits. Do not add coordination scripts or polling loops, and do not act as a message relay between workers.")
+			.replace(/Run workers on a new cloud VM[^.]+\./, "Use `worktree: true` for code-writing lanes, with one writer per worktree. Use an explicit `cwd` for checks that need this machine's runtime, transcripts, simulator, or credentials.")
+			.replace("Stop at three levels: you, sub-coordinators, and workers.", "Allow nested delegation only when the parent authorized it and the child's tools include subagent; obey pi-subagents depth limits, with at most you, sub-coordinators, and workers.")
+			.replace(/- \*\*Fork when new work needs a worker's built state,[^\n]+/, "- **Resume a retained worker only for a follow-up on the same work.** Steer a live child; resume a completed or paused child using its latest run ID. Give independent work a fresh worker and the required branch or artifact pointers. Do not message a worker to check on it; use read-only retained-run status and PR activity.")
+			.replace("The owner merges only on that verifier's pass at the current head.", "The owner merges only on that verifier's pass at the current head and within the operator's merge authority. If no approved different-family verifier is available, report verification blocked rather than silently substituting.");
 	}
 	if (rel === "skills/poteto-mode/playbooks/autonomous-run.md") {
 		text = text.replace(/^2\. Pick the wake mechanism[^\n]*/m,
@@ -59,8 +70,11 @@ export function patchModelInstructions(text, rel) {
 		.replace("The adversarial signal comes from model diversity, not assigned personas.", "Different model families can expose different blind spots; default parent-model reviewers provide repeated samples, not model diversity.")
 		.replace(/If the subagent tool rejects a configured entry,[^\n]+?(?= Spawn more runners)/, "For unavailable or rejected selectors, follow the Pi review-model fallback contract.")
 		.replace(/^If the subagent tool rejects a configured entry,[^\n]+/m, "For unavailable or rejected selectors, follow the Pi review-model fallback contract and report the models that actually ran.")
-		.replace("default to one each on inherit-parent and inherit-parent", "default to two parent-model candidates")
-		.replace("choose from inherit-parent and inherit-parent. Prefer a different model family from the parent's.", "use the parent model. Prefer a different model family only within the configured, available pool; otherwise label it a same-model judge.");
+		.replace("default to one each on inherit-parent and inherit-parent", "default to two parent-model candidates");
+	if (rel === "skills/arena/SKILL.md") {
+		text = text.replace(/After all Phase B candidates complete,[^\n]+?(?=The judge sees)/,
+			"After all Phase B candidates complete, select one read-only judge from the `arena cross-judge pool` in `~/.pi/agent/pstack/models.json`. Try only confirmed available, approved entries from a model family other than the parent's, in pool order. `auto` and `inherit-parent` never judge. Keep the configured selector unchanged, including any thinking suffix. If a launch rejects it, record the error and try the next eligible entry, never a rejected selector. Do not add an unconfigured paid provider or fall back to the parent model. If none runs, skip the judge, pick the base alone in Phase D, and report the skipped judge. If the parent's model family cannot be verified, skip the judge and disclose that limit. ");
+	}
 	if (!text.includes(link)) {
 		text = text.replace(/^(# .+\n)/m, `$1\nRead ${link} before launching; report effective models and label same-model panels accurately.\n`);
 	}

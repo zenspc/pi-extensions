@@ -523,7 +523,7 @@ const POTETO_INTRO = [
 ].join("\n");
 
 const SUBAGENT_DEFAULTS =
-	"**Defaults for every `subagent()` launch.** file pointers not inlined context. The default for every role is the parent session model (`inherit-parent`; omit `model`). `/setup-pstack` writes `~/.pi/agent/pstack/models.json` and overrides per role. Pass a configured real slug as `model:`. `inherit-parent` and `auto` mean omit `model`. Code delegates tier by difficulty. The hardest changes (cross-cutting design, gnarly concurrency, subtle algorithms) go to the model configured for `hardest tasks`, else the parent model, when the task needs judgment or the intent is vague, and to your strongest instruction-following model when the work is a precisely specified sequence of steps to execute to the letter; trivial mechanical edits go to your fast code model. Per-role lines in the injected pstack role table override these defaults and the model choices in the routed skills (`how`, `why`, `arena`, `swarm`, `architect`, `interrogate`, `reflect`); a role with no line keeps its default.";
+	"**Defaults for every `subagent()` launch.** Keep launches, steers, and resumes asynchronous; native completion delivery lets the parent continue independent work or yield without polling. Use file pointers rather than inlined context, except when a brief requires an upstream report. The default for every role is the parent session model (`inherit-parent`; omit `model`). `/setup-pstack` writes `~/.pi/agent/pstack/models.json` and overrides per role. Pass a configured selector unchanged as `model`, including its thinking suffix. `inherit-parent` and `auto` mean omit `model`. Code delegates tier by difficulty. The hardest changes (cross-cutting design, gnarly concurrency, subtle algorithms) use `hardest tasks`, else the parent model, whether intent is vague or the work is precisely specified. Trivial mechanical edits use the configured fast code model, else the parent. Per-role lines in the injected pstack role table override these defaults and the model choices in routed skills (`how`, `why`, `arena`, `swarm`, `architect`, `interrogate`, `reflect`); a role with no line keeps its default. Code playbooks read `feature, refactoring`, `bug-fix`, `perf-issue`, or `hillclimb`; prose and judgment read `judgment and prose`.";
 
 function patchPotetoHelpPi(text) {
 	return text
@@ -558,10 +558,10 @@ function patchPotetoModePi(text) {
 		text = text.replace("# Poteto mode\n\n", `# Poteto mode\n\n${POTETO_INTRO}`);
 	}
 	text = text.replace(/\*\*Defaults for every `Task` call\.\*\*[^\n]*/, SUBAGENT_DEFAULTS);
-	text = text.replace(/\*\*Defaults for every `subagent\(\)` launch\.\*\*\s*`run_in_background:[^\n]*/, SUBAGENT_DEFAULTS);
+	text = text.replace(/\*\*Defaults for every `subagent\(\)` launch\.\*\*[^\n]*/, SUBAGENT_DEFAULTS);
 	text = text.replace(
 		/\*\*Match the model to the job\.\*\*[^\n]*/,
-		"**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit.\nRead [Pi delegation controls](references/pi-delegation.md) for supported reasoning controls, read-only acceptance, and per-child panel parameters.\nQuery `subagent({ action: \"models\" })` for valid selectors when a configured model is unavailable.",
+		"**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit.\nRead [Pi delegation controls](references/pi-delegation.md) for supported reasoning controls, read-only acceptance, and per-child panel parameters.\nQuery `subagent({ action: \"models\" })` for valid selectors when a configured model is unavailable. Record rejected selectors and never retry them in this run. Follow the calling skill's fallback; where it allows parent-model fallback, omit `model` and disclose it. A required model or family stays blocked rather than silently changing.",
 	);
 	return text;
 }
@@ -723,9 +723,9 @@ export function renderWrite(action, paths) {
 	if (action.rel === "skills/statechart/scripts/package.json") {
 		const manifest = JSON.parse(text);
 		manifest.name = "@zenspc/pi-pstack-statechart-tools";
-		manifest.scripts.typecheck = "tsc --noEmit";
 		manifest.scripts["test:offline"] = "node test-offline.mjs";
 		manifest.scripts["test:renderers"] = "node --disable-warning=ExperimentalWarning --test test/render.test.ts";
+		manifest.scripts.typecheck = "tsc --noEmit";
 		manifest.devDependencies = { "@types/node": "22.20.5", ...manifest.devDependencies, typescript: "7.0.2" };
 		manifest.version = "0.0.0";
 		manifest.packageManager = "pnpm@9.15.0";
@@ -740,13 +740,6 @@ export function renderWrite(action, paths) {
 	if (action.rel === "skills/swarm/SKILL.md") {
 		text = text.replace(/Spawn all N workers[^\n]+/, 'Spawn all N workers through pi-subagents, with `agent: "worker"`, `async: true`, `worktree: true` for code-writing lanes, and the step 3 model, left unset for `auto` or `inherit-parent`. Keep one writer per worktree. Read the pi-subagents skill for local processes, worktree setup, and delegation limits.');
 	}
-	if (action.rel === "skills/poteto-mode/playbooks/orchestrate.md") {
-		text = text.replace(/\(nesting works to depth 3,[^)]+\)/, "(only when the parent authorized nested delegation and the child's tools include subagent; obey pi-subagents depth limits)");
-		text = text.replace(/- \*\*Worker \/ verifier\.\*\*[^\n]+/, '- **Worker / verifier.** Use pi-subagents with `worktree: true` for code-writing lanes. Use an explicit `cwd` when a verifier needs the local runtime, transcripts, simulator, or credentials. Keep one writer per worktree. Run a unit\'s verifier on a different model family from its worker.');
-		text = text.replace(/the cloud agent's status in the Cursor dashboard/, '`subagent({ action: "status", id })`');
-		text = text.replace(/- After a Cursor restart:[^\n]+/, '- After a Pi restart, inspect retained runs with pi-subagents and inspect their branches and reports before deciding which work survived. Re-read the standing orders and `units.tsv`, recompute the frontier, and replace missing workers from consolidated briefs. `orch` replaces a lock whose holder pid is gone.');
-		text = text.replace(/frontier watcher wake \(arm it via the loop skill, with a long heartbeat fallback\)/, "frontier watcher wake (use an available scheduler or watcher; Pi does not bundle a loop skill)");
-	}
 	if (action.rel === "skills/reflect/SKILL.md") {
 		text = text.replaceAll('agent mode (`readonly: false`)', "read-only tools plus the required MCP tools");
 		text = text.replaceAll("and readonly strips MCPs", "so include those MCP tools explicitly");
@@ -757,6 +750,13 @@ export function renderWrite(action, paths) {
 	}
 	if (action.rel === "skills/poteto-mode/SKILL.md") {
 		text = text.replace("## Subagents\n", "## Subagents\n\nRead the pi-subagents skill before delegation. Delegate only when the operator's request or applicable user/project instructions authorize it. If only `subagents_enable` is available, call it first, then call `subagent` as a native tool, not through codemode.\n\nThe bundled `poteto-agent` does not inherit MCP tools automatically.\nFor an MCP-dependent step, use an agent definition that selects the required tools and loads their providers.\nNaming tools in a brief does not grant access.\n");
+	}
+	if (["skills/interrogate/SKILL.md", "skills/poteto-mode/playbooks/orchestrate.md"].includes(action.rel)) {
+		const bodyStart = text.startsWith("---\n") ? text.indexOf("\n---\n", 4) + 5 : 0;
+		text = text.slice(0, bodyStart) + text.slice(bodyStart).split("\n").map((line) => {
+			const continuation = line.startsWith("> ") ? "> " : line.startsWith("- ") ? "  " : "";
+			return line.replace(/(?<=[.!?]) (?=[A-Z])/g, `\n${continuation}`);
+		}).join("\n");
 	}
 	return text;
 }

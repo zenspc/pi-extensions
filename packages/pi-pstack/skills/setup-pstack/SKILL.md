@@ -20,7 +20,10 @@ If the command is unavailable, write that JSON yourself:
 Roles: feature, refactoring; bug-fix; perf-issue; hillclimb; judgment and prose; hardest tasks; how explorer; how explainer; why investigators; why synthesizer; reflect tooling; reflect judgment, divergent, synthesizer; arena runners; arena cross-judge pool; swarm workers; architect runners; interrogate reviewers.
 
 Panel roles (`arena runners`, `architect runners`, `interrogate reviewers`) are arrays: one subagent per entry, including inherited or repeated entries.
-`arena cross-judge pool` is an array of choices for one judge, not one judge per entry.
+`arena cross-judge pool` is an ordered array of choices for one judge, not one judge per entry.
+Arena tries only approved, available entries from a model family other than the parent's, in list order.
+`auto` and `inherit-parent` never judge.
+If no eligible entry runs or the parent's family cannot be verified, Arena skips the judge and the parent picks the base alone.
 A scalar `inherit-parent` or `auto` leaves the workflow's default panel size; an explicit array sets its size, even with one inherited entry.
 
 Run `/pstack status` to see the effective panel selectors and whether a panel uses the same model repeatedly.
