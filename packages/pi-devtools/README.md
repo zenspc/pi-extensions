@@ -1,6 +1,6 @@
 # @zenspc/pi-devtools
 
-Context audit, working-directory switching, markdown preview, richer session footer, custom welcome header, and Dracula theme for Pi.
+Inline multi-skill prompts, context audit, working-directory switching, markdown preview, richer session footer, custom welcome header, and Dracula theme for Pi.
 
 ## Install
 
@@ -16,6 +16,34 @@ pi install ./packages/pi-devtools
 ```
 
 ## What you get
+
+### Multiple skills in one prompt
+
+Reference several loaded skills anywhere in a single prompt, using `/name` shorthand or Pi's explicit `/skill:name` syntax:
+
+```text
+/how explain this module with /why
+/skill:how explain this module with /skill:why
+Review this change with /typescript-best-practices and /unslop.
+```
+
+Each referenced skill body is loaded once, in first-mention order, before your original request.
+The request text stays intact, and each skill includes its file location and base directory for relative references.
+Only skills already loaded by Pi can be referenced; this does not scan new directories or execute multiple extension commands.
+
+- References must start at the beginning of input or after whitespace.
+- Code spans, code fences, escaped references, URLs, paths, and unknown names are left alone.
+- Existing extension and prompt-template names take precedence over shorthand; use `/skill:name` to disambiguate.
+- Input beginning with an existing extension command or prompt template keeps its normal behavior instead of expanding inline skills.
+- Works for typed and RPC input, including steering and follow-up messages, while preserving image attachments.
+- Extension-generated input is left alone.
+- If a skill file cannot be read, the prompt is stopped rather than sent with only some skills loaded.
+  Typed input is restored to the editor so you can fix it and retry.
+
+In the TUI, typing `/` after text opens skill suggestions, including after an earlier skill command.
+Type part of a skill name (such as `/type` or `/skill:type`) to filter, then select with Tab or Enter.
+Completion inserts `/skill:name` at the cursor without replacing the rest of your prompt.
+Pi's initial slash-command menu, other autocomplete providers, and file completion remain available.
 
 ### `/cd` and `/pwd`
 
@@ -233,6 +261,7 @@ extensions/context-scroll.mjs     # shared by /preview
 extensions/custom-footer.ts       # picker and global preference
 extensions/footer/                # built-in layouts and upstream license
 extensions/preview-command.ts
+extensions/multi-skill.ts          # inline /name and /skill:name expansion
 extensions/welcome-header.ts
 extensions/welcome-header-helpers.mjs
 themes/dracula.json
