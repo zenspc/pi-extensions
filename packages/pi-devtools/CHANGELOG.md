@@ -1,5 +1,13 @@
 # @zenspc/pi-devtools
 
+## 0.7.0
+
+### Minor Changes
+
+- 7ade459: Add inline multi-skill prompts using `/name` or `/skill:name` references anywhere in typed and RPC input.
+  Show skill autocomplete after an inline slash, including after an earlier skill command.
+  Load each referenced skill once while preserving the original request, image attachments, and existing command precedence.
+
 ## 0.6.0
 
 ### Minor Changes
