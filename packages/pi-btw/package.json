@@ -1,6 +1,6 @@
 {
   "name": "@zenspc/pi-btw",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Tool-free /btw and /side conversations in an inline bottom panel with temporary history",
   "type": "module",
   "license": "MIT",
