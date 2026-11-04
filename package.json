@@ -24,6 +24,7 @@
   "pi": {
     "extensions": [
       "./packages/pi-devtools/extensions",
+      "./packages/pi-btw/src/index.ts",
       "./packages/pi-spinner/src/index.ts",
       "./packages/pi-quiet/src/index.ts",
       "./packages/pi-pstack/extensions/pstack/index.ts",
