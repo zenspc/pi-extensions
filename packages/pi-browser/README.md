@@ -1,6 +1,6 @@
 # @zenspc/pi-browser
 
-Drive a dedicated Chrome from Pi with six Browser Tools and per-domain approval.
+Drive a dedicated Chrome from Pi with ten Browser Tools and per-domain approval.
 Chrome uses a separate User Data Dir, defaults to `~/.pi-chrome`, and stays open when Pi exits.
 The extension never automatically attaches to your daily browser or an arbitrary debugging port.
 
@@ -31,28 +31,42 @@ WSL uses Linux Chrome; it does not launch Windows `chrome.exe` or translate Wind
 
 | Tool | Behavior |
 |---|---|
-| `browser_navigate` | Navigate to an absolute HTTP(S) URL or `about:blank`; return the resulting title and URL after DOM content loads |
-| `browser_snapshot` | Read a bounded, accessibility-oriented view with Element Refs such as `[ref=e12]` |
-| `browser_click` | Click an Element Ref from the latest Snapshot |
-| `browser_type` | Replace a referenced field's contents with the supplied text |
+| `browser_navigate` | Navigate to an absolute HTTP(S) URL or `about:blank`; return a fresh Snapshot after DOM content loads |
+| `browser_snapshot` | Read a bounded, accessibility-oriented view with Element Refs, viewport dimensions, and document scroll position |
+| `browser_click` | Click an Element Ref from the latest Snapshot and observe the result |
+| `browser_type` | Replace a referenced field's contents and observe the result |
+| `browser_press` | Press a key or chord on the focused element or an optional Element Ref |
+| `browser_scroll` | Scroll the document or a referenced scroll container in any direction by CSS pixels, default 600 |
+| `browser_select` | Choose native dropdown options by value; Snapshots list available values and selected state |
+| `browser_wait` | Wait for exact visible text, default 5 seconds and maximum 25 seconds |
 | `browser_screenshot` | Return a viewport PNG and its pixel dimensions |
 | `browser_evaluate` | Evaluate JavaScript in the approved page and return a serialized result |
 
-Every tool targets the Automation Tab.
+Every tool targets the Automation Tab and brings it to the foreground after approval.
+Navigation, clicks, typing, keyboard input, scrolling, selection, and text waits return a fresh Snapshot, so the next action can use its Element Refs without a separate read.
+A failed follow-up Snapshot reports that the action completed and asks for a new Snapshot instead of encouraging a duplicate click or submission.
+Asynchronous page updates may arrive later; use `browser_wait` for the expected visible text.
 Calls are serialized, approval is checked again immediately before execution, and page operations have a 30-second deadline after attachment.
 Cancellation interrupts JavaScript, stops loading, and disconnects the Attachment without killing Chrome.
 A later call reconnects.
 Already completed clicks, submissions, or other side effects are not rolled back or automatically retried.
 Chrome startup and attachment have their own bounded waits.
 
+Chrome uses its native, resizable viewport rather than a fixed emulated aspect ratio.
+Browser Tools do not change browser zoom, window size, or device metrics.
+Screenshots report physical PNG pixels; Snapshots report CSS pixels, which can differ on scaled displays.
+Navigation flushes the first compositor frame with a tiny capture so keyboard scrolling does not depend on taking a full screenshot first.
+
 Snapshots include headings, readable text, native controls, ARIA roles, disabled/checked state, and open shadow roots in the main document.
+Native selects list up to 50 option labels and values with an explicit notice when more options are omitted.
 They are not a complete implementation of Chrome's accessibility tree and do not expand iframe documents.
 Snapshots stop at 1,000 interactive elements, 20,000 visited nodes, or approximately 50,000 text characters, with an explicit truncation notice.
 Use a focused `browser_evaluate` expression when more detail is needed.
 
 Refs point to actual DOM elements, not page-controlled attributes.
 Consecutive Snapshots preserve Refs for unchanged elements, but navigation and replacement elements invalidate old Refs.
-Take a new Snapshot after navigation or a layout change; never guess a Ref.
+Use Refs from the latest action's Snapshot or `browser_snapshot`; never guess a Ref.
+Request another Snapshot after an external layout change.
 Password input values are not used as accessible names, but other visible page content can still contain secrets.
 
 Evaluation output is capped at 50,000 characters plus a truncation notice, including in tool details.
@@ -90,6 +104,8 @@ Normal shutdown, session replacement, and `/reload` disconnect Playwright and re
 ## Commands
 
 `/browser [on|off|status|help]` controls sticky Tool Availability.
+This package is separate from any locally installed `browser_validate` extension; loading pi-browser does not replace that tool.
+If both extensions register `/browser`, give the local validator a distinct command name before loading both.
 Bare `/browser` shows status; `enable` and `disable` alias `on` and `off`.
 
 Off hides Browser Tools from the model without changing Chrome, the Attachment, or Domain Approval.
@@ -167,6 +183,7 @@ pi -e ./packages/pi-browser/src/index.ts
 
 The browser tests require a system Chrome and launch it headlessly against disposable directories.
 They exercise real redirects, service workers, cache reuse, stale Refs, cancellation, synchronous infinite-loop recovery, and persistent-tab reuse.
+Core-control regressions cover post-action observations, keyboard form submission, native dropdowns, nested scrolling, text waits, domain rechecks, and native viewport preservation.
 Shared test helpers wait for Chrome to exit before deleting its directory.
 They are excluded from the published package.
 Browser discovery has unit coverage for Linux, macOS, and Windows; real-browser verification for this refactor was performed on Linux.
