@@ -141,7 +141,11 @@ it("registers sequential tools and disconnects its Attachment at shutdown", asyn
 			isAttached: false,
 		},
 	});
-	assert.equal(app.tools.size, 6);
+	assert.deepEqual([...app.tools.keys()].sort(), [
+		"browser_click", "browser_evaluate", "browser_navigate", "browser_press",
+		"browser_screenshot", "browser_scroll", "browser_select", "browser_snapshot",
+		"browser_type", "browser_wait",
+	]);
 	for (const tool of app.tools.values()) {
 		assert.equal(tool.executionMode, "sequential");
 		assert.equal("urlFrom" in tool, false);

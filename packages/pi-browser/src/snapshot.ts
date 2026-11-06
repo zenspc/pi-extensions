@@ -51,7 +51,17 @@ export async function refLocator(tab: Page, ref: string): Promise<ElementHandle<
 	throw staleRefError(ref);
 }
 
-export type SnapshotResult = { title: string; url: string; text: string };
+export type SnapshotResult = {
+	title: string;
+	url: string;
+	text: string;
+	viewport: { width: number; height: number };
+	scroll: { x: number; y: number };
+};
+
+export function formatSnapshot(snapshot: SnapshotResult): string {
+	return `${snapshot.title}\n${snapshot.url}\nViewport: ${snapshot.viewport.width}x${snapshot.viewport.height} CSS px\nScroll: ${snapshot.scroll.x},${snapshot.scroll.y}\n\n${snapshot.text}`;
+}
 
 export async function takeSnapshot(tab: Page): Promise<SnapshotResult> {
 	const state = stateFor(tab);
@@ -126,7 +136,13 @@ export async function takeSnapshot(tab: Page): Promise<SnapshotResult> {
 				) {
 					const labels = collapse(
 						Array.from(el.labels ?? [])
-							.map((label) => label.textContent)
+							.map((label) => {
+								const copy = label.cloneNode(true);
+								if (copy instanceof Element) {
+									copy.querySelectorAll("input, textarea, select, button").forEach((control) => control.remove());
+								}
+								return copy.textContent;
+							})
 							.join(" ")
 					);
 					if (labels) return labels;
@@ -245,6 +261,13 @@ export async function takeSnapshot(tab: Page): Promise<SnapshotResult> {
 							: "";
 					if (!emit(`- ${role} ${quote(name)} [ref=${ref}]${disabled}${checked}`, depth))
 						break;
+					if (node instanceof HTMLSelectElement) {
+						for (const option of Array.from(node.options).slice(0, 50)) {
+							if (!emit(`- option ${quote(option.label)} [value=${quote(option.value)}]${option.selected ? " [selected]" : ""}${option.disabled ? " [disabled]" : ""}`, depth + 1)) break;
+						}
+						if (node.options.length > 50) emit("[Options truncated at 50]", depth + 1);
+						if (truncated) break;
+					}
 					continue;
 				}
 				if (role.startsWith("heading") || role === "img") {
@@ -273,6 +296,8 @@ export async function takeSnapshot(tab: Page): Promise<SnapshotResult> {
 				title: document.title.slice(0, 1000),
 				url: location.href.slice(0, 16_384),
 				text: lines.join("\n"),
+				viewport: { width: innerWidth, height: innerHeight },
+				scroll: { x: scrollX, y: scrollY },
 			};
 		},
 		{
