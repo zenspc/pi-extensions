@@ -179,7 +179,8 @@ export interface MergedPr {
 export type MergeGateReason =
   | "closed-without-merge"
   | "draft-pr"
-  | "changes-requested";
+  | "changes-requested"
+  | "behind-base";
 export type MergeBlocker =
   | {
       readonly kind: "merge-conflicts";

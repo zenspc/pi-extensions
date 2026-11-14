@@ -36,11 +36,13 @@ function mergeCell(row: T.PrSnapshot): string {
   if (row.facts.isDraft) return "⏸ draft";
   if (row.facts.reviewDecision === "CHANGES_REQUESTED")
     return "⚠️ changes requested";
-  return row.facts.mergeable === "CONFLICTING" ||
+  if (
+    row.facts.mergeable === "CONFLICTING" ||
     row.facts.mergeStateStatus === "DIRTY" ||
     row.facts.mergeStateStatus === "CONFLICTING"
-    ? "⚠️ conflict"
-    : "✅";
+  )
+    return "⚠️ conflict";
+  return row.facts.mergeStateStatus === "BEHIND" ? "⚠️ behind base" : "✅";
 }
 export function renderStatusTable(rows: T.NonEmpty<T.PrSnapshot>): string {
   const lines = ["| PR | CI | Review | Merge |", "| --- | --- | --- | --- |"];
@@ -69,6 +71,22 @@ type StatusQueryBlocker = {
   readonly failures: number;
   readonly failure: { readonly detail: string };
 };
+function mergeGateAction(reason: T.MergeGateReason): string {
+  switch (reason) {
+    case "closed-without-merge":
+      return "restore or remove the closed PR from the queued stack";
+    case "draft-pr":
+      return "mark the PR ready for review before waiting for the merge queue";
+    case "changes-requested":
+      return "resolve the changes-requested review before waiting for the merge queue";
+    case "behind-base":
+      return "report the stale base branch to the branch owner, then wait for checks";
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
 function renderBlocker(blocker: T.MergeBlocker | StatusQueryBlocker): string {
   switch (blocker.kind) {
     case "merge-conflicts":
@@ -104,19 +122,12 @@ function renderBlocker(blocker: T.MergeBlocker | StatusQueryBlocker): string {
         ...details,
       ].join("\n");
     }
-    case "merge-gate": {
-      const action =
-        blocker.reason === "closed-without-merge"
-          ? "restore or remove the closed PR from the queued stack"
-          : blocker.reason === "draft-pr"
-            ? "mark the PR ready for review before waiting for the merge queue"
-            : "resolve the changes-requested review before waiting for the merge queue";
+    case "merge-gate":
       return [
         `BLOCKER: ${blocker.reason}`,
         `pr=${blocker.pr.number}`,
-        `action=${action}`,
+        `action=${mergeGateAction(blocker.reason)}`,
       ].join("\n");
-    }
     case "status-query":
       return [
         "BLOCKER: status-query",
