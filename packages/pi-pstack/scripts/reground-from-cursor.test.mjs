@@ -77,6 +77,8 @@ test("adapts commands without changing relative links or script contents", (t) =
 	assert.equal(renderWrite({ rel: "skills/poteto-mode/scripts/example.ts", class: "adapt" }, paths), 'const command = "AskQuestion /how";\n');
 	assert.equal(applyBodyTransforms('`subagent_type: generalPurpose` with `run_in_background: true`'), '`agent: "worker"` with `async: true`');
 	assert.equal(applyBodyTransforms("grok-4.7-xhigh-fast, claude-opus-5-5-xhigh"), "inherit-parent");
+	assert.equal(applyBodyTransforms("Before commit → `/deslop` from the `cursor-team-kit` plugin."), "Before commit → the **deslop** skill (`/skill:deslop`).");
+	assert.equal(applyBodyTransforms("Shipping UI → `control-ui` or `control-cli` from `cursor-team-kit`."), "Shipping UI → the project's verification skill or harness.");
 });
 
 test("re-sync repairs runtime assumptions and retains the local capability contract", (t) => {
@@ -143,6 +145,41 @@ test("keeps the Pi sticky-mode and model-selection contracts on re-sync", (t) =>
 	assert.match(rendered, /launches, steers, and resumes asynchronous/);
 	assert.match(rendered, /Record rejected selectors and never retry them/);
 	assert.doesNotMatch(rendered, /run_in_background|grok-4\.7|Synthesize suffixes|readonly strips MCP/);
+});
+
+test("adapts current model slugs and worker grounding without Cursor defaults", (t) => {
+	const paths = fixture(t);
+	paths.put(paths.from, "skills/poteto-mode/SKILL.md", `---
+name: poteto-mode
+description: Mode.
+---
+# Poteto mode
+
+- Starting any agent, whether a Task subagent or a Project worker, read worker.md first.
+
+## Subagents
+
+**Defaults for every \`Task\` call.** Use an explicit model.
+
+- Code, prose, and judgment: \`claude-opus-5-5-xhigh-fast\`.
+- Trivial mechanical edits: \`claude-opus-5-5-high-fast\`.
+- Diverse review and design panels: \`claude-fable-5-2-high\` and \`gemini-4-carbon-high\`.
+
+**Fable 5.2 is an exception.** Use only after Opus fails.
+
+**Match the model to the job.** Keep its family and speed.
+`);
+	paths.put(paths.from, "skills/poteto-mode/worker.md", "# Worker\n\nRead <path>/worker.md before anything else.\n");
+	apply(plan(paths));
+	assertNoCursorSeams(paths.to);
+	const rendered = readFileSync(join(paths.to, "skills/poteto-mode/SKILL.md"), "utf8");
+	assert.match(rendered, /an isolated Pi worker/);
+	assert.match(rendered, /parent session model/);
+	assert.doesNotMatch(rendered, /Fable|Opus|Diverse review and design panels|explicit model\./);
+	assert.equal(readFileSync(join(paths.to, "skills/poteto-mode/worker.md"), "utf8"), "# Worker\n\nRead <path>/worker.md before anything else.\n");
+	for (const slug of ["claude-opus-5-5-xhigh-fast", "claude-opus-5-5-high-fast", "claude-opus-5-5-medium-fast", "claude-fable-5-2-high", "gemini-4-carbon-high"]) {
+		assert.equal(applyBodyTransforms(`default \`${slug}\`.`), "default inherit-parent.");
+	}
 });
 
 test("sync retires orch and Interrogate references while adapting agentic Orchestrate", (t) => {

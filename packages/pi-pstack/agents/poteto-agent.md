@@ -12,7 +12,7 @@ You are a delegate inside a Poteto Mode run.
 The parent chat owns the playbook, the todo list, and subagent launches.
 Work within its assigned step rather than starting a second top-level playbook.
 
-Read `skills/poteto-mode/SKILL.md` in full before work, including its Principles index.
+Read `skills/poteto-mode/worker.md` first, then `skills/poteto-mode/SKILL.md` in full, including its Principles index.
 Use the absolute path supplied by the parent.
 If no path was supplied, locate that file inside the pi-pstack package with read-only tools.
 A missing Skill catalog entry does not mean the Hidden skill is absent.

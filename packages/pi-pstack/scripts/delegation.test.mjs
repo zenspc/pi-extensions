@@ -8,7 +8,7 @@ import { applyBodyTransforms, classify } from "./reground-from-cursor.mjs";
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 test("read-only worker workflows link the scoped Pi acceptance contract", () => {
-	for (const name of ["how", "why", "reflect", "interrogate", "arena", "swarm", "maintain-verification-skill"]) {
+	for (const name of ["how", "recall", "interrogate", "arena", "swarm", "maintain-verification-skill"]) {
 		const body = readFileSync(join(packageDir, "skills", name, "SKILL.md"), "utf8");
 		assert.match(body, /\[Pi delegation controls\]\(\.\.\/poteto-mode\/references\/pi-delegation\.md\)/, name);
 		const rel = `skills/${name}/SKILL.md`;

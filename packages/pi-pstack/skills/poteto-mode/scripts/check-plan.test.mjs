@@ -7,13 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const playbook = readFileSync(join(here, "../playbooks/multi-phase-plan.md"), "utf8");
-const open = playbook.indexOf("````markdown\n");
-assert.notEqual(open, -1, "playbook is missing the skeleton fence");
-const start = open + "````markdown\n".length;
-const close = playbook.indexOf("````", start);
-assert.notEqual(close, -1, "playbook skeleton fence is unclosed");
-const skeleton = playbook.slice(start, close);
+const skeleton = readFileSync(join(here, "../../../scripts/fixtures/check-plan.md"), "utf8");
 
 function runPlan(t, example = "", expectedExit = 0) {
 	const dir = mkdtempSync(join(tmpdir(), "check-plan-"));
@@ -25,7 +19,7 @@ function runPlan(t, example = "", expectedExit = 0) {
 	return result;
 }
 
-test("bundled multi-phase-plan skeleton passes check-plan.mjs", (t) => runPlan(t));
+test("legacy plan fixture passes check-plan.mjs", (t) => runPlan(t));
 
 test("accepts indented, longer, nested, and tilde fences", (t) => {
 	for (const indent of ["", " ", "  ", "   "]) {

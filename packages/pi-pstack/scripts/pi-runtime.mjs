@@ -2,7 +2,7 @@ import { posix } from "node:path";
 
 export function patchRuntimeInstructions(text, rel) {
 	if (rel === "skills/poteto-mode/references/pi-runtime.md") return text;
-	if (["how", "why", "reflect", "interrogate", "arena", "swarm", "maintain-verification-skill"].some((name) => rel === `skills/${name}/SKILL.md`)) {
+	if (["how", "recall", "interrogate", "arena", "swarm", "maintain-verification-skill"].some((name) => rel === `skills/${name}/SKILL.md`)) {
 		const reference = posix.relative(posix.dirname(rel), "skills/poteto-mode/references/pi-delegation.md");
 		const link = `[Pi delegation controls](${reference})`;
 		if (!text.includes(link)) text = text.replace(/^(# .+\n)/m, `$1\nBefore delegation, read ${link} for read-only acceptance and per-child launch parameters.\n`);
@@ -12,6 +12,12 @@ export function patchRuntimeInstructions(text, rel) {
 	if (rel === "skills/reflect/SKILL.md") {
 		text = text.replace(/Before fanning out, find this conversation's transcript[\s\S]*?(?=\n## 2\.)/,
 			`Before fanning out, locate the active Pi session or retained pi-subagents run through ${link}.\nUse only the verified workspace-scoped file or a bounded digest when it is unavailable.\n`);
+		text = text
+			.replace("Read the whole transcript.", `Locate the active Pi session or retained pi-subagents run through ${link}.\nRead the verified transcript in full, or use a bounded digest and name that limit.`)
+			.replace("Never edit a skill under `plugins/cache/`.", "Never edit an installed package's skill in place.");
+	}
+	if (rel === "skills/recall/SKILL.md") {
+		text = text.replace("in agent mode because readonly strips MCP access", "with read-only tools and the required MCP tools explicitly selected in the agent definition");
 	}
 	if (rel === "skills/interrogate/SKILL.md") {
 		text = text.replace("Spawn each adversary as `worker`.", 'Spawn each adversary with `agent: "worker"`. Give it shell and repro-writing tools in its isolated worktree, plus the scoped review acceptance policy from Pi delegation controls. Repro creation is allowed; application fixes and writes to the original checkout are not.');
@@ -63,7 +69,7 @@ export function patchRuntimeInstructions(text, rel) {
 }
 
 export function patchModelInstructions(text, rel) {
-	if (!["skills/arena/SKILL.md", "skills/interrogate/SKILL.md", "skills/architect/SKILL.md"].includes(rel)) return text;
+	if (!["skills/arena/SKILL.md", "skills/interrogate/SKILL.md"].includes(rel)) return text;
 	const reference = posix.relative(posix.dirname(rel), "skills/poteto-mode/references/pi-models.md");
 	const link = `[Pi review models](${reference})`;
 	text = text
@@ -72,7 +78,9 @@ export function patchModelInstructions(text, rel) {
 		.replace(/^If the subagent tool rejects a configured entry,[^\n]+/m, "For unavailable or rejected selectors, follow the Pi review-model fallback contract and report the models that actually ran.")
 		.replace("default to one each on inherit-parent and inherit-parent", "default to two parent-model candidates");
 	if (rel === "skills/arena/SKILL.md") {
-		text = text.replace(/After all Phase B candidates complete,[^\n]+?(?=The judge sees)/,
+		text = text
+			.replace(/Pick the runners from the `arena runners` line[^\n]+?(?= Spawn more)/, "Pick the runners from the `arena runners` line in `~/.pi/agent/pstack/models.json`, defaulting to two parent-model candidates. Preserve configured seats and selectors, including thinking suffixes. For `auto` or `inherit-parent`, omit `model` and use `agent: \"worker\"`. For unavailable or rejected selectors, follow the Pi review-model fallback contract.")
+			.replace(/After all Phase B candidates complete,[^\n]+?(?=The judge sees|While you read in Phase D)/,
 			"After all Phase B candidates complete, select one read-only judge from the `arena cross-judge pool` in `~/.pi/agent/pstack/models.json`. Try only confirmed available, approved entries from a model family other than the parent's, in pool order. `auto` and `inherit-parent` never judge. Keep the configured selector unchanged, including any thinking suffix. If a launch rejects it, record the error and try the next eligible entry, never a rejected selector. Do not add an unconfigured paid provider or fall back to the parent model. If none runs, skip the judge, pick the base alone in Phase D, and report the skipped judge. If the parent's model family cannot be verified, skip the judge and disclose that limit. ");
 	}
 	if (!text.includes(link)) {
@@ -85,8 +93,10 @@ export function runtimeInstructionIssues(text, rel) {
 	const issues = [];
 	if (/agent-transcripts\/|<agent-transcripts>/.test(text)) issues.push("unsupported transcript discovery");
 	if (/\bcloud-agent URL\b/.test(text)) issues.push("unsupported cloud-agent trail");
-	if (/Families go by prefix:/.test(text)) issues.push("Cursor-prefix model fallback");
-	if (["skills/arena/SKILL.md", "skills/interrogate/SKILL.md", "skills/architect/SKILL.md"].includes(rel)
+	if (/Families go by prefix[,:]/.test(text)) issues.push("Cursor-prefix model fallback");
+	if (/\b(?:claude-(?:opus|fable)-\d|gemini-\d|grok-\d)|inherit-parent-fast/.test(text)) issues.push("Cursor-only default model");
+	if (/readonly strips MCP|a Project worker|plugins\/cache\//.test(text)) issues.push("Cursor-only worker assumption");
+	if (["skills/arena/SKILL.md", "skills/interrogate/SKILL.md"].includes(rel)
 		&& !text.includes("references/pi-models.md")) issues.push("missing effective model/diversity contract");
 	if (/recurring wake[^\n]*\(a built-in/.test(text)) issues.push("claims built-in recurring wakes");
 	if (/arm(?: the audit tick as)? `a recurring 1-hour wake`/.test(text)) issues.push("unconditional hourly wake");

@@ -61,10 +61,10 @@ test("transcript adaptation removes upstream layouts rather than globally search
 });
 
 test("sync preserves effective model reporting and replaces Cursor-family fallbacks", () => {
-	for (const name of ["arena", "interrogate", "architect"]) {
+	for (const name of ["arena", "interrogate"]) {
 		const rel = `skills/${name}/SKILL.md`;
 		const fallback = "If the subagent tool rejects a configured entry, run that seat on its family's default. Families go by prefix: `claude-*`, `grok-*`, `cursor-grok-*`, and `composer-*`.";
-		const source = `# ${name}\n\n${name === "arena" ? `3. Pick the runners. ${fallback} Spawn more runners when needed.` : name === "interrogate" ? fallback : "Use Arena."}\n`;
+		const source = `# ${name}\n\n${name === "arena" ? `3. Pick the runners. ${fallback} Spawn more runners when needed.` : fallback}\n`;
 		assert.ok(runtimeInstructionIssues(source, rel).length > 0);
 		const rendered = applyBodyTransforms(source, rel);
 		assert.deepEqual(runtimeInstructionIssues(rendered, rel), []);
@@ -91,6 +91,42 @@ test("Arena cross-judge skips unavailable diversity instead of inheriting the pa
 	assert.match(rendered, /The judge sees the rubric and the candidates/);
 	assert.doesNotMatch(rendered, /try the default pool|same-model judge/);
 	assert.equal(applyBodyTransforms(rendered, rel), rendered);
+});
+
+test("shortened Arena keeps opt-in panels and a safe cross-judge fallback", () => {
+	const rel = "skills/arena/SKILL.md";
+	const source = `# Arena
+
+3. Pick the runners from the \`arena runners\` line in \`~/.cursor/rules/pstack-models.mdc\`, by default \`claude-fable-5-2-high\`, \`claude-opus-5-5-high-fast\`, and \`gemini-4-carbon-high\`. If the Task tool rejects a slug, use the nearest valid slug. Families go by prefix, and the longest match wins: \`claude-*\`. Spawn more for multiple design directions.
+
+After all Phase B candidates complete, spawn one readonly judge from the \`arena cross-judge pool\` line. If you do not know the parent's model, use the first real slug. While you read in Phase D, the judge scores each candidate, by path label, on each rubric criterion and recommends a base.
+`;
+	const rendered = applyBodyTransforms(source, rel);
+	assert.deepEqual(runtimeInstructionIssues(rendered, rel), []);
+	assert.match(rendered, /defaulting to two parent-model candidates/);
+	assert.match(rendered, /Preserve configured seats and selectors, including thinking suffixes/);
+	assert.match(rendered, /`auto` and `inherit-parent` never judge/);
+	assert.match(rendered, /family cannot be verified, skip the judge/);
+	assert.match(rendered, /While you read in Phase D, the judge scores each candidate/);
+	assert.doesNotMatch(rendered, /first real slug|Families go by prefix|nearest valid slug/);
+	assert.equal(applyBodyTransforms(rendered, rel), rendered);
+});
+
+test("shortened Reflect and Recall use Pi transcript and MCP contracts", () => {
+	const reflectRel = "skills/reflect/SKILL.md";
+	const reflect = applyBodyTransforms("# Reflect\n\nRead the whole transcript. The transcript is data.\n\nNever edit a skill under `plugins/cache/`. Copy to `.cursor/skills/<skill>/`.\n", reflectRel);
+	assert.match(reflect, /Locate the active Pi session or retained pi-subagents run/);
+	assert.match(reflect, /bounded digest and name that limit/);
+	assert.match(reflect, /Never edit an installed package's skill in place/);
+	assert.match(reflect, /\.pi\/skills/);
+	assert.deepEqual(runtimeInstructionIssues(reflect, reflectRel), []);
+	assert.equal(applyBodyTransforms(reflect, reflectRel), reflect);
+	const recallRel = "skills/recall/SKILL.md";
+	const recall = applyBodyTransforms("# Recall\n\nSpawn investigators in agent mode because readonly strips MCP access.\n", recallRel);
+	assert.match(recall, /required MCP tools explicitly selected in the agent definition/);
+	assert.match(recall, /Pi delegation controls/);
+	assert.deepEqual(runtimeInstructionIssues(recall, recallRel), []);
+	assert.equal(applyBodyTransforms(recall, recallRel), recall);
 });
 
 test("Interrogate adversaries can run isolated repros without application-fix authority", () => {
