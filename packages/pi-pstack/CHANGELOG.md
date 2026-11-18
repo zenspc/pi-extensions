@@ -1,5 +1,12 @@
 # @zenspc/pi-pstack
 
+## 0.10.0
+
+### Minor Changes
+
+- 70a9be4: Sync Cursor pstack 0.15.43 with shorter skills, shared worker grounding, and statechart rendering and SANY diagnostics fixes.
+  Remove the retired Orchestrate playbook and stale references while preserving Pi model inheritance, opt-in review panels, transcript scoping, and Pi-only tools.
+
 ## 0.9.0
 
 ### Minor Changes
