@@ -1,6 +1,6 @@
 # Review models in Pi
 
-Read this before Arena or Interrogate delegation, including Architect's Arena runners.
+Read this before Arena or Interrogate delegation, including when Architect routes to Arena.
 The injected role table overrides workflow defaults and preserves one seat per array entry, in order.
 `inherit-parent` and `auto` keep their seats but omit the subagent `model` override.
 Without an explicit panel, Arena and Interrogate default to two parent-model samples.

@@ -19,7 +19,7 @@ const EXTENSION_COMMANDS = new Set(["/poteto-mode", "/setup-pstack", "/pstack"])
 const CURSOR_FRONTMATTER_KEYS = new Set(["mode", "icon", "color", "reminder", "paths"]);
 
 const CURSOR_SLUG_ALT =
-	"grok-4\\.6-fast-xhigh|claude-fable-5-1-thinking-max|gpt-5\\.6-sol-max|claude-opus-5-thinking-xhigh|grok-4\\.7-(?:xhigh|medium)-fast|claude-opus-5-5-(?:xhigh|max|medium)";
+	"grok-4\\.6-fast-xhigh|claude-fable-5-1-thinking-max|claude-fable-5-2-high|gemini-4-carbon-high|gpt-5\\.6-sol-max|claude-opus-5-thinking-xhigh|grok-4\\.7-(?:xhigh|medium)-fast|claude-opus-5-5-(?:xhigh|max|medium|high)(?:-fast)?";
 const CURSOR_DEFAULT_SLUGS = new RegExp(
 	"`?(?:" + CURSOR_SLUG_ALT + ")`?(?:\\s*,\\s*`?(?:" + CURSOR_SLUG_ALT + ")`?)*",
 	"g",
@@ -105,12 +105,12 @@ export const SEAMS = [
 	},
 	{
 		id: "deslop",
-		cursor: /the `deslop` skill from the `cursor-team-kit` plugin \(`\/deslop`\)|(?<!skill:)\/deslop\b/g,
+		cursor: /the `deslop` skill from the `cursor-team-kit` plugin \(`\/deslop`\)|`\/deslop` from the `cursor-team-kit` plugin|(?<!skill:)\/deslop\b/g,
 		pi: (m) => (m.includes("cursor-team-kit") ? "the **deslop** skill (`/skill:deslop`)" : "/skill:deslop"),
 	},
 	{
 		id: "control-pair",
-		cursor: /`control-ui` or `control-cli`|`control-cli` or `control-ui`/g,
+		cursor: /(?:`control-ui` or `control-cli`|`control-cli` or `control-ui`)(?: from `cursor-team-kit`)?/g,
 		pi: "the project's verification skill or harness",
 	},
 	{
@@ -159,6 +159,11 @@ export const SEAMS = [
 		id: "task-subagent",
 		cursor: /Task subagent/g,
 		pi: "subagent",
+	},
+	{
+		id: "project-worker",
+		cursor: /a Project worker/g,
+		pi: "an isolated Pi worker",
 	},
 	{
 		id: "async-launch",
@@ -559,6 +564,7 @@ function patchPotetoModePi(text) {
 	}
 	text = text.replace(/\*\*Defaults for every `Task` call\.\*\*[^\n]*/, SUBAGENT_DEFAULTS);
 	text = text.replace(/\*\*Defaults for every `subagent\(\)` launch\.\*\*[^\n]*/, SUBAGENT_DEFAULTS);
+	text = text.replace(/\n- Code, prose, and judgment:[\s\S]*?(?=\n\*\*Match the model to the job\.\*\*)/, "");
 	text = text.replace(
 		/\*\*Match the model to the job\.\*\*[^\n]*/,
 		"**Match the model to the job.** Use the configured provider/model ID for the role, or omit `model` to inherit.\nRead [Pi delegation controls](references/pi-delegation.md) for supported reasoning controls, read-only acceptance, and per-child panel parameters.\nQuery `subagent({ action: \"models\" })` for valid selectors when a configured model is unavailable. Record rejected selectors and never retry them in this run. Follow the calling skill's fallback; where it allows parent-model fallback, omit `model` and disclose it. A required model or family stays blocked rather than silently changing.",

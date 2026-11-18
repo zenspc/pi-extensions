@@ -32,14 +32,14 @@ All other skills are Hidden and load when invoked explicitly or routed to by a w
 ## What is included
 
 - **58 skills**, including `poteto-mode`, `how`, `why`, `architect`, `arena`, `swarm`, `interrogate`, and `reflect`.
-- 23 playbooks for investigation, bugs, performance, features, refactoring, verification, PRs, and autonomous work.
+- 22 playbooks for investigation, bugs, performance, features, refactoring, verification, PRs, and autonomous work.
 - 24 principle skills, including Attack the Premise, Test Behavior Not Implementation, and Explain the Number.
 - Help and communication skills, including `poteto-help`, `in-your-own-words`, `sharpen`, `ketchup`, and `ketchup-video`.
 - Verification skills, including `benchmark-checklist`, `create-formal-verification-skill`, `maintain-formal-verification-skill`, and `statechart`.
 - Two pi-subagents definitions, `poteto-agent` and the read-only `comment-sicko` reviewer.
   The parent chat runs the playbook; `poteto-agent` handles an assigned step.
+- A shared `worker.md` brief for delegated tasks.
 - The bundled `watch-pr` watcher, which runs under [Bun](https://bun.sh).
-  Orchestrate coordinates workers through Pi tools and task-scoped artifacts, without a coordination CLI.
 
 The `statechart` skill checks TLA+ models and produces Mermaid charts and reports.
 Its launcher supports Node 22.18-22.x, Node 23.6 or later, Bun 1.1.5 or later, or Deno 2.0 or later.
@@ -128,7 +128,9 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
 
 ## Upstream sync and development
 
-Synced from Cursor pstack `0.15.36` at [`c742dd61706fbacc1b95f1a20b7b988cf096ce6c`](https://github.com/cursor/plugins/commit/c742dd61706fbacc1b95f1a20b7b988cf096ce6c).
+Synced from Cursor pstack `0.15.43` at [`2f87c854fe3e2fcda44ca86b46ede35aad3c46b7`](https://github.com/cursor/plugins/commit/2f87c854fe3e2fcda44ca86b46ede35aad3c46b7).
+This sync shortens the architecture, explanation, rationale, and reflection skills and removes the Orchestrate playbook.
+Pi model roles still inherit the parent unless explicitly configured; Cursor's Opus-first defaults are not applied.
 
 For local development, load the complete package with `pi -e ./packages/pi-pstack`, not just `extensions/pstack/index.ts`.
 The monorepo package also exposes Pstack's skills and agents alongside its extension.
