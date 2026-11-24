@@ -3,7 +3,7 @@
 ## Scope and evidence standard
 
 This is a bounded execution plan, not a claim that all workflows work.
-The inventory comes from `packages/pi-pstack/package.json`, all 58 bundled `skills/*/SKILL.md` entries, all 22 Poteto Mode playbooks, both bundled agents, and the script entry points below.
+The inventory comes from `packages/pi-pstack/package.json`, all 59 bundled `skills/*/SKILL.md` entries, all 22 Poteto Mode playbooks, both bundled agents, and the script entry points below.
 The workspace manifest exposes the same skill and agent directories.
 Only `how`, `why`, `unslop`, and `typescript-best-practices` are discoverable skills; hidden skills still have `/skill:<name>` entry points.
 A deterministic inventory test in `packages/pi-pstack/scripts/delegation.test.mjs` rejects missing or duplicate skill, playbook, or agent matrix rows.
@@ -119,6 +119,7 @@ Profiles specify retained evidence, side effects, and cleanup for every row.
 | `skill:ketchup-video` | H/V/C; lead. | Same conversation plus real fixture screenshots; silent landscape video, one point/slide, frame inspection and minimum word hold; renderer failure returns honest text fallback. | Planned; ffmpeg present, renderer recipe still needs provisioning. |
 | `skill:bro` | C; lead; contextual communication. | Rewrite a jargon-heavy previous reply, preserve decisions and caveats, no unrelated task or tools. No standalone runtime scenario because it transforms conversation text. | Planned contextual evaluation. |
 | `skill:in-your-own-words` | C; lead; contextual communication. | Restate a supplied goal with constraints, distinguish interpretation from facts, do not implement the task. No standalone process. | Planned contextual evaluation. |
+| `skill:reframe` | C; lead; contextual vocabulary and problem framing. | Vague two-problem description and source fixture; distinguish candidate problems, rank 8-12 useful terms, compare neighboring fields, verify every retained citation, and rewrite without implementing. | Planned contextual evaluation; no live skill run claimed. |
 | `skill:sharpen` | C; lead; contextual prompt transformation. | Rewrite shallow parser task after naming expert method/raw evidence/external criterion; deeper validation, no added product scope. No standalone process. | Planned contextual evaluation. |
 | `skill:unslop` | C; lead; contextual prose editing. | Fixed paragraph containing representative numbered anti-patterns; remove patterns while preserving technical meaning and intended tone. No standalone workflow process. | Planned contextual evaluation. |
 | `skill:technical-writing` | C; lead; contextual writing standard. | Mixed tutorial/reference instructions; identify Diataxis purpose, simplify language, preserve commands/claims and useful variation. No standalone runtime. | Planned contextual evaluation. |

@@ -26,8 +26,9 @@ test("loading the workspace package discovers all pstack skills", async (t) => {
 	});
 	await loader.reload();
 	const skills = loader.getSkills().skills.filter(skill => skill.filePath.startsWith(join(packageDir, "skills")));
-	assert.equal(skills.length, 58);
+	assert.equal(skills.length, 59);
 	assert.ok(skills.some(skill => skill.name === "poteto-mode"));
+	assert.ok(skills.some(skill => skill.name === "reframe" && skill.disableModelInvocation));
 	assert.deepEqual(loader.getSkills().diagnostics, []);
 });
 

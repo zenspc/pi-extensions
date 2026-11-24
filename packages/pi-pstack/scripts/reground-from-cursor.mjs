@@ -19,7 +19,7 @@ const EXTENSION_COMMANDS = new Set(["/poteto-mode", "/setup-pstack", "/pstack"])
 const CURSOR_FRONTMATTER_KEYS = new Set(["mode", "icon", "color", "reminder", "paths"]);
 
 const CURSOR_SLUG_ALT =
-	"grok-4\\.6-fast-xhigh|claude-fable-5-1-thinking-max|claude-fable-5-2-high|gemini-4-carbon-high|gpt-5\\.6-sol-max|claude-opus-5-thinking-xhigh|grok-4\\.7-(?:xhigh|medium)-fast|claude-opus-5-5-(?:xhigh|max|medium|high)(?:-fast)?";
+	"grok-4\\.6-fast-xhigh|claude-fable-5-1-thinking-max|claude-fable-5-2-high|gemini-4-(?:carbon-high|neon-(?:low|medium|high|xhigh))|gpt-5\\.6-sol-max|claude-opus-5-thinking-xhigh|grok-4\\.7-(?:xhigh|medium)-fast|claude-opus-5-5-(?:xhigh|max|medium|high)(?:-fast)?";
 const CURSOR_DEFAULT_SLUGS = new RegExp(
 	"`?(?:" + CURSOR_SLUG_ALT + ")`?(?:\\s*,\\s*`?(?:" + CURSOR_SLUG_ALT + ")`?)*",
 	"g",
@@ -757,11 +757,12 @@ export function renderWrite(action, paths) {
 	if (action.rel === "skills/poteto-mode/SKILL.md") {
 		text = text.replace("## Subagents\n", "## Subagents\n\nRead the pi-subagents skill before delegation. Delegate only when the operator's request or applicable user/project instructions authorize it. If only `subagents_enable` is available, call it first, then call `subagent` as a native tool, not through codemode.\n\nThe bundled `poteto-agent` does not inherit MCP tools automatically.\nFor an MCP-dependent step, use an agent definition that selects the required tools and loads their providers.\nNaming tools in a brief does not grant access.\n");
 	}
-	if (["skills/interrogate/SKILL.md", "skills/poteto-mode/playbooks/orchestrate.md"].includes(action.rel)) {
+	if (["skills/interrogate/SKILL.md", "skills/reframe/SKILL.md", "skills/poteto-mode/playbooks/orchestrate.md"].includes(action.rel)) {
 		const bodyStart = text.startsWith("---\n") ? text.indexOf("\n---\n", 4) + 5 : 0;
 		text = text.slice(0, bodyStart) + text.slice(bodyStart).split("\n").map((line) => {
-			const continuation = line.startsWith("> ") ? "> " : line.startsWith("- ") ? "  " : "";
-			return line.replace(/(?<=[.!?]) (?=[A-Z])/g, `\n${continuation}`);
+			const prefix = /^\d+\. /.exec(line)?.[0] ?? "";
+			const continuation = prefix ? " ".repeat(prefix.length) : line.startsWith("> ") ? "> " : line.startsWith("- ") ? "  " : "";
+			return prefix + line.slice(prefix.length).replace(/(?<=[.!?]) (?=[A-Z])/g, `\n${continuation}`);
 		}).join("\n");
 	}
 	return text;
