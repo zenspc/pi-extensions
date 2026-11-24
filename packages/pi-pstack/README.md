@@ -24,17 +24,17 @@ Delegation still requires authorization from the operator's request or applicabl
 4. Run `/pstack off` to hide the four Discoverable skills from the Skill catalog.
    The setting persists in `~/.pi/agent/pstack/models.json`.
    Explicit `/skill:<name>` commands still work.
-   `/pstack on` restores those four, not all 58.
+   `/pstack on` restores those four, not all 59.
 
 Only `how`, `why`, `unslop`, and `typescript-best-practices` are Discoverable.
 All other skills are Hidden and load when invoked explicitly or routed to by a workflow.
 
 ## What is included
 
-- **58 skills**, including `poteto-mode`, `how`, `why`, `architect`, `arena`, `swarm`, `interrogate`, and `reflect`.
+- **59 skills**, including `poteto-mode`, `how`, `why`, `architect`, `arena`, `swarm`, `interrogate`, and `reflect`.
 - 22 playbooks for investigation, bugs, performance, features, refactoring, verification, PRs, and autonomous work.
 - 24 principle skills, including Attack the Premise, Test Behavior Not Implementation, and Explain the Number.
-- Help and communication skills, including `poteto-help`, `in-your-own-words`, `sharpen`, `ketchup`, and `ketchup-video`.
+- Help and communication skills, including `poteto-help`, `in-your-own-words`, `reframe`, `sharpen`, `ketchup`, and `ketchup-video`.
 - Verification skills, including `benchmark-checklist`, `create-formal-verification-skill`, `maintain-formal-verification-skill`, and `statechart`.
 - Two pi-subagents definitions, `poteto-agent` and the read-only `comment-sicko` reviewer.
   The parent chat runs the playbook; `poteto-agent` handles an assigned step.
@@ -128,9 +128,9 @@ It does not replace or parse the complete rendered prompt, mutate the skill regi
 
 ## Upstream sync and development
 
-Synced from Cursor pstack `0.15.43` at [`2f87c854fe3e2fcda44ca86b46ede35aad3c46b7`](https://github.com/cursor/plugins/commit/2f87c854fe3e2fcda44ca86b46ede35aad3c46b7).
-This sync shortens the architecture, explanation, rationale, and reflection skills and removes the Orchestrate playbook.
-Pi model roles still inherit the parent unless explicitly configured; Cursor's Opus-first defaults are not applied.
+Synced from Cursor pstack `0.15.48` at [`ca782ed8b3c2c521cead8e1720d55c3a5dbf2347`](https://github.com/cursor/plugins/commit/ca782ed8b3c2c521cead8e1720d55c3a5dbf2347).
+This sync adds `/skill:reframe` for expert vocabulary and improves statechart's native Windows support, process cleanup, and TLC line-ending handling.
+Pi model roles still inherit the parent unless explicitly configured; Cursor's model defaults and Gemini seat migrations are not applied.
 
 For local development, load the complete package with `pi -e ./packages/pi-pstack`, not just `extensions/pstack/index.ts`.
 The monorepo package also exposes Pstack's skills and agents alongside its extension.

@@ -177,9 +177,22 @@ description: Mode.
 	assert.match(rendered, /parent session model/);
 	assert.doesNotMatch(rendered, /Fable|Opus|Diverse review and design panels|explicit model\./);
 	assert.equal(readFileSync(join(paths.to, "skills/poteto-mode/worker.md"), "utf8"), "# Worker\n\nRead <path>/worker.md before anything else.\n");
-	for (const slug of ["claude-opus-5-5-xhigh-fast", "claude-opus-5-5-high-fast", "claude-opus-5-5-medium-fast", "claude-fable-5-2-high", "gemini-4-carbon-high"]) {
+	for (const slug of ["claude-opus-5-5-xhigh-fast", "claude-opus-5-5-high-fast", "claude-opus-5-5-medium-fast", "claude-fable-5-2-high", "gemini-4-carbon-high", "gemini-4-neon-low", "gemini-4-neon-medium", "gemini-4-neon-high", "gemini-4-neon-xhigh"]) {
 		assert.equal(applyBodyTransforms(`default \`${slug}\`.`), "default inherit-parent.");
 	}
+});
+
+test("sync adapts Reframe commands and preserves numbered Markdown", (t) => {
+	const paths = fixture(t);
+	paths.put(paths.from, "skills/reframe/SKILL.md", "---\nname: reframe\ndescription: Use /reframe.\n---\nTeach terms. Start from the source.\n\n1. Give terms. For each, cite a source.\n2. Rewrite the description.\n");
+	apply(plan(paths));
+	assertNoCursorSeams(paths.to);
+	const rendered = readFileSync(join(paths.to, "skills/reframe/SKILL.md"), "utf8");
+	assert.match(rendered, /description: Use \/skill:reframe\./);
+	assert.match(rendered, /disable-model-invocation: true/);
+	assert.match(rendered, /Teach terms\.\nStart from the source\./);
+	assert.match(rendered, /1\. Give terms\.\n   For each, cite a source\.\n2\. Rewrite the description\./);
+	assert.equal(renderWrite({ rel: "skills/reframe/SKILL.md", class: "adapt" }, paths), rendered);
 });
 
 test("sync retires orch and Interrogate references while adapting agentic Orchestrate", (t) => {
