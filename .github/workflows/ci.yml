@@ -38,6 +38,9 @@ jobs:
       - name: Browser type check
         run: pnpm --filter @zenspc/pi-browser check
 
+      - name: Session mirror type check
+        run: pnpm --filter @zenspc/pi-session-mirror check
+
       - name: Unit and browser integration tests
         run: pnpm test
 

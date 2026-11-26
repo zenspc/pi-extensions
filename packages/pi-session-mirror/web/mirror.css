@@ -1,0 +1,37 @@
+:root {
+  color-scheme: light dark;
+  font: 1rem/1.5 system-ui, sans-serif;
+  --line: color-mix(in srgb, CanvasText 22%, Canvas);
+  --surface: color-mix(in srgb, CanvasText 6%, Canvas);
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 60rem; padding: 1rem clamp(0.75rem, 4vw, 2rem); color: CanvasText; background: Canvas; }
+h1 { font-size: 1.4rem; margin: 0; }
+h2 { font-size: 1.2rem; }
+p { margin: 0.4rem 0 0.8rem; }
+header { border-bottom: 1px solid var(--line); margin-bottom: 1rem; }
+label { display: block; font-weight: 600; }
+input, select, textarea, button { font: inherit; color: inherit; border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.55rem 0.75rem; background: Canvas; }
+select, textarea { width: 100%; }
+input { min-width: 0; width: min(100%, 16rem); }
+textarea { resize: vertical; }
+button { background: #254c99; color: white; cursor: pointer; }
+button.secondary { background: var(--surface); color: inherit; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+#conversation { height: clamp(12rem, 48dvh, 38rem); overflow-y: auto; border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.75rem; margin: 0.5rem 0 1rem; }
+article { padding: 0.55rem 0.75rem; margin: 0 0 0.5rem; border-radius: 0.5rem; background: var(--surface); }
+article h3 { font-size: 0.9rem; margin: 0 0 0.25rem; }
+article pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+article:not(.message) pre { font-family: ui-monospace, monospace; font-size: 0.88rem; }
+#question { margin-bottom: 1rem; }
+#question fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 0.5rem; }
+#question legend { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+#question-details { white-space: pre-wrap; overflow-wrap: anywhere; }
+#question-answers { margin-bottom: 0.75rem; }
+#question-answers > input { width: 100%; }
+.questionnaire-item { margin-bottom: 1rem; }
+.questionnaire-item p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.question-option { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.5rem 0; font-weight: 400; overflow-wrap: anywhere; }
+.question-option input { width: auto; flex: none; }
+.question-option small { opacity: 0.8; }
