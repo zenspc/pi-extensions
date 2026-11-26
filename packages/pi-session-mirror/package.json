@@ -1,6 +1,6 @@
 {
   "name": "@zenspc/pi-session-mirror",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "View and control opted-in Pi sessions over Tailscale Serve",
   "type": "module",
   "exports": {
