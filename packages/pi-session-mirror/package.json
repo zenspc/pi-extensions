@@ -1,0 +1,58 @@
+{
+  "name": "@zenspc/pi-session-mirror",
+  "version": "0.0.0",
+  "description": "View and control opted-in Pi sessions over Tailscale Serve",
+  "type": "module",
+  "exports": {
+    "./questions": "./src/questions.ts"
+  },
+  "license": "MIT",
+  "author": "dhairyaar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenspc/pi-extensions.git",
+    "directory": "packages/pi-session-mirror"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "tailscale",
+    "sessions"
+  ],
+  "files": [
+    "src/",
+    "!src/**/*.test.ts",
+    "web/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --test src/*.test.ts",
+    "prepack": "cp --remove-destination ../../LICENSE LICENSE",
+    "postpack": "ln -sfn ../../LICENSE LICENSE"
+  },
+  "dependencies": {
+    "uqr": "0.1.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "26.1.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

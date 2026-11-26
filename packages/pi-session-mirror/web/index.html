@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi Session Mirror</title>
+  <link rel="stylesheet" href="/mirror.css">
+  <script type="module" src="/mirror.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Pi Session Mirror</h1>
+    <p id="connection" role="status">Connecting…</p>
+  </header>
+  <main>
+    <form id="pair" hidden>
+      <h2>Pair this browser</h2>
+      <p>Scan the QR code from Pi or enter the code shown in your terminal. Select Pair to confirm.</p>
+      <label for="code">Pairing code</label>
+      <div class="controls">
+        <input id="code" type="text" maxlength="12" pattern="[0-9a-fA-F]{12}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <button id="pair-button">Pair</button>
+      </div>
+      <p id="pair-status" role="status"></p>
+    </form>
+    <section id="mirror" aria-label="Session mirror" hidden>
+      <label for="sessions">Session</label>
+      <select id="sessions"></select>
+      <p id="run-status" role="status"></p>
+      <section id="conversation" tabindex="0" aria-label="Conversation">
+        <p id="truncated" hidden>Showing the 300 most recent entries.</p>
+        <div id="transcript"></div>
+        <div id="live"></div>
+      </section>
+      <form id="question" hidden>
+        <fieldset id="question-fields" disabled>
+          <legend id="question-title"></legend>
+          <p id="question-details"></p>
+          <div id="question-answers"></div>
+          <div class="controls">
+            <button id="submit-question" type="submit">Submit answer</button>
+            <button id="cancel-question" type="button" class="secondary">Cancel question</button>
+          </div>
+        </fieldset>
+      </form>
+      <form id="compose">
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" rows="3" maxlength="16384" placeholder="Send a text prompt to Pi"></textarea>
+        <div class="controls">
+          <button id="send" type="submit" disabled>Send prompt</button>
+          <button id="queue" type="button" disabled hidden>Queue follow-up</button>
+          <button id="stop" type="button" class="secondary" disabled>Stop run</button>
+        </div>
+        <p id="action-status" role="status"></p>
+      </form>
+    </section>
+    <noscript>This page needs JavaScript to connect to Pi.</noscript>
+  </main>
+</body>
+</html>

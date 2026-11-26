@@ -15,6 +15,7 @@ Installable packages for the [Pi coding agent](https://pi.dev), published under 
 | [`@zenspc/pi-btw`](./packages/pi-btw) | `pi install ./packages/pi-btw` (local) | `/btw` and `/side` chat in an inline bottom panel, independently of the main agent |
 | [`@zenspc/pi-pstack`](./packages/pi-pstack) | `pi install npm:@zenspc/pi-pstack` | pstack skills + subagents: poteto-mode playbooks, engineering principles, multi-model review panels |
 | [`@zenspc/pi-quiet`](./packages/pi-quiet) | `pi install npm:@zenspc/pi-quiet` | Grok Build-inspired terminal presentation and compact tool activity |
+| [`@zenspc/pi-session-mirror`](./packages/pi-session-mirror) | `pi install ./packages/pi-session-mirror` (local) | View and control opted-in Pi sessions over Tailscale Serve |
 | [`@zenspc/pi-spinner`](./packages/pi-spinner) | `pi install npm:@zenspc/pi-spinner` | Customize the spinner animation and rotate the loader message |
 
 Pre-1.0 APIs may change.
@@ -36,6 +37,9 @@ Pre-1.0 APIs may change.
 - **pi-autopilot**: executes unattended worker and verification commands with your user permissions and creates local Git checkpoints.
   Worktrees and file reservations gate publication but are not an OS sandbox.
   Use a disposable repository for your first run; see the package README for model configuration and recovery.
+- **pi-session-mirror**: paired browsers can read transcripts and send prompts to opted-in sessions with their existing tool permissions.
+  Restrict Tailscale Serve to your account or devices.
+  Use `/mirror revoke` if a browser is lost.
 
 See each package README and [SECURITY.md](./SECURITY.md) for details.
 
@@ -52,6 +56,7 @@ pi -e ./packages/pi-quiet
 pi -e ./packages/pi-pstack
 pi -e ./packages/pi-browser
 pi -e ./packages/pi-autopilot
+pi -e ./packages/pi-session-mirror
 
 # install from path into user settings
 pi install ./packages/pi-devtools
@@ -61,6 +66,7 @@ pi install ./packages/pi-quiet
 pi install ./packages/pi-pstack
 pi install ./packages/pi-browser
 pi install ./packages/pi-autopilot
+pi install ./packages/pi-session-mirror
 ```
 
 ## Pick pieces from a package
